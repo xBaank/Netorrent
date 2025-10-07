@@ -49,7 +49,7 @@ public ref struct BDecoder
         }
 
         if (int.TryParse(_data.Slice(startOffset, length), out var totalLength))
-            return Encoding.ASCII.GetString(_data.Slice(++_pos, totalLength));
+            return Encoding.UTF8.GetString(_data.Slice(++_pos, totalLength));
         else
             throw new InvalidDataException();
     }
