@@ -1,6 +1,7 @@
 ﻿using System.Text;
 using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
+using Shouldly;
 
 namespace Netorrent.Tests;
 
@@ -24,10 +25,9 @@ public class BencodingTests
         var bytes = Encoding.UTF8.GetBytes(input);
         var decoder = new BDecoder(bytes.AsSpan());
 
-        var decoded = decoder.Decode();
+        var decoded = (BString)decoder.Decode();
 
-        Assert.True(decoded is BString);
-        Assert.Equal(actual, decoded.ToString());
+        decoded.Data.ShouldBeEquivalentTo(actual);
     }
 
     [Theory]
@@ -50,9 +50,8 @@ public class BencodingTests
         var bytes = Encoding.UTF8.GetBytes(input);
         var decoder = new BDecoder(bytes.AsSpan());
 
-        var decoded = decoder.Decode();
+        var decoded = (BInt)decoder.Decode();
 
-        Assert.True(decoded is BInt);
-        Assert.Equal(actual, ((BInt)(decoded)).Data);
+        decoded.Data.ShouldBeEquivalentTo(actual);
     }
 }
