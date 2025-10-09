@@ -56,17 +56,19 @@ public ref struct BDecoder
 
     public BInt DecodeInt()
     {
-        var startingOffset = _pos++;
+        var current = (char)_data[++_pos];
+        var startingOffset = _pos;
         var length = 0;
 
-        while ((char)_data[startingOffset] != 'e')
+        while (current != 'e')
         {
             length++;
+            current = (char)_data[++_pos];
         }
 
         var slice = _data.Slice(startingOffset, length);
 
-        if (int.TryParse(slice, out var result))
+        if (long.TryParse(slice, out var result))
         {
             return result;
         }

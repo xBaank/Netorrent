@@ -29,4 +29,30 @@ public class BencodingTests
         Assert.True(decoded is BString);
         Assert.Equal(actual, decoded.ToString());
     }
+
+    [Theory]
+    [InlineData("i0e", 0)]
+    [InlineData("i1e", 1)]
+    [InlineData("i42e", 42)]
+    [InlineData("i-1e", -1)]
+    [InlineData("i999e", 999)]
+    [InlineData("i123456789e", 123456789)]
+    [InlineData("i-99999e", -99999)]
+    [InlineData("i2147483647e", 2147483647)] // max 32-bit int
+    [InlineData("i-2147483648e", -2147483648)] // min 32-bit int
+    [InlineData("i9223372036854775807e", 9223372036854775807L)] // max 64-bit
+    [InlineData("i-9223372036854775808e", -9223372036854775808L)] // min 64-bit
+    [InlineData("i007e", 7)] // technically invalid in strict bencoding (leading zeros), but useful for tests
+    [InlineData("i-0e", 0)] // another edge case: negative zero normalization
+    [InlineData("i000000e", 0)] // leading zeros case
+    public void CanDecodeBInt(string input, long actual)
+    {
+        var bytes = Encoding.UTF8.GetBytes(input);
+        var decoder = new BDecoder(bytes.AsSpan());
+
+        var decoded = decoder.Decode();
+
+        Assert.True(decoded is BInt);
+        Assert.Equal(actual, ((BInt)(decoded)).Data);
+    }
 }
