@@ -49,7 +49,11 @@ public ref struct BDecoder
         }
 
         if (int.TryParse(_data.Slice(startOffset, length), out var totalLength))
-            return Encoding.UTF8.GetString(_data.Slice(++_pos, totalLength));
+        {
+            var result = Encoding.UTF8.GetString(_data.Slice(++_pos, totalLength));
+            _pos += totalLength;
+            return result;
+        }
         else
             throw new InvalidDataException();
     }
@@ -70,19 +74,23 @@ public ref struct BDecoder
 
         if (long.TryParse(slice, out var result))
         {
+            _pos++;
             return result;
         }
+
         throw new InvalidDataException();
     }
 
     public BList DecodeList()
     {
         var list = new List<IBencodingType>();
-        while ((char)_data[_pos++] != 'e')
+        _pos++;
+        while ((char)_data[_pos] != 'e')
         {
             var item = Decode();
             list.Add(item);
         }
+        _pos++;
         return list;
     }
 

@@ -54,4 +54,16 @@ public class BencodingTests
 
         decoded.Data.ShouldBeEquivalentTo(actual);
     }
+
+    [Theory]
+    [ClassData(typeof(BlistData))]
+    public void CanDecodeList(string input, BList actual)
+    {
+        var bytes = Encoding.UTF8.GetBytes(input);
+        var decoder = new BDecoder(bytes.AsSpan());
+
+        var decoded = (BList)decoder.Decode();
+
+        decoded.ShouldBeEquivalentTo(actual);
+    }
 }
