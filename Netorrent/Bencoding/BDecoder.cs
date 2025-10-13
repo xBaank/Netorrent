@@ -97,12 +97,14 @@ public ref struct BDecoder
     public BDictionary DecodeDic()
     {
         var dic = new Dictionary<BString, IBencodingType>();
-        while ((char)_data[_pos++] != 'e')
+        _pos++;
+        while ((char)_data[_pos] != 'e')
         {
             var key = DecodeString();
             var item = Decode();
             dic.Add(key, item);
         }
+        _pos++;
         return dic;
     }
 }

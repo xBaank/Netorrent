@@ -3,7 +3,7 @@ using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
 using Shouldly;
 
-namespace Netorrent.Tests;
+namespace Netorrent.Tests.Bencoding;
 
 public class BencodingTests
 {
@@ -56,14 +56,28 @@ public class BencodingTests
     }
 
     [Theory]
+    [ClassData(typeof(BDictionaryData))]
     [ClassData(typeof(BlistData))]
-    public void CanDecodeList(string input, BList actual)
+    public void CanDecodeNonPrimitives(string input, IBencodingType actual)
     {
         var bytes = Encoding.UTF8.GetBytes(input);
         var decoder = new BDecoder(bytes.AsSpan());
 
-        var decoded = (BList)decoder.Decode();
+        var decoded = decoder.Decode();
 
         decoded.ShouldBeEquivalentTo(actual);
+    }
+
+    [Theory]
+    [InlineData("Data/alice.torrent")]
+    public async Task CanDecodeTorrentFile(
+        string path,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var data = await File.ReadAllBytesAsync(path, cancellationToken);
+        var decoder = new BDecoder(data.AsSpan());
+        var result = decoder.Decode();
+        result.ShouldNotBeNull();
     }
 }
