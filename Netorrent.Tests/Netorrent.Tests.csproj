@@ -30,7 +30,10 @@
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup>
-    <None Update="Data\alice.torrent">
+    <None Update="Data\evadubbed_archive.torrent">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Data\nosferatu.torrent">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

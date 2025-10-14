@@ -1,4 +1,4 @@
-﻿namespace Netorrent.Torrent.FileStructure;
+﻿namespace Netorrent.TorrentFile.FileStructure;
 
 public record MetaInfo(
     Info Info,

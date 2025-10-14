@@ -67,17 +67,4 @@ public class BencodingTests
 
         decoded.ShouldBeEquivalentTo(actual);
     }
-
-    [Theory]
-    [InlineData("Data/alice.torrent")]
-    public async Task CanDecodeTorrentFile(
-        string path,
-        CancellationToken cancellationToken = default
-    )
-    {
-        var data = await File.ReadAllBytesAsync(path, cancellationToken);
-        var decoder = new BDecoder(data.AsSpan());
-        var result = decoder.Decode();
-        result.ShouldNotBeNull();
-    }
 }

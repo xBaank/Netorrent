@@ -1,12 +1,16 @@
 ﻿namespace Netorrent.Bencoding.Structs;
 
-public class BList(List<IBencodingType> elements) : IBencodingType
+public readonly struct BList(List<IBencodingType> elements) : IBencodingType
 {
     public List<IBencodingType> Elements => elements;
 
     public static implicit operator List<IBencodingType>(BList other) => other.Elements;
 
     public static implicit operator BList(List<IBencodingType> data) => new(data);
+
+    public static bool operator ==(BList left, BList right) => left.Equals(right);
+
+    public static bool operator !=(BList left, BList right) => !(left == right);
 
     public override bool Equals(object? obj)
     {

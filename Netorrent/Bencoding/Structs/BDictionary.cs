@@ -1,6 +1,6 @@
 ﻿namespace Netorrent.Bencoding.Structs;
 
-public class BDictionary(Dictionary<BString, IBencodingType> elements) : IBencodingType
+public readonly struct BDictionary(Dictionary<BString, IBencodingType> elements) : IBencodingType
 {
     public Dictionary<BString, IBencodingType> Elements => elements;
 
@@ -9,6 +9,10 @@ public class BDictionary(Dictionary<BString, IBencodingType> elements) : IBencod
 
     public static implicit operator BDictionary(Dictionary<BString, IBencodingType> data) =>
         new(data);
+
+    public static bool operator ==(BDictionary left, BDictionary right) => left.Equals(right);
+
+    public static bool operator !=(BDictionary left, BDictionary right) => !(left == right);
 
     public override bool Equals(object? obj)
     {
