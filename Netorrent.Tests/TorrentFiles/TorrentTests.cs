@@ -1,8 +1,7 @@
-﻿using Netorrent.Bencoding;
-using Netorrent.TorrentFile;
+﻿using Netorrent.TorrentFile;
 using Shouldly;
 
-namespace Netorrent.Tests.TorrentFile;
+namespace Netorrent.Tests.TorrentFiles;
 
 public class TorrentTests
 {
