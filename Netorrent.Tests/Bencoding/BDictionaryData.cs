@@ -6,7 +6,7 @@ public class BDictionaryData : TheoryData<string, BDictionary>
 {
     public BDictionaryData()
     {
-        Add("de", new BDictionary(new Dictionary<BString, IBencodingType>()));
+        Add("de", new BDictionary([]));
         // Empty dictionary
 
         Add(
@@ -48,22 +48,18 @@ public class BDictionaryData : TheoryData<string, BDictionary>
             new BDictionary(
                 new Dictionary<BString, IBencodingType>()
                 {
-                    [new BString("spam")] = new BList(
-                        new List<IBencodingType>() { new BString("a"), new BString("b") }
-                    ),
+                    [new BString("spam")] = new BList([new BString("a"), new BString("b")]),
                 }
             )
         );
         // Dictionary with list value
 
         Add(
-            "d3:numli1ei2ei3ee4:name5:alicee",
+            "d4:name5:alice3:numli1ei2ei3eee",
             new BDictionary(
                 new Dictionary<BString, IBencodingType>()
                 {
-                    [new BString("num")] = new BList(
-                        new List<IBencodingType>() { new BInt(1), new BInt(2), new BInt(3) }
-                    ),
+                    [new BString("num")] = new BList([new BInt(1), new BInt(2), new BInt(3)]),
                     [new BString("name")] = new BString("alice"),
                 }
             )

@@ -35,13 +35,7 @@ public class BlistData : TheoryData<string, BList>
         );
         // Nested list
 
-        Add(
-            "ll4:spamee",
-            new List<IBencodingType>()
-            {
-                new BList(new List<IBencodingType>() { new BString("spam") }),
-            }
-        );
+        Add("ll4:spamee", new List<IBencodingType>() { new BList([new BString("spam")]) });
         // List inside list
 
         Add("l0:4:datae", new List<IBencodingType>() { new BString(""), new BString("data") });
@@ -67,11 +61,7 @@ public class BlistData : TheoryData<string, BList>
 
         Add(
             "ll4:innee3:oute",
-            new List<IBencodingType>()
-            {
-                new BList(new List<IBencodingType>() { new BString("inne") }),
-                new BString("out"),
-            }
+            new List<IBencodingType>() { new BList([new BString("inne")]), new BString("out") }
         );
         // Deeply nested
         Add(
