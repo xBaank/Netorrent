@@ -1,4 +1,6 @@
-﻿namespace Netorrent.TorrentFile.FileStructure;
+﻿using Netorrent.Bencoding.Structs;
+
+namespace Netorrent.TorrentFile.FileStructure;
 
 public enum InfoType
 {
@@ -7,6 +9,7 @@ public enum InfoType
 }
 
 public record Info(
+    BDictionary RawInfo,
     long PieceLength,
     string Pieces,
     long Private,

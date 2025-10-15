@@ -1,6 +1,7 @@
 ﻿using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
 using Netorrent.Extensions;
+using Netorrent.P2P;
 using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.TorrentFile;
@@ -8,6 +9,8 @@ namespace Netorrent.TorrentFile;
 public class Torrent
 {
     public MetaInfo MetaInfo { get; init; }
+
+    private readonly PeerIdService _peerIdService = new();
 
     public static async ValueTask<Torrent> Create(
         string path,
@@ -67,6 +70,7 @@ public class Torrent
 
         return new MetaInfo(
             Info: new Info(
+                info,
                 pieceLength,
                 pieces,
                 privateFlag ?? 0,
