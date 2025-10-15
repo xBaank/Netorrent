@@ -14,6 +14,7 @@ public class TorrentTests
     )
     {
         var torrent = await Torrent.Create(path, cancellationToken);
+        await torrent.DownloadAll(cancellationToken);
         torrent.ShouldNotBeNull();
     }
 }

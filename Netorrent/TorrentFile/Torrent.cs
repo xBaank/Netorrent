@@ -3,6 +3,7 @@ using Netorrent.Bencoding.Structs;
 using Netorrent.Extensions;
 using Netorrent.P2P;
 using Netorrent.TorrentFile.FileStructure;
+using Netorrent.Tracker;
 
 namespace Netorrent.TorrentFile;
 
@@ -11,6 +12,7 @@ public class Torrent
     public MetaInfo MetaInfo { get; init; }
 
     private readonly PeerIdService _peerIdService = new();
+    private readonly HttpClient _httpClient = new();
 
     public static async ValueTask<Torrent> Create(
         string path,
@@ -30,6 +32,12 @@ public class Torrent
             throw new InvalidDataException("Torrent file is not a valid bencoded dictionary.");
 
         MetaInfo = ParseMetaInfo(bDictionary);
+    }
+
+    public async ValueTask DownloadAll(CancellationToken cancellationToken = default)
+    {
+        var trackerClient = new TrackerClient(_httpClient, _peerIdService, MetaInfo);
+        await trackerClient.GetPeers(cancellationToken);
     }
 
     private static MetaInfo ParseMetaInfo(BDictionary dictionary)

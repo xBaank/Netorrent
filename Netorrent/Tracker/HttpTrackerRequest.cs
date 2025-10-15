@@ -3,8 +3,8 @@ using System.Text;
 
 namespace Netorrent.Tracker;
 
-internal class Request(
-    string InfoHash,
+internal class HttpTrackerRequest(
+    byte[] InfoHash,
     string PeerId,
     int Port,
     ulong Downloaded,
@@ -34,7 +34,7 @@ internal class Request(
         uriBuilder.Append(trackerUrl);
         uriBuilder.Append(trackerUrl.Contains('?') ? '&' : '?');
 
-        uriBuilder.Append($"info_hash={UrlEncode(Encoding.ASCII.GetBytes(InfoHash))}");
+        uriBuilder.Append($"info_hash={UrlEncode(InfoHash)}");
         uriBuilder.Append($"&peer_id={WebUtility.UrlEncode(PeerId)}");
         uriBuilder.Append($"&port={Port}");
         uriBuilder.Append($"&uploaded={Uploaded}");
