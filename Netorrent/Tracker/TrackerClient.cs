@@ -1,9 +1,8 @@
 ﻿using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
-using System.Text;
 using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
-using Netorrent.Extensions;
 using Netorrent.P2P;
 using Netorrent.TorrentFile.FileStructure;
 
@@ -11,6 +10,8 @@ namespace Netorrent.Tracker;
 
 internal class TrackerClient(HttpClient client, PeerIdService peerIdService, MetaInfo metaInfo)
 {
+    private readonly P2PClient _p2pClient = new(GetFreeTcpListenerInRange(6881, 6899));
+
     public static byte[] ComputeInfoHash(BDictionary info)
     {
         var encoder = new BEncoder();
@@ -19,29 +20,7 @@ internal class TrackerClient(HttpClient client, PeerIdService peerIdService, Met
         return SHA1.HashData(infoBytes);
     }
 
-    public static List<Peer> DecodeCompactPeers(byte[] peers)
-    {
-        if (peers.Length % 6 != 0)
-            throw new ArgumentException("Invalid peers length: must be a multiple of 6 bytes.");
-
-        var list = new List<Peer>();
-        for (int i = 0; i < peers.Length; i += 6)
-        {
-            // IP: first 4 bytes
-            var ipBytes = new byte[4];
-            Array.Copy(peers, i, ipBytes, 0, 4);
-            var ip = new IPAddress(ipBytes);
-
-            // Port: last 2 bytes, big-endian
-            int port = (peers[i + 4] << 8) | peers[i + 5];
-
-            list.Add(new Peer(ip, port));
-        }
-
-        return list;
-    }
-
-    public async ValueTask GetPeers(CancellationToken cancellationToken = default)
+    public async ValueTask Start(CancellationToken cancellationToken = default)
     {
         var infoHash = ComputeInfoHash(metaInfo.Info.RawInfo);
         var toDownload = (ulong)(
@@ -52,29 +31,42 @@ internal class TrackerClient(HttpClient client, PeerIdService peerIdService, Met
         var request = new HttpTrackerRequest(
             infoHash,
             peerIdService.PeerId,
-            6899,
+            _p2pClient.Port,
             toDownload,
             0,
             toDownload,
             true,
             false,
-            "started"
+            Events.Started
         );
 
         var response = await client.SendAsync(
             request.GenerateRequest(metaInfo.Announce),
             cancellationToken
         );
-        var content = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-        var decoder = new BDecoder(content);
-        var decoded = decoder.Decode();
-        //TODO parse response
-        var peersRaw =
-            decoded.As<BDictionary>()?.Elements["peers"]?.As<BString>()
-            ?? throw new InvalidDataException();
+        var httpTrackerResponse = await HttpTrackerResponse.FromHttpResponseAsync(
+            response,
+            cancellationToken
+        );
+        Console.WriteLine(response);
+    }
 
-        var peers = DecodeCompactPeers(Encoding.ASCII.GetBytes(peersRaw));
+    static TcpListener GetFreeTcpListenerInRange(int start, int end)
+    {
+        for (int port = start; port <= end; port++)
+        {
+            try
+            {
+                var listener = new TcpListener(IPAddress.Any, port);
+                listener.Start(); // Try to bind — this reserves the port
+                return listener;
+            }
+            catch (SocketException)
+            {
+                // Port already in use — try next one
+            }
+        }
 
-        Console.WriteLine(peers);
+        throw new Exception("No free port found in the specified range.");
     }
 }

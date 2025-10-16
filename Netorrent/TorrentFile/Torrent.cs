@@ -37,7 +37,7 @@ public class Torrent
     public async ValueTask DownloadAll(CancellationToken cancellationToken = default)
     {
         var trackerClient = new TrackerClient(_httpClient, _peerIdService, MetaInfo);
-        await trackerClient.GetPeers(cancellationToken);
+        await trackerClient.Start(cancellationToken);
     }
 
     private static MetaInfo ParseMetaInfo(BDictionary dictionary)
