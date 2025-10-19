@@ -12,7 +12,7 @@ internal class HttpTrackerRequest(
     ulong Left,
     bool Compact,
     bool NoPeerId,
-    string Event,
+    string? Event = null,
     string? IpAddress = null,
     int? NumWant = null,
     string? Key = null,

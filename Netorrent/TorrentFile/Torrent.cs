@@ -13,6 +13,7 @@ public class Torrent
 
     private readonly PeerIdService _peerIdService = new();
     private readonly HttpClient _httpClient = new();
+    private readonly P2PClient _p2pClient = new();
 
     public static async ValueTask<Torrent> Create(
         string path,
@@ -36,8 +37,35 @@ public class Torrent
 
     public async ValueTask DownloadAll(CancellationToken cancellationToken = default)
     {
-        var trackerClient = new TrackerClient(_httpClient, _peerIdService, MetaInfo);
-        await trackerClient.Start(cancellationToken);
+        var trackerClients = MetaInfo
+            .AnnounceList?.Append(MetaInfo.Announce)
+            .Where(url => url.StartsWith("http://") || url.StartsWith("https://"))
+            ?.Select(url => new TrackerClient(
+                _p2pClient,
+                _httpClient,
+                _peerIdService,
+                MetaInfo,
+                url
+            ))
+            .ToList();
+
+        if (trackerClients is null || trackerClients.Count == 0)
+            throw new InvalidOperationException("No supported tracker URLs found.");
+        try
+        {
+            var trakersTasks = trackerClients
+                .Select(client => client.StartAsync(cancellationToken))
+                .ToList();
+
+            await Task.WhenAll(trakersTasks);
+        }
+        finally
+        {
+            foreach (var client in trackerClients)
+            {
+                await client.DisposeAsync();
+            }
+        }
     }
 
     private static MetaInfo ParseMetaInfo(BDictionary dictionary)

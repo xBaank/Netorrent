@@ -1,41 +1,49 @@
-﻿using System.Net;
+﻿using System.Collections.Concurrent;
+using System.Net;
 using System.Net.Sockets;
 
 namespace Netorrent.P2P;
 
-internal class P2PClient(TcpListener listener)
+internal class P2PClient
 {
-    public int Port => ((IPEndPoint)listener.LocalEndpoint).Port;
-    private readonly List<TcpClient> _peers = [];
+    private readonly TcpListener _listener;
+    public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
+    private readonly ConcurrentDictionary<string, PeerConnection> _peers = [];
 
-    public void Start()
+    public P2PClient() => _listener = GetFreeTcpListenerInRange(6881, 6899);
+
+    public async Task ConnectToPeerAsync(
+        IPEndPoint iPEndPoint,
+        CancellationToken cancellationToken = default
+    )
     {
-        listener.Start();
-        _ = AcceptLoopAsync();
+        var client = new TcpClient();
+        await client.ConnectAsync(iPEndPoint, cancellationToken);
+
+        var peerConnection = new PeerConnection(client, iPEndPoint);
+
+        //TODO Perform handshake
+
+        //TODO use the peerId here
+        _peers[iPEndPoint.Address.ToString()] = peerConnection;
     }
 
-    private async Task AcceptLoopAsync()
+    static TcpListener GetFreeTcpListenerInRange(int start, int end)
     {
-        while (true)
+        for (int port = start; port <= end; port++)
         {
-            var client = await listener.AcceptTcpClientAsync();
-            lock (_peers)
-                _peers.Add(client);
-            _ = HandlePeerAsync(client);
+            try
+            {
+                var listener = new TcpListener(IPAddress.Any, port);
+                listener.Start(); // Try to bind — this reserves the port
+                return listener;
+            }
+            catch (SocketException)
+            {
+                // Port already in use — try next one
+            }
         }
-    }
 
-    private async Task HandlePeerAsync(TcpClient client)
-    {
-        try
-        {
-            // Perform BitTorrent handshake, then message loop
-        }
-        finally
-        {
-            lock (_peers)
-                _peers.Remove(client);
-            client.Close();
-        }
+        throw new Exception("No free port found in the specified range.");
     }
 }
