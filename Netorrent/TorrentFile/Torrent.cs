@@ -13,7 +13,7 @@ public class Torrent
 
     private readonly PeerIdService _peerIdService = new();
     private readonly HttpClient _httpClient = new();
-    private readonly P2PClient _p2pClient = new();
+    private readonly P2PClient _p2pClient;
 
     public static async ValueTask<Torrent> Create(
         string path,
@@ -33,6 +33,7 @@ public class Torrent
             throw new InvalidDataException("Torrent file is not a valid bencoded dictionary.");
 
         MetaInfo = ParseMetaInfo(bDictionary);
+        _p2pClient = new P2PClient(MetaInfo);
     }
 
     public async ValueTask DownloadAll(CancellationToken cancellationToken = default)

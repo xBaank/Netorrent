@@ -17,16 +17,6 @@ internal class TrackerClient(
     string announceUrl
 ) : IAsyncDisposable
 {
-    private readonly byte[] _infoHash = ComputeInfoHash(metaInfo.Info.RawInfo);
-
-    public static byte[] ComputeInfoHash(BDictionary info)
-    {
-        var encoder = new BEncoder();
-
-        var infoBytes = encoder.Encode(info);
-        return SHA1.HashData(infoBytes);
-    }
-
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         var httpTrackerResponse = await Announce(Events.Started, cancellationToken);
@@ -52,7 +42,7 @@ internal class TrackerClient(
     )
     {
         var request = new HttpTrackerRequest(
-            _infoHash,
+            metaInfo.Info.InfoHash,
             peerIdService.PeerId,
             p2PClient.Port,
             GetDownloaded(),

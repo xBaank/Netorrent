@@ -1,16 +1,16 @@
 ﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.P2P;
 
-internal class P2PClient
+internal class P2PClient(MetaInfo metaInfo)
 {
-    private readonly TcpListener _listener;
+    private readonly TcpListener _listener = GetFreeTcpListenerInRange(6881, 6899);
+    private readonly MetaInfo _metaInfo = metaInfo;
     public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
     private readonly ConcurrentDictionary<string, PeerConnection> _peers = [];
-
-    public P2PClient() => _listener = GetFreeTcpListenerInRange(6881, 6899);
 
     public async Task ConnectToPeerAsync(
         IPEndPoint iPEndPoint,
