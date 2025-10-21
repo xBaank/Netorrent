@@ -30,7 +30,7 @@ public static class TestMetaInfoFactory
         }
 
         // Build the info dictionary
-        var infoDict = new Dictionary<BString, IBencodingType>
+        var infoDict = new Dictionary<BString, IBencodingNode>
         {
             [new BString("name")] = new BString(fileName),
             [new BString("length")] = new BInt(fileBytes.Length),
@@ -85,7 +85,7 @@ public static class TestMetaInfoFactory
             infoFiles.Add(new InfoFile(kv.Value.Length, [kv.Key]));
         }
 
-        var infoDict = new Dictionary<BString, IBencodingType>
+        var infoDict = new Dictionary<BString, IBencodingNode>
         {
             [new BString("name")] = new BString("test-folder"),
             [new BString("piece length")] = new BInt(pieceLength),
@@ -94,17 +94,17 @@ public static class TestMetaInfoFactory
                 [
                     .. infoFiles
                         .ConvertAll(f => new BDictionary(
-                            new Dictionary<BString, IBencodingType>
+                            new Dictionary<BString, IBencodingNode>
                             {
                                 [new BString("length")] = new BInt(f.Length),
                                 [new BString("path")] = new BList(
                                     f.Path.ConvertAll(p => new BString(p))
-                                        .Cast<IBencodingType>()
+                                        .Cast<IBencodingNode>()
                                         .ToList()
                                 ),
                             }
                         ))
-                        .Cast<IBencodingType>(),
+                        .Cast<IBencodingNode>(),
                 ]
             ),
         };

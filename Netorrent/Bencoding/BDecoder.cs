@@ -13,7 +13,7 @@ public ref struct BDecoder
         _data = data;
     }
 
-    public IBencodingType Decode()
+    public IBencodingNode Decode()
     {
         var current = (char)_data[_pos];
         if (Char.IsAsciiDigit(current))
@@ -83,7 +83,7 @@ public ref struct BDecoder
 
     public BList DecodeList()
     {
-        var list = new List<IBencodingType>();
+        var list = new List<IBencodingNode>();
         _pos++;
         while ((char)_data[_pos] != 'e')
         {
@@ -96,7 +96,7 @@ public ref struct BDecoder
 
     public BDictionary DecodeDic()
     {
-        var dic = new Dictionary<BString, IBencodingType>();
+        var dic = new Dictionary<BString, IBencodingNode>();
         _pos++;
         while ((char)_data[_pos] != 'e')
         {

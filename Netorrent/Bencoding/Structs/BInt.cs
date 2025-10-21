@@ -1,6 +1,6 @@
 ﻿namespace Netorrent.Bencoding.Structs;
 
-public readonly struct BInt(long data) : IBencodingType
+public readonly struct BInt(long data) : IBencodingNode
 {
     public long Data => data;
 

@@ -1,13 +1,13 @@
 ﻿namespace Netorrent.Bencoding.Structs;
 
-public readonly struct BDictionary(Dictionary<BString, IBencodingType> elements) : IBencodingType
+public readonly struct BDictionary(Dictionary<BString, IBencodingNode> elements) : IBencodingNode
 {
-    public Dictionary<BString, IBencodingType> Elements => elements;
+    public Dictionary<BString, IBencodingNode> Elements => elements;
 
-    public static implicit operator Dictionary<BString, IBencodingType>(BDictionary other) =>
+    public static implicit operator Dictionary<BString, IBencodingNode>(BDictionary other) =>
         other.Elements;
 
-    public static implicit operator BDictionary(Dictionary<BString, IBencodingType> data) =>
+    public static implicit operator BDictionary(Dictionary<BString, IBencodingNode> data) =>
         new(data);
 
     public static bool operator ==(BDictionary left, BDictionary right) => left.Equals(right);

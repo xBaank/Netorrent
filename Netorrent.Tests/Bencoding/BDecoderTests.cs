@@ -6,7 +6,7 @@ using Shouldly;
 
 namespace Netorrent.Tests.Bencoding;
 
-public class BencodingTests
+public class BDecoderTests
 {
     [Theory]
     [InlineData("4:spam", "spam")]
@@ -59,7 +59,7 @@ public class BencodingTests
     [Theory]
     [ClassData(typeof(BDictionaryData))]
     [ClassData(typeof(BlistData))]
-    public void CanDecodeNonPrimitives(string input, IBencodingType actual)
+    public void CanDecodeNonPrimitives(string input, IBencodingNode actual)
     {
         var bytes = Encoding.UTF8.GetBytes(input);
         var decoder = new BDecoder(bytes.AsSpan());

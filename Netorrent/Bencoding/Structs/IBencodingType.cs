@@ -1,3 +1,3 @@
 ﻿namespace Netorrent.Bencoding.Structs;
 
-public interface IBencodingType;
+public interface IBencodingNode;

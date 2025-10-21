@@ -16,7 +16,7 @@ public class Torrent
     private readonly HttpClient _httpClient = new();
     private readonly P2PClient _p2pClient;
 
-    public static async ValueTask<Torrent> Create(
+    public static async ValueTask<Torrent> FromFileAsync(
         string path,
         CancellationToken cancellationToken = default
     )
@@ -88,7 +88,7 @@ public class Torrent
             ?.As<BList>()
             ?.Elements?.Select(i => i.As<BList>()!.Value.Elements)
             .SelectMany(i => i)
-            .Select<IBencodingType, string>(i => i.As<BString>()!.Value)
+            .Select<IBencodingNode, string>(i => i.As<BString>()!.Value)
             .ToList();
         var creationDate = dictionary.Elements.GetValueOrDefault("creation date")?.As<BInt>();
         var comment = dictionary.Elements.GetValueOrDefault("comment")?.As<BString>();
@@ -134,14 +134,14 @@ public class Torrent
         );
     }
 
-    public static InfoFile ParseFile(IBencodingType data)
+    public static InfoFile ParseFile(IBencodingNode data)
     {
         var dic = data.As<BDictionary>() ?? throw new InvalidDataException();
         var length = dic.Elements["length"].As<BInt>() ?? throw new InvalidDataException();
         var path =
             dic.Elements["path"]
                 .As<BList>()
-                ?.Elements?.Select<IBencodingType, string>(i =>
+                ?.Elements?.Select<IBencodingNode, string>(i =>
                     i.As<BString>() ?? throw new InvalidDataException()
                 )
                 ?.ToList()

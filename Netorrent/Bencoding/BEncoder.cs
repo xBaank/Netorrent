@@ -13,13 +13,13 @@ public sealed class BEncoder : IAsyncDisposable
         stream = new MemoryStream(4096);
     }
 
-    public byte[] Encode(IBencodingType value)
+    public byte[] Encode(IBencodingNode value)
     {
         EncodeToStream(value);
         return stream.ToArray();
     }
 
-    private void EncodeToStream(IBencodingType value)
+    private void EncodeToStream(IBencodingNode value)
     {
         switch (value)
         {

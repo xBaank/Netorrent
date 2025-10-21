@@ -6,7 +6,7 @@ using Shouldly;
 
 namespace Netorrent.Tests.Bencoding;
 
-public class BencoderTests
+public class BEncoderTests
 {
     [Theory]
     [InlineData(0, "i0e")]
@@ -59,7 +59,7 @@ public class BencoderTests
     [Theory]
     [ClassData(typeof(BDictionaryData))]
     [ClassData(typeof(BlistData))]
-    public void CanEncodeNonPrimitives(string expectedEncoded, IBencodingType dictionary)
+    public void CanEncodeNonPrimitives(string expectedEncoded, IBencodingNode dictionary)
     {
         var encoder = new BEncoder();
 

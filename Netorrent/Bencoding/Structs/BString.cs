@@ -1,6 +1,6 @@
 ﻿namespace Netorrent.Bencoding.Structs;
 
-public readonly struct BString(string data) : IBencodingType
+public readonly struct BString(string data) : IBencodingNode
 {
     public string Data => data;
 

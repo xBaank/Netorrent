@@ -3,13 +3,13 @@ using Netorrent.Bencoding.Structs;
 
 namespace Netorrent.Extensions;
 
-public static class IBencodingTypeExtensions
+public static class IBencodingNodeExtensions
 {
     public static T? As<T>(
-        this IBencodingType? value,
+        this IBencodingNode? value,
         [CallerArgumentExpression(nameof(value))] string? expression = null
     )
-        where T : struct, IBencodingType
+        where T : struct, IBencodingNode
     {
         if (value is null)
             return null;
