@@ -1,6 +1,6 @@
 using Netorrent.Bencoding.Structs;
 
-namespace Netorrent.Tests.Bencoding;
+namespace Netorrent.Tests.Data;
 
 public class BlistData : TheoryData<string, BList>
 {

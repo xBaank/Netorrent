@@ -33,6 +33,9 @@ public record Info(
         var infoBytes = encoder.Encode(info);
         return SHA1.HashData(infoBytes);
     }
+
+    public ulong GetAllFilesSize() =>
+        (ulong)(Type == InfoType.Single ? Length ?? 0 : Files?.Sum(f => f.Length) ?? 0);
 }
 
 public record InfoFile(long Length, List<string> Path, string? Md5sum = null);

@@ -1,6 +1,7 @@
 ﻿using System.Text;
 using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
+using Netorrent.Tests.Data;
 using Shouldly;
 
 namespace Netorrent.Tests.Bencoding;

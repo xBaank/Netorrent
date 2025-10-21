@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
+using Netorrent.IO;
 using Netorrent.P2P;
 using Netorrent.TorrentFile.FileStructure;
 using TimeSpanXt;
@@ -13,8 +14,9 @@ internal class TrackerClient(
     P2PClient p2PClient,
     HttpClient client,
     PeerIdService peerIdService,
-    MetaInfo metaInfo,
-    string announceUrl
+    byte[] infoHash,
+    string announceUrl,
+    IFilesHandler filesHandler
 ) : IAsyncDisposable
 {
     public async Task StartAsync(CancellationToken cancellationToken = default)
@@ -36,18 +38,18 @@ internal class TrackerClient(
         }
     }
 
-    private async Task<HttpTrackerResponse> Announce(
+    internal async Task<HttpTrackerResponse> Announce(
         string? @event = null,
         CancellationToken cancellationToken = default
     )
     {
         var request = new HttpTrackerRequest(
-            metaInfo.Info.InfoHash,
+            infoHash,
             peerIdService.PeerId,
             p2PClient.Port,
-            GetDownloaded(),
-            GetUploaded(),
-            GetLeft(),
+            filesHandler.GetDownloaded(),
+            filesHandler.GetUploaded(),
+            filesHandler.GetLeft(),
             true,
             false,
             @event
@@ -63,18 +65,6 @@ internal class TrackerClient(
         );
         return httpTrackerResponse;
     }
-
-    //TODO change when knowing the downloaded size, left size and uploaded size
-    private ulong GetLeft() =>
-        (ulong)(
-            metaInfo.Info.Type == InfoType.Single
-                ? metaInfo.Info.Length ?? 0
-                : metaInfo.Info.Files?.Sum(f => f.Length) ?? 0
-        );
-
-    private ulong GetDownloaded() => 0;
-
-    private ulong GetUploaded() => 0;
 
     public async ValueTask DisposeAsync()
     {

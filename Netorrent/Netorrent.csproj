@@ -17,4 +17,7 @@
     </PackageReference>
     <PackageReference Include="TimeSpan.Xt" Version="0.5.3" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Netorrent.Tests" />
+  </ItemGroup>
 </Project>

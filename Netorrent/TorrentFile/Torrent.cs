@@ -1,6 +1,7 @@
 ﻿using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
 using Netorrent.Extensions;
+using Netorrent.IO;
 using Netorrent.P2P;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker;
@@ -36,6 +37,12 @@ public class Torrent
         _p2pClient = new P2PClient(MetaInfo);
     }
 
+    public Torrent(MetaInfo metaInfo)
+    {
+        MetaInfo = metaInfo;
+        _p2pClient = new P2PClient(MetaInfo);
+    }
+
     public async ValueTask DownloadAll(CancellationToken cancellationToken = default)
     {
         var trackerClients = MetaInfo
@@ -45,8 +52,9 @@ public class Torrent
                 _p2pClient,
                 _httpClient,
                 _peerIdService,
-                MetaInfo,
-                url
+                MetaInfo.Info.InfoHash,
+                url,
+                new FilesHandler(MetaInfo)
             ))
             .ToList();
 
