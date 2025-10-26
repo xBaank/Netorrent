@@ -79,7 +79,7 @@ internal class P2PClient(MetaInfo metaInfo, string peerId) : IDisposable
         _listener.Stop();
         foreach (var item in _knowPeers)
         {
-            item.Value.TcpClient.Dispose();
+            item.Value.Dispose();
         }
     }
 }
