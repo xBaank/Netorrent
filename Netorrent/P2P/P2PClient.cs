@@ -5,27 +5,36 @@ using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.P2P;
 
-internal class P2PClient(MetaInfo metaInfo)
+internal class P2PClient(MetaInfo metaInfo, string peerId)
 {
     private readonly TcpListener _listener = GetFreeTcpListenerInRange(6881, 6899);
     private readonly MetaInfo _metaInfo = metaInfo;
     public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
-    private readonly ConcurrentDictionary<string, PeerConnection> _peers = [];
+    private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _knowPeers = [];
+    private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _activePeers = [];
 
     public async Task ConnectToPeerAsync(
         IPEndPoint iPEndPoint,
         CancellationToken cancellationToken = default
     )
     {
+        if (_knowPeers.ContainsKey(iPEndPoint))
+            return;
+
         var client = new TcpClient();
         await client.ConnectAsync(iPEndPoint, cancellationToken);
 
         var peerConnection = new PeerConnection(client, iPEndPoint);
+        await peerConnection.PerformHandshakeAsync(
+            _metaInfo.Info.InfoHash,
+            peerId,
+            cancellationToken
+        );
 
         //TODO Perform handshake
 
         //TODO use the peerId here
-        _peers[iPEndPoint.Address.ToString()] = peerConnection;
+        _knowPeers[iPEndPoint] = peerConnection;
     }
 
     static TcpListener GetFreeTcpListenerInRange(int start, int end)

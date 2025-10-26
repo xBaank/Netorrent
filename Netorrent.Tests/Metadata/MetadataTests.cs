@@ -13,7 +13,7 @@ public class MetadataTests
         CancellationToken cancellationToken = default
     )
     {
-        var torrent = await Torrent.FromFileAsync(path, cancellationToken);
+        var torrent = await Torrent.AddTorrentAsync(path, cancellationToken);
         torrent.ShouldNotBeNull();
         torrent.MetaInfo.ShouldNotBeNull();
         torrent.MetaInfo.Announce.ShouldNotBeNullOrWhiteSpace();

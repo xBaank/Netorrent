@@ -9,17 +9,20 @@ internal class TorrentTests(OpenTrackerFixture fixture) : IClassFixture<OpenTrac
 
     public async Task Should_Download_Torrent()
     {
-        // Arrange
-        var metaInfo = TestMetaInfoFactory.CreateSingleFileMetaInfo(
+        var torrent1 = await Torrent.CreateTorrentAsync(
+            "Data/test.txt",
             _fixture.AnnounceUrl,
-            "test.a",
-            "ONE;TWO;THREEEE"
+            [_fixture.AnnounceUrl],
+            cancellationToken: new CancellationTokenSource(TimeSpan.FromSeconds(10)).Token
         );
-        var peer1 = new Torrent(metaInfo);
-        var peer2 = new Torrent(metaInfo);
 
+        var torrent2 = Torrent.AddTorrent(torrent1.MetaInfo);
+
+        var torrent1Task = torrent1.StartAsync(
+            new CancellationTokenSource(TimeSpan.FromSeconds(30)).Token
+        );
         // Act
-        var downloadTask = peer1.DownloadAll(
+        var torrent2Task = torrent2.StartAsync(
             new CancellationTokenSource(TimeSpan.FromSeconds(30)).Token
         );
     }

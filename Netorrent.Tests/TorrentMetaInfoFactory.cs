@@ -16,7 +16,7 @@ public static class TestMetaInfoFactory
         string fileContent
     )
     {
-        var fileBytes = Encoding.UTF8.GetBytes(fileContent);
+        var fileBytes = Encoding.Latin1.GetBytes(fileContent);
 
         const int pieceLength = 16 * 1024; // 16 KB
 
@@ -43,7 +43,7 @@ public static class TestMetaInfoFactory
         var info = new Info(
             RawInfo: rawInfo,
             PieceLength: pieceLength,
-            Pieces: Encoding.ASCII.GetString(piecesBytes.ToArray()),
+            Pieces: Encoding.Latin1.GetString(piecesBytes.ToArray()),
             Private: 0,
             Type: InfoType.Single,
             Name: fileName,
@@ -67,7 +67,7 @@ public static class TestMetaInfoFactory
         var allBytes = new List<byte>();
         foreach (var content in files.Values)
         {
-            allBytes.AddRange(Encoding.UTF8.GetBytes(content));
+            allBytes.AddRange(Encoding.Latin1.GetBytes(content));
         }
 
         var piecesBytes = new List<byte>();
@@ -114,7 +114,7 @@ public static class TestMetaInfoFactory
         var info = new Info(
             RawInfo: rawInfo,
             PieceLength: pieceLength,
-            Pieces: Encoding.ASCII.GetString(piecesBytes.ToArray()),
+            Pieces: Encoding.Latin1.GetString(piecesBytes.ToArray()),
             Private: 0,
             Type: InfoType.Multiple,
             Name: "test-folder",

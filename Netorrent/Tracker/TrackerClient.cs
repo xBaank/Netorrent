@@ -24,10 +24,7 @@ internal class TrackerClient(
         var httpTrackerResponse = await Announce(Events.Started, cancellationToken);
 
         //TODO Handle the response connect to peers
-        foreach (var item in httpTrackerResponse.Peers)
-        {
-            await p2PClient.ConnectToPeerAsync(item, cancellationToken);
-        }
+        await ConnectToPeers(httpTrackerResponse, cancellationToken);
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -35,6 +32,18 @@ internal class TrackerClient(
             // Here you would typically send another request to the tracker to update status
 
             var response = await Announce(cancellationToken: cancellationToken);
+            await ConnectToPeers(response, cancellationToken);
+        }
+    }
+
+    private async Task ConnectToPeers(
+        HttpTrackerResponse httpTrackerResponse,
+        CancellationToken cancellationToken
+    )
+    {
+        foreach (var item in httpTrackerResponse.Peers)
+        {
+            await p2PClient.ConnectToPeerAsync(item, cancellationToken);
         }
     }
 
