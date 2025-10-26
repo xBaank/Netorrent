@@ -51,13 +51,9 @@ internal readonly record struct Handshake(
     /// </summary>
     public MemoryRented<byte> ToBytes()
     {
-        var memory = MemoryPool<byte>.Shared.Rent(
-            1 + Pstrlen + ReservedLength + InfoHashLength + PeerIdLength
-        );
+        var memory = MemoryPool<byte>.Shared.Rent(TotalLength);
 
-        var buffer = memory
-            .Memory.Span[..(1 + Pstrlen + ReservedLength + InfoHashLength + PeerIdLength)]
-            .ToArray();
+        var buffer = memory.Memory.Span[..TotalLength].ToArray();
         int offset = 0;
 
         buffer[offset] = Pstrlen;
@@ -82,7 +78,7 @@ internal readonly record struct Handshake(
     /// </summary>
     public static Handshake FromBytes(ReadOnlySpan<byte> data)
     {
-        if (data.Length < 68)
+        if (data.Length < TotalLength)
             throw new ArgumentException("Invalid handshake length");
 
         byte pstrlen = data[0];
