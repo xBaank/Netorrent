@@ -1,11 +1,5 @@
-﻿using System.Net;
-using System.Net.Sockets;
-using System.Security.Cryptography;
-using Netorrent.Bencoding;
-using Netorrent.Bencoding.Structs;
-using Netorrent.IO;
+﻿using Netorrent.IO;
 using Netorrent.P2P;
-using Netorrent.TorrentFile.FileStructure;
 using TimeSpanXt;
 
 namespace Netorrent.Tracker;
@@ -13,7 +7,7 @@ namespace Netorrent.Tracker;
 internal class TrackerClient(
     P2PClient p2PClient,
     HttpClient client,
-    PeerIdService peerIdService,
+    string peerId,
     byte[] infoHash,
     string announceUrl,
     IFilesHandler filesHandler
@@ -54,7 +48,7 @@ internal class TrackerClient(
     {
         var request = new HttpTrackerRequest(
             infoHash,
-            peerIdService.PeerId,
+            peerId,
             p2PClient.Port,
             filesHandler.GetDownloaded(),
             filesHandler.GetUploaded(),
@@ -78,5 +72,6 @@ internal class TrackerClient(
     public async ValueTask DisposeAsync()
     {
         await Announce(Events.Stopped);
+        p2PClient.Dispose();
     }
 }

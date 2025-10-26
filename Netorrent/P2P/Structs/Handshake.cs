@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Buffers;
 using System.Text;
+using Lazy;
 
 namespace Netorrent.P2P.Structs;
 
@@ -8,7 +10,7 @@ internal readonly record struct Handshake(
     string Pstr,
     byte[] Reserved,
     byte[] InfoHash,
-    byte[] PeerId
+    byte[] PeerIdBytes
 )
 {
     public const string DefaultProtocol = "BitTorrent protocol";
@@ -16,6 +18,11 @@ internal readonly record struct Handshake(
     public const int InfoHashLength = 20;
     public const int PeerIdLength = 20;
     public static int TotalLength = 49 + DefaultProtocol.Length;
+
+    private static readonly byte[] reserved = [0, 0, 0, 0, 0, 0, 0, 0];
+
+    [Lazy]
+    public string PeerId => Encoding.ASCII.GetString(PeerIdBytes);
 
     /// <summary>
     /// Creates a standard BitTorrent handshake with the default protocol.
@@ -33,33 +40,41 @@ internal readonly record struct Handshake(
         return new Handshake(
             Pstrlen: (byte)DefaultProtocol.Length,
             Pstr: DefaultProtocol,
-            Reserved: new byte[ReservedLength],
+            Reserved: reserved,
             InfoHash: infoHash,
-            PeerId: peerId
+            PeerIdBytes: peerId
         );
     }
 
     /// <summary>
     /// Serializes the handshake into a byte array ready to send over TCP.
     /// </summary>
-    public byte[] ToBytes()
+    public MemoryRented<byte> ToBytes()
     {
-        var buffer = new byte[1 + Pstrlen + ReservedLength + InfoHashLength + PeerIdLength];
+        var memory = MemoryPool<byte>.Shared.Rent(
+            1 + Pstrlen + ReservedLength + InfoHashLength + PeerIdLength
+        );
+
+        var buffer = memory
+            .Memory.Span[..(1 + Pstrlen + ReservedLength + InfoHashLength + PeerIdLength)]
+            .ToArray();
         int offset = 0;
 
-        buffer[offset++] = Pstrlen;
+        buffer[offset] = Pstrlen;
+        offset += 1;
+
         Encoding.ASCII.GetBytes(Pstr, 0, Pstr.Length, buffer, offset);
         offset += Pstr.Length;
 
-        Array.Copy(Reserved, 0, buffer, offset, ReservedLength);
-        offset += ReservedLength;
+        reserved.CopyTo(buffer, offset);
+        offset += reserved.Length;
 
-        Array.Copy(InfoHash, 0, buffer, offset, InfoHashLength);
-        offset += InfoHashLength;
+        InfoHash.CopyTo(buffer, offset);
+        offset += InfoHash.Length;
 
-        Array.Copy(PeerId, 0, buffer, offset, PeerIdLength);
+        PeerIdBytes.CopyTo(buffer, offset);
 
-        return buffer;
+        return new MemoryRented<byte>(memory, buffer.Length);
     }
 
     /// <summary>

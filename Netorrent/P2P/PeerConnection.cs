@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using Lazy;
+using Netorrent.P2P.Structs;
 
 namespace Netorrent.P2P;
 
@@ -15,10 +16,6 @@ public record PeerConnection(
     bool PeerInterested = false
 )
 {
-    private static readonly byte[] pstrlen = [19];
-    private static readonly byte[] protocol = Encoding.ASCII.GetBytes("BitTorrent protocol");
-    private static readonly byte[] reserved = [0, 0, 0, 0, 0, 0, 0, 0];
-
     [Lazy]
     private NetworkStream Stream => TcpClient.GetStream();
 
@@ -30,28 +27,19 @@ public record PeerConnection(
         CancellationToken cancellationToken = default
     )
     {
-        await Stream.WriteAsync(pstrlen, cancellationToken);
-        await Stream.WriteAsync(protocol, cancellationToken);
-        await Stream.WriteAsync(reserved, cancellationToken);
-        await Stream.WriteAsync(infoHash, cancellationToken);
-        await Stream.WriteAsync(Encoding.ASCII.GetBytes(peerId), cancellationToken);
+        var handshake = Handshake.Create(infoHash.ToArray(), Encoding.ASCII.GetBytes(peerId));
+        using var bytesRented = handshake.ToBytes();
+        await Stream.WriteAsync(bytesRented.Memory, cancellationToken);
         await Stream.FlushAsync(cancellationToken);
 
-        var len = Stream.ReadByte();
-        using var pool = MemoryPool<byte>.Shared.Rent(1 + len + 8 + 20 + 20);
-        var buffer = pool.Memory;
-        buffer.Span[0] = (byte)len;
-        await Stream.ReadExactlyAsync(buffer.Slice(1, len + 8 + 20 + 20), cancellationToken);
-        var receivedProtocol = Encoding.ASCII.GetString(buffer.Span.Slice(1, len));
-        var receivedReserved = buffer.Span.Slice(1 + len, 8);
-        var receivedInfoHash = buffer.Span.Slice(1 + len + 8, 20);
-        var receivedPeerId = Encoding.ASCII.GetString(buffer.Span.Slice(1 + len + 8 + 20, 20));
+        using var pool = MemoryPool<byte>.Shared.Rent(Handshake.TotalLength);
+        var buffer = pool.Memory[Handshake.TotalLength..];
+        await Stream.ReadExactlyAsync(buffer, cancellationToken);
+        var receivedHandshake = Handshake.FromBytes(buffer.Span);
 
-        if (infoHash.Span.SequenceEqual(receivedInfoHash) is false)
-        {
-            throw new Exception("InfoHash mismatch in handshake.");
-        }
+        if (receivedHandshake.InfoHash.AsSpan().SequenceEqual(infoHash.Span) is false)
+            throw new InvalidDataException("InfoHash mismatch in handshake.");
 
-        PeerId = receivedPeerId;
+        PeerId = receivedHandshake.PeerId;
     }
 }

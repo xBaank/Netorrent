@@ -4,9 +4,6 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Netorrent.IO
-{
-    internal class FileManager
-    {
-    }
-}
+namespace Netorrent.IO;
+
+internal class FileManager(string outputPath) { }

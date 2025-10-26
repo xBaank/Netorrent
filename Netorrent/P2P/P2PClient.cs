@@ -5,7 +5,7 @@ using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.P2P;
 
-internal class P2PClient(MetaInfo metaInfo, string peerId)
+internal class P2PClient(MetaInfo metaInfo, string peerId) : IDisposable
 {
     private readonly TcpListener _listener = GetFreeTcpListenerInRange(6881, 6899);
     private readonly MetaInfo _metaInfo = metaInfo;
@@ -37,7 +37,25 @@ internal class P2PClient(MetaInfo metaInfo, string peerId)
         _knowPeers[iPEndPoint] = peerConnection;
     }
 
-    static TcpListener GetFreeTcpListenerInRange(int start, int end)
+    public async Task ListenForPeersAsync(CancellationToken cancellationToken = default)
+    {
+        _listener.Start();
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var tcpClient = await _listener.AcceptTcpClientAsync(cancellationToken);
+            var remoteEndPoint = (IPEndPoint)tcpClient.Client.RemoteEndPoint!;
+            var peerConnection = new PeerConnection(tcpClient, remoteEndPoint);
+            await peerConnection.PerformHandshakeAsync(
+                _metaInfo.Info.InfoHash,
+                peerId,
+                cancellationToken
+            );
+            //TODO use the peerId here
+            _knowPeers[remoteEndPoint] = peerConnection;
+        }
+    }
+
+    private static TcpListener GetFreeTcpListenerInRange(int start, int end)
     {
         for (int port = start; port <= end; port++)
         {
@@ -54,5 +72,14 @@ internal class P2PClient(MetaInfo metaInfo, string peerId)
         }
 
         throw new Exception("No free port found in the specified range.");
+    }
+
+    public void Dispose()
+    {
+        _listener.Stop();
+        foreach (var item in _knowPeers)
+        {
+            item.Value.TcpClient.Dispose();
+        }
     }
 }
