@@ -49,8 +49,9 @@ public class TorrentClient
         List<string>? announceUrls,
         int pieceLength = 256 * 1024, // 256 KB default
         CancellationToken cancellationToken = default
-    ) =>
-        new Torrent(
+    )
+    {
+        var torrent = new Torrent(
             await CreateMetaInfoFromFileAsync(
                 path,
                 announceUrl,
@@ -61,6 +62,9 @@ public class TorrentClient
             _httpClient,
             _peerIdService.PeerId
         );
+        torrents.Add(torrent);
+        return torrent;
+    }
 
     private static async ValueTask<MetaInfo> CreateMetaInfoFromFileAsync(
         string path,

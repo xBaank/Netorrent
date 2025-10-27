@@ -7,7 +7,7 @@ using Netorrent.P2P.Structs;
 
 namespace Netorrent.P2P;
 
-public record PeerConnection(
+internal record PeerConnection(
     TcpClient TcpClient,
     IPEndPoint IPEndPoint,
     bool AmChocking = true,
@@ -28,20 +28,13 @@ public record PeerConnection(
         CancellationToken cancellationToken = default
     )
     {
-        var handshake = Handshake.Create(infoHash.ToArray(), Encoding.ASCII.GetBytes(peerId));
-        using var bytesRented = handshake.ToBytes();
-        await Stream.WriteAsync(bytesRented.Memory, cancellationToken);
-        await Stream.FlushAsync(cancellationToken);
+        using var bytesRented = await SendHandHandshake(infoHash, peerId, cancellationToken);
+        var (pool, receivedHandshake) = await ReceiveHandshake(cancellationToken);
 
-        using var pool = MemoryPool<byte>.Shared.Rent(Handshake.TotalLength);
-        var buffer = pool.Memory[Handshake.TotalLength..];
-        await Stream.ReadExactlyAsync(buffer, cancellationToken);
-        var receivedHandshake = Handshake.FromBytes(buffer.Span);
-
-        if (receivedHandshake.InfoHash.AsSpan().SequenceEqual(infoHash.Span) is false)
-            throw new InvalidDataException("InfoHash mismatch in handshake.");
-
-        PeerId = receivedHandshake.PeerId;
+        using (pool)
+        {
+            ValidateHandshake(infoHash, receivedHandshake);
+        }
     }
 
     public async Task ReceiveHandshakeAsync(
@@ -50,20 +43,52 @@ public record PeerConnection(
         CancellationToken cancellationToken = default
     )
     {
-        using var pool = MemoryPool<byte>.Shared.Rent(Handshake.TotalLength);
-        var buffer = pool.Memory[Handshake.TotalLength..];
-        await Stream.ReadExactlyAsync(buffer, cancellationToken);
-        var receivedHandshake = Handshake.FromBytes(buffer.Span);
+        var (pool, receivedHandshake) = await ReceiveHandshake(cancellationToken);
 
-        var handshake = Handshake.Create(infoHash.ToArray(), Encoding.ASCII.GetBytes(peerId));
-        using var bytesRented = handshake.ToBytes();
-        await Stream.WriteAsync(bytesRented.Memory, cancellationToken);
+        using (pool)
+        {
+            using var bytesRented = await SendHandHandshake(infoHash, peerId, cancellationToken);
+            ValidateHandshake(infoHash, receivedHandshake);
+        }
+    }
+
+    public async Task SendMessage(Message message, CancellationToken cancellationToken = default)
+    {
+        using var messageBytes = message.ToBytes();
+        await Stream.WriteAsync(messageBytes.Memory, cancellationToken);
         await Stream.FlushAsync(cancellationToken);
+    }
 
+    private void ValidateHandshake(ReadOnlyMemory<byte> infoHash, Handshake receivedHandshake)
+    {
         if (receivedHandshake.InfoHash.AsSpan().SequenceEqual(infoHash.Span) is false)
             throw new InvalidDataException("InfoHash mismatch in handshake.");
 
         PeerId = receivedHandshake.PeerId;
+    }
+
+    private async Task<(IMemoryOwner<byte> pool, Handshake receivedHandshake)> ReceiveHandshake(
+        CancellationToken cancellationToken
+    )
+    {
+        using var pool = MemoryPool<byte>.Shared.Rent(Handshake.TotalLength);
+        var buffer = pool.Memory[Handshake.TotalLength..];
+        await Stream.ReadExactlyAsync(buffer, cancellationToken);
+        var receivedHandshake = Handshake.FromBytes(buffer.Span);
+        return (pool, receivedHandshake);
+    }
+
+    private async Task<MemoryRented<byte>> SendHandHandshake(
+        ReadOnlyMemory<byte> infoHash,
+        string peerId,
+        CancellationToken cancellationToken
+    )
+    {
+        var handshake = Handshake.Create(infoHash.ToArray(), Encoding.ASCII.GetBytes(peerId));
+        var bytesRented = handshake.ToBytes();
+        await Stream.WriteAsync(bytesRented.Memory, cancellationToken);
+        await Stream.FlushAsync(cancellationToken);
+        return bytesRented;
     }
 
     public void Dispose()
