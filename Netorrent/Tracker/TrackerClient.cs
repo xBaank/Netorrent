@@ -1,4 +1,5 @@
-﻿using Netorrent.P2P;
+﻿using System.Net;
+using Netorrent.P2P;
 using TimeSpanXt;
 
 namespace Netorrent.Tracker;
@@ -15,7 +16,10 @@ internal class TrackerClient(
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        _listenTask = p2PClient.ListenForPeersAsync(cancellationToken);
+        _listenTask = Task.Run(
+            async () => await p2PClient.ListenForPeersAsync(cancellationToken),
+            cancellationToken
+        );
         var httpTrackerResponse = await Announce(Events.Started, cancellationToken);
 
         await ConnectToPeers(httpTrackerResponse, cancellationToken);
@@ -34,7 +38,17 @@ internal class TrackerClient(
         CancellationToken cancellationToken
     )
     {
-        foreach (var item in httpTrackerResponse.Peers)
+        foreach (
+            var item in httpTrackerResponse.Peers.Where(ep =>
+                !(
+                    (
+                        ep.Address.Equals(IPAddress.Loopback)
+                        || ep.Address.Equals(IPAddress.IPv6Loopback)
+                    )
+                    && ep.Port == p2PClient.EndPoint.Port
+                )
+            )
+        )
         {
             await p2PClient.ConnectToPeerAsync(item, cancellationToken);
         }
@@ -54,7 +68,8 @@ internal class TrackerClient(
             p2PClient.FileManager.GetMissingBytes(),
             true,
             false,
-            @event
+            @event,
+            NumWant: 50
         );
 
         var response = await client.SendAsync(

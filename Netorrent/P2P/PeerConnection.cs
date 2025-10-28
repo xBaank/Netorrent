@@ -72,7 +72,7 @@ internal record PeerConnection(
     )
     {
         using var pool = MemoryPool<byte>.Shared.Rent(Handshake.TotalLength);
-        var buffer = pool.Memory[Handshake.TotalLength..];
+        var buffer = pool.Memory.Slice(0, Handshake.TotalLength);
         await Stream.ReadExactlyAsync(buffer, cancellationToken);
         var receivedHandshake = Handshake.FromBytes(buffer.Span);
         return (pool, receivedHandshake);

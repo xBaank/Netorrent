@@ -18,7 +18,7 @@ public class OpenTrackerFixture : IAsyncLifetime
 
         await _container.StartAsync();
 
-        AnnounceUrl = $"http://localhost:6969/announce";
+        AnnounceUrl = $"http://127.0.0.1:6969/announce";
     }
 
     public async ValueTask DisposeAsync()

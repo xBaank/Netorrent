@@ -41,6 +41,7 @@ internal class P2PClient(
             cancellationToken
         );
 
+        //TODO use the peerId here
         _knowPeers[iPEndPoint] = peerConnection;
     }
 
@@ -68,7 +69,8 @@ internal class P2PClient(
         {
             try
             {
-                var listener = new TcpListener(IPAddress.Any, port);
+                var listener = new TcpListener(IPAddress.IPv6Any, port);
+                listener.Server.DualMode = true;
                 listener.Start(); // Try to bind — this reserves the port
                 return listener;
             }

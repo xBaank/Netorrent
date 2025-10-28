@@ -52,17 +52,14 @@ internal class HttpTrackerResponse
         else
             throw new Exception();
 
-        // Parse peers
         if (dict.Elements.TryGetValue(new BString("peers"), out var peersVal))
         {
             if (peersVal is BString peersString)
             {
-                // Compact mode (binary)
                 trackerResponse.Peers.AddRange(ParseCompactPeers(peersString.RawData));
             }
             else if (peersVal is BList peersList)
             {
-                // Non-compact mode (list of dictionaries)
                 foreach (var peerObj in peersList.Elements)
                 {
                     if (
@@ -78,8 +75,37 @@ internal class HttpTrackerResponse
                 }
             }
         }
+        if (dict.Elements.TryGetValue(new BString("peers6"), out var peers6Val))
+        {
+            if (peers6Val is BString peersString)
+            {
+                trackerResponse.Peers.AddRange(ParseCompactPeers6(peersString.RawData));
+            }
+        }
 
         return trackerResponse;
+    }
+
+    private static List<IPEndPoint> ParseCompactPeers6(byte[] bytes)
+    {
+        if (bytes == null)
+            throw new ArgumentNullException(nameof(bytes));
+        if (bytes.Length == 0)
+            return new List<IPEndPoint>();
+        if (bytes.Length % 18 != 0)
+            throw new InvalidDataException("Invalid compact IPv6 peer list length.");
+
+        var peers = new List<IPEndPoint>(bytes.Length / 18);
+        for (int i = 0; i < bytes.Length; i += 18)
+        {
+            var addrBytes = new byte[16];
+            Array.Copy(bytes, i, addrBytes, 0, 16);
+            var ip = new IPAddress(addrBytes);
+            int port = (bytes[i + 16] << 8) | bytes[i + 17];
+            peers.Add(new IPEndPoint(ip, port));
+        }
+
+        return peers;
     }
 
     private static List<IPEndPoint> ParseCompactPeers(byte[] bytes)

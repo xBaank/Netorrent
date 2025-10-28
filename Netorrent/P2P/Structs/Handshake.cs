@@ -50,7 +50,7 @@ internal readonly record struct Handshake(
     {
         var memory = MemoryPool<byte>.Shared.Rent(TotalLength);
 
-        var buffer = memory.Memory.Span[..TotalLength].ToArray();
+        var buffer = memory.Memory.Span[..TotalLength];
         int offset = 0;
 
         buffer[offset] = Pstrlen;
@@ -59,7 +59,7 @@ internal readonly record struct Handshake(
         Encoding.ASCII.GetBytes(Pstr, 0, Pstr.Length, buffer, offset);
         offset += Pstr.Length;
 
-        reserved.CopyTo(buffer, offset);
+        reserved.AsSpan().CopyTo(buffer, offset);
         offset += reserved.Length;
 
         InfoHash.CopyTo(buffer, offset);
