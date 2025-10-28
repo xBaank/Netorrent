@@ -1,9 +1,8 @@
 ﻿using System.Text;
-using Lazy;
 
 namespace Netorrent.Bencoding.Structs;
 
-public readonly struct BString : IBencodingNode
+public struct BString : IBencodingNode
 {
     public BString(string str)
     {
@@ -17,10 +16,16 @@ public readonly struct BString : IBencodingNode
     }
 
     public readonly byte[] RawData;
-    private readonly string? _preloadedData = null;
+    private string? _preloadedData = null;
 
-    [Lazy]
-    public string Data => _preloadedData ?? Encoding.UTF8.GetString(RawData);
+    public string Data
+    {
+        get
+        {
+            _preloadedData ??= Encoding.UTF8.GetString(RawData);
+            return _preloadedData ?? Encoding.UTF8.GetString(RawData);
+        }
+    }
 
     public static implicit operator string(BString other) => other.Data;
 

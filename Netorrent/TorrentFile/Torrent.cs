@@ -28,6 +28,7 @@ public class Torrent
         var trackerClients = MetaInfo
             .AnnounceList?.Append(MetaInfo.Announce)
             .Where(url => url.StartsWith("http://") || url.StartsWith("https://"))
+            .Distinct()
             ?.Select(url => new TrackerClient(
                 _p2pClient,
                 _httpClient,

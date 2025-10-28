@@ -11,14 +11,14 @@ public class OpenTrackerFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _container = new ContainerBuilder()
-            .WithImage("lednerb/opentracker-docker")
+            .WithImage("xbaank/opentracker")
             .WithName("opentracker-test")
-            .WithPortBinding(6969, 6969)
+            .WithCreateParameterModifier(p => p.HostConfig.NetworkMode = "host")
             .Build();
 
         await _container.StartAsync();
 
-        AnnounceUrl = $"http://localhost:{_container.GetMappedPublicPort(6969)}/announce";
+        AnnounceUrl = $"http://localhost:6969/announce";
     }
 
     public async Task DisposeAsync()

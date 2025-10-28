@@ -58,9 +58,7 @@ internal class HttpTrackerResponse
             if (peersVal is BString peersString)
             {
                 // Compact mode (binary)
-                trackerResponse.Peers.AddRange(
-                    ParseCompactPeers(Encoding.ASCII.GetBytes(peersString.Data))
-                );
+                trackerResponse.Peers.AddRange(ParseCompactPeers(peersString.RawData));
             }
             else if (peersVal is BList peersList)
             {
@@ -86,7 +84,7 @@ internal class HttpTrackerResponse
 
     private static List<IPEndPoint> ParseCompactPeers(byte[] bytes)
     {
-        if (bytes.Length % 6 != 0)
+        if (bytes.Length % 6 != 0 && bytes.Length != 0)
             throw new InvalidDataException("Invalid compact peer list length.");
 
         var peers = new List<IPEndPoint>();

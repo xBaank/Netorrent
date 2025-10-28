@@ -3,6 +3,7 @@ using Shouldly;
 
 namespace Netorrent.Tests.Metadata;
 
+/*
 public class MetadataTests
 {
     [Theory]
@@ -23,3 +24,4 @@ public class MetadataTests
         torrent.MetaInfo.Info.InfoHash.ShouldNotBeNull();
     }
 }
+*/

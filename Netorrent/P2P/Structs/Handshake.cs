@@ -8,7 +8,6 @@ namespace Netorrent.P2P.Structs;
 internal readonly record struct Handshake(
     byte Pstrlen,
     string Pstr,
-    byte[] Reserved,
     byte[] InfoHash,
     byte[] PeerIdBytes
 )
@@ -21,8 +20,7 @@ internal readonly record struct Handshake(
 
     private static readonly byte[] reserved = [0, 0, 0, 0, 0, 0, 0, 0];
 
-    [Lazy]
-    public string PeerId => Encoding.ASCII.GetString(PeerIdBytes);
+    public string PeerId { get; } = Encoding.ASCII.GetString(PeerIdBytes);
 
     /// <summary>
     /// Creates a standard BitTorrent handshake with the default protocol.
@@ -40,7 +38,6 @@ internal readonly record struct Handshake(
         return new Handshake(
             Pstrlen: (byte)DefaultProtocol.Length,
             Pstr: DefaultProtocol,
-            Reserved: reserved,
             InfoHash: infoHash,
             PeerIdBytes: peerId
         );
@@ -86,7 +83,6 @@ internal readonly record struct Handshake(
 
         int offset = 1 + pstrlen;
 
-        byte[] reserved = data.Slice(offset, ReservedLength).ToArray();
         offset += ReservedLength;
 
         byte[] infoHash = data.Slice(offset, InfoHashLength).ToArray();
@@ -94,6 +90,6 @@ internal readonly record struct Handshake(
 
         byte[] peerId = data.Slice(offset, PeerIdLength).ToArray();
 
-        return new Handshake(pstrlen, pstr, reserved, infoHash, peerId);
+        return new Handshake(pstrlen, pstr, infoHash, peerId);
     }
 }

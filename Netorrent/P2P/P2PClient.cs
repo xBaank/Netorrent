@@ -9,7 +9,7 @@ internal class P2PClient(MetaInfo metaInfo, string peerId) : IDisposable
 {
     private readonly TcpListener _listener = GetFreeTcpListenerInRange(6881, 6899);
     private readonly MetaInfo _metaInfo = metaInfo;
-    public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
+    public IPEndPoint EndPoint => ((IPEndPoint)_listener.LocalEndpoint);
     private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _knowPeers = [];
     private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _activePeers = [];
 
@@ -45,7 +45,7 @@ internal class P2PClient(MetaInfo metaInfo, string peerId) : IDisposable
             var tcpClient = await _listener.AcceptTcpClientAsync(cancellationToken);
             var remoteEndPoint = (IPEndPoint)tcpClient.Client.RemoteEndPoint!;
             var peerConnection = new PeerConnection(tcpClient, remoteEndPoint);
-            await peerConnection.PerformHandshakeAsync(
+            await peerConnection.ReceiveHandshakeAsync(
                 _metaInfo.Info.InfoHash,
                 peerId,
                 cancellationToken

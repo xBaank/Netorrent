@@ -50,9 +50,9 @@ public ref struct BDecoder
 
         if (int.TryParse(_data.Slice(startOffset, length), out var totalLength))
         {
-            var result = Encoding.UTF8.GetString(_data.Slice(++_pos, totalLength));
+            var result = _data.Slice(++_pos, totalLength);
             _pos += totalLength;
-            return result;
+            return new BString(result.ToArray());
         }
         else
             throw new InvalidDataException();
