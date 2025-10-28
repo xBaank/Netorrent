@@ -13,7 +13,7 @@ public enum InfoType
 public record Info(
     BDictionary RawInfo,
     long PieceLength,
-    string Pieces,
+    byte[] Pieces,
     long Private,
     InfoType Type,
     string Name,
@@ -33,6 +33,9 @@ public record Info(
         var infoBytes = encoder.Encode(info);
         return SHA1.HashData(infoBytes);
     }
+
+    public List<InfoFile> NormalizedFiles() =>
+        Type == InfoType.Single ? [new InfoFile(Length ?? 0, [Name], Md5sum)] : Files ?? [];
 
     public ulong GetAllFilesSize() =>
         (ulong)(Type == InfoType.Single ? Length ?? 0 : Files?.Sum(f => f.Length) ?? 0);

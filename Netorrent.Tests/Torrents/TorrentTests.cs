@@ -10,23 +10,21 @@ public class TorrentTests(OpenTrackerFixture fixture) : IClassFixture<OpenTracke
     [Fact]
     public async Task Should_Download_Torrent()
     {
-        var torrentClient = new TorrentClient();
-        var torrent1 = await torrentClient.CreateTorrentAsync(
+        var torrentSeeder = new TorrentClient();
+        var torrentLeecher = new TorrentClient();
+
+        var torrent1 = await torrentSeeder.CreateTorrentAsync(
             "Data/test.txt",
             _fixture.AnnounceUrl,
             [_fixture.AnnounceUrl],
-            cancellationToken: new CancellationTokenSource(TimeSpan.FromSeconds(10)).Token
+            cancellationToken: TestContext.Current.CancellationToken
         );
 
-        var torrent2 = torrentClient.AddTorrent(torrent1.MetaInfo);
+        var torrent2 = torrentLeecher.AddTorrent(torrent1.MetaInfo, "Output");
 
-        var torrent1Task = torrent1
-            .StartAsync(new CancellationTokenSource(TimeSpan.FromSeconds(50)).Token)
-            .AsTask();
+        var torrent1Task = torrent1.StartAsync(TestContext.Current.CancellationToken);
         // Act
-        var torrent2Task = torrent2
-            .StartAsync(new CancellationTokenSource(TimeSpan.FromSeconds(50)).Token)
-            .AsTask();
+        var torrent2Task = torrent2.StartAsync(TestContext.Current.CancellationToken);
 
         await Task.WhenAll(torrent1Task, torrent2Task);
     }

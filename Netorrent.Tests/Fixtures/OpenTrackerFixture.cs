@@ -8,7 +8,7 @@ public class OpenTrackerFixture : IAsyncLifetime
     private IContainer? _container;
     public string AnnounceUrl { get; private set; } = "";
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _container = new ContainerBuilder()
             .WithImage("xbaank/opentracker")
@@ -21,7 +21,7 @@ public class OpenTrackerFixture : IAsyncLifetime
         AnnounceUrl = $"http://localhost:6969/announce";
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (_container is null)
             return;

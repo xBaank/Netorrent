@@ -1,7 +1,4 @@
-﻿using System.Net;
-using System.Net.Sockets;
-using Netorrent.IO;
-using Netorrent.P2P;
+﻿using Netorrent.P2P;
 using TimeSpanXt;
 
 namespace Netorrent.Tracker;
@@ -11,8 +8,7 @@ internal class TrackerClient(
     HttpClient client,
     string peerId,
     byte[] infoHash,
-    string announceUrl,
-    IFilesHandler filesHandler
+    string announceUrl
 ) : IAsyncDisposable
 {
     private Task _listenTask = Task.CompletedTask;
@@ -22,13 +18,11 @@ internal class TrackerClient(
         _listenTask = p2PClient.ListenForPeersAsync(cancellationToken);
         var httpTrackerResponse = await Announce(Events.Started, cancellationToken);
 
-        //TODO Handle the response connect to peers
         await ConnectToPeers(httpTrackerResponse, cancellationToken);
 
         while (!cancellationToken.IsCancellationRequested)
         {
             await Task.Delay(httpTrackerResponse.Interval.Seconds(), cancellationToken);
-            // Here you would typically send another request to the tracker to update status
 
             var response = await Announce(cancellationToken: cancellationToken);
             await ConnectToPeers(response, cancellationToken);
@@ -55,9 +49,9 @@ internal class TrackerClient(
             infoHash,
             peerId,
             p2PClient.EndPoint.Port,
-            filesHandler.GetDownloaded(),
-            filesHandler.GetUploaded(),
-            filesHandler.GetLeft(),
+            p2PClient.FileManager.GetWrittenBytes(),
+            0, //TODO Implement this in p2pclient
+            p2PClient.FileManager.GetMissingBytes(),
             true,
             false,
             @event

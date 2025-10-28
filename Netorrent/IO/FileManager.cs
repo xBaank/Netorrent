@@ -1,32 +1,60 @@
 ﻿namespace Netorrent.IO;
 
+using System.Collections;
 using System.Security.Cryptography;
+using Netorrent.TorrentFile.FileStructure;
 
 internal class FileManager
 {
-    private readonly string _basePath;
+    private readonly string _outputDirectory;
     private readonly List<TorrentFileEntry> _files = [];
     private readonly int _pieceLength;
     private readonly List<byte[]> _pieceHashes;
+    public BitArray BitField { get; private set; }
 
     public FileManager(
-        string outputPath,
-        IEnumerable<(string Path, long Length)> torrentFiles,
+        string outputDirectory,
+        List<InfoFile> torrentFiles,
         int pieceLength,
-        List<byte[]> pieceHashes
+        List<byte[]> pieceHashes,
+        BitArray bitField
     )
     {
-        _basePath = outputPath;
+        _outputDirectory = outputDirectory;
         _pieceLength = pieceLength;
         _pieceHashes = pieceHashes;
+        BitField = bitField;
 
         long offset = 0;
-        foreach (var (relativePath, length) in torrentFiles)
+        foreach (var item in torrentFiles)
         {
-            string fullPath = Path.Combine(_basePath, relativePath);
-            _files.Add(new TorrentFileEntry(fullPath, offset, length));
-            offset += length;
+            string fullPath = Path.Combine([_outputDirectory, .. item.Path]);
+            _files.Add(new TorrentFileEntry(fullPath, offset, item.Length));
+            offset += item.Length;
         }
+    }
+
+    public ulong GetWrittenBytes()
+    {
+        long total = 0;
+        for (int i = 0; i < BitField.Length; i++)
+        {
+            if (BitField[i])
+            {
+                long pieceSize = Math.Min(
+                    _pieceLength,
+                    _files.Sum(f => f.Length) - (long)i * _pieceLength
+                );
+                total += pieceSize;
+            }
+        }
+        return (ulong)total;
+    }
+
+    public ulong GetMissingBytes()
+    {
+        var totalSize = (ulong)_files.Sum(f => f.Length);
+        return totalSize - GetWrittenBytes();
     }
 
     public async Task WritePieceAsync(

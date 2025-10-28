@@ -1,4 +1,5 @@
-﻿using Netorrent.IO;
+﻿using System.Collections;
+using Netorrent.IO;
 using Netorrent.P2P;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker;
@@ -11,19 +12,32 @@ public class Torrent
 
     private readonly HttpClient _httpClient;
     private readonly P2PClient _p2pClient;
+    private readonly FileManager _fileManager;
     private readonly string _peerId;
 
-    private readonly List<TrackerClient> _trackerClients = [];
-
-    internal Torrent(MetaInfo metaInfo, HttpClient httpClient, string peerId)
+    internal Torrent(
+        MetaInfo metaInfo,
+        HttpClient httpClient,
+        string peerId,
+        string outputDirectory,
+        bool bitfieldInitialized = false
+    )
     {
         MetaInfo = metaInfo;
-        _p2pClient = new P2PClient(MetaInfo, peerId);
+        var bitField = new BitArray(metaInfo.Info.Pieces.Length / 20, bitfieldInitialized);
+        _fileManager = new FileManager(
+            outputDirectory,
+            metaInfo.Info.NormalizedFiles(),
+            (int)metaInfo.Info.PieceLength,
+            [.. metaInfo.Info.Pieces.Chunk(20)],
+            bitField
+        );
+        _p2pClient = new P2PClient(metaInfo, peerId, _fileManager, bitField);
         _httpClient = httpClient;
         _peerId = peerId;
     }
 
-    public async ValueTask StartAsync(CancellationToken cancellationToken = default)
+    public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         var trackerClients = MetaInfo
             .AnnounceList?.Append(MetaInfo.Announce)
@@ -34,15 +48,12 @@ public class Torrent
                 _httpClient,
                 _peerId,
                 MetaInfo.Info.InfoHash,
-                url,
-                new FilesHandler(MetaInfo)
+                url
             ))
             .ToList();
 
         if (trackerClients is null || trackerClients.Count == 0)
             throw new InvalidOperationException("No supported tracker URLs found.");
-
-        _trackerClients.AddRange(trackerClients);
 
         try
         {

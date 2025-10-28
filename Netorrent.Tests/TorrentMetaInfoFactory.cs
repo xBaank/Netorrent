@@ -43,7 +43,7 @@ public static class TestMetaInfoFactory
         var info = new Info(
             RawInfo: rawInfo,
             PieceLength: pieceLength,
-            Pieces: Encoding.Latin1.GetString(piecesBytes.ToArray()),
+            Pieces: piecesBytes.ToArray(),
             Private: 0,
             Type: InfoType.Single,
             Name: fileName,
@@ -114,7 +114,7 @@ public static class TestMetaInfoFactory
         var info = new Info(
             RawInfo: rawInfo,
             PieceLength: pieceLength,
-            Pieces: Encoding.Latin1.GetString(piecesBytes.ToArray()),
+            Pieces: piecesBytes.ToArray(),
             Private: 0,
             Type: InfoType.Multiple,
             Name: "test-folder",

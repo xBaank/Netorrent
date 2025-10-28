@@ -4,7 +4,6 @@ using Netorrent.Bencoding.Structs;
 using Netorrent.Extensions;
 using Netorrent.P2P;
 using Netorrent.TorrentFile.FileStructure;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Netorrent.TorrentFile;
 
@@ -19,6 +18,7 @@ public class TorrentClient
 
     public async ValueTask<Torrent> AddTorrentAsync(
         string path,
+        string outputDirectory,
         CancellationToken cancellationToken = default
     )
     {
@@ -31,14 +31,24 @@ public class TorrentClient
 
         var metaInfo = ParseMetaInfo(bDictionary);
 
-        var torrent = new Torrent(metaInfo, _httpClient, _peerIdService.PeerId);
+        var torrent = new Torrent(
+            metaInfo,
+            _httpClient,
+            _peerIdService.PeerId,
+            Path.GetFullPath(outputDirectory)
+        );
         torrents.Add(torrent);
         return torrent;
     }
 
-    public Torrent AddTorrent(MetaInfo metaInfo)
+    public Torrent AddTorrent(MetaInfo metaInfo, string outputDirectory)
     {
-        var torrent = new Torrent(metaInfo, _httpClient, _peerIdService.PeerId);
+        var torrent = new Torrent(
+            metaInfo,
+            _httpClient,
+            _peerIdService.PeerId,
+            Path.GetFullPath(outputDirectory)
+        );
         torrents.Add(torrent);
         return torrent;
     }
@@ -60,7 +70,9 @@ public class TorrentClient
                 cancellationToken
             ),
             _httpClient,
-            _peerIdService.PeerId
+            _peerIdService.PeerId,
+            Path.GetFullPath(Path.GetDirectoryName(path) ?? ""),
+            true
         );
         torrents.Add(torrent);
         return torrent;
@@ -110,7 +122,7 @@ public class TorrentClient
         var info = new Info(
             RawInfo: infoDict,
             PieceLength: pieceLength,
-            Pieces: Convert.ToHexString(piecesBytes.ToArray()), // optional string representation
+            Pieces: piecesBytes.ToArray(), // optional string representation
             Private: 0,
             Type: InfoType.Single,
             Name: fileName,
@@ -170,7 +182,7 @@ public class TorrentClient
             Info: new Info(
                 info,
                 pieceLength,
-                pieces,
+                pieces.RawData,
                 privateFlag ?? 0,
                 files is null ? InfoType.Single : InfoType.Multiple,
                 name,

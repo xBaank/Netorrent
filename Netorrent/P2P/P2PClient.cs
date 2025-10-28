@@ -1,15 +1,25 @@
-﻿using System.Collections.Concurrent;
+﻿using System.Collections;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using Netorrent.IO;
 using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.P2P;
 
-internal class P2PClient(MetaInfo metaInfo, string peerId) : IDisposable
+internal class P2PClient(
+    MetaInfo metaInfo,
+    string peerId,
+    FileManager fileManager,
+    BitArray bitField
+) : IDisposable
 {
     private readonly TcpListener _listener = GetFreeTcpListenerInRange(6881, 6899);
     private readonly MetaInfo _metaInfo = metaInfo;
     public IPEndPoint EndPoint => ((IPEndPoint)_listener.LocalEndpoint);
+
+    public FileManager FileManager { get; } = fileManager;
+
     private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _knowPeers = [];
     private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _activePeers = [];
 
@@ -31,9 +41,6 @@ internal class P2PClient(MetaInfo metaInfo, string peerId) : IDisposable
             cancellationToken
         );
 
-        //TODO Perform handshake
-
-        //TODO use the peerId here
         _knowPeers[iPEndPoint] = peerConnection;
     }
 
