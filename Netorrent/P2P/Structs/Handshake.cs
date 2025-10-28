@@ -56,16 +56,17 @@ internal readonly record struct Handshake(
         buffer[offset] = Pstrlen;
         offset += 1;
 
-        Encoding.ASCII.GetBytes(Pstr, 0, Pstr.Length, buffer, offset);
+        var bytes = Encoding.ASCII.GetBytes(Pstr);
+        bytes.AsSpan().CopyTo(buffer[offset..]);
         offset += Pstr.Length;
 
-        reserved.AsSpan().CopyTo(buffer, offset);
+        reserved.AsSpan().CopyTo(buffer[offset..]);
         offset += reserved.Length;
 
-        InfoHash.CopyTo(buffer, offset);
+        InfoHash.AsSpan().CopyTo(buffer[offset..]);
         offset += InfoHash.Length;
 
-        PeerIdBytes.CopyTo(buffer, offset);
+        PeerIdBytes.AsSpan().CopyTo(buffer[offset..]);
 
         return new MemoryRented<byte>(memory, buffer.Length);
     }

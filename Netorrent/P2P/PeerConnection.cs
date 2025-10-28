@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Text;
 using Lazy;
 using Netorrent.P2P.Structs;
+using TimeSpanXt;
 
 namespace Netorrent.P2P;
 
@@ -28,8 +29,13 @@ internal record PeerConnection(
         CancellationToken cancellationToken = default
     )
     {
-        using var bytesRented = await SendHandHandshake(infoHash, peerId, cancellationToken);
-        var (pool, receivedHandshake) = await ReceiveHandshake(cancellationToken);
+        using var timeoutCts = new CancellationTokenSource(10.Seconds());
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            timeoutCts.Token
+        );
+        using var bytesRented = await SendHandHandshake(infoHash, peerId, linkedCts.Token);
+        var (pool, receivedHandshake) = await ReceiveHandshake(linkedCts.Token);
 
         using (pool)
         {
@@ -43,11 +49,17 @@ internal record PeerConnection(
         CancellationToken cancellationToken = default
     )
     {
-        var (pool, receivedHandshake) = await ReceiveHandshake(cancellationToken);
+        using var timeoutCts = new CancellationTokenSource(10.Seconds());
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            timeoutCts.Token
+        );
+
+        var (pool, receivedHandshake) = await ReceiveHandshake(linkedCts.Token);
 
         using (pool)
         {
-            using var bytesRented = await SendHandHandshake(infoHash, peerId, cancellationToken);
+            using var bytesRented = await SendHandHandshake(infoHash, peerId, linkedCts.Token);
             ValidateHandshake(infoHash, receivedHandshake);
         }
     }
@@ -72,7 +84,7 @@ internal record PeerConnection(
     )
     {
         using var pool = MemoryPool<byte>.Shared.Rent(Handshake.TotalLength);
-        var buffer = pool.Memory.Slice(0, Handshake.TotalLength);
+        var buffer = pool.Memory[..Handshake.TotalLength];
         await Stream.ReadExactlyAsync(buffer, cancellationToken);
         var receivedHandshake = Handshake.FromBytes(buffer.Span);
         return (pool, receivedHandshake);

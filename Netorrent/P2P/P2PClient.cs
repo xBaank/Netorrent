@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Sockets;
 using Netorrent.IO;
 using Netorrent.TorrentFile.FileStructure;
+using TimeSpanXt;
 
 namespace Netorrent.P2P;
 
@@ -41,7 +42,6 @@ internal class P2PClient(
             cancellationToken
         );
 
-        //TODO use the peerId here
         _knowPeers[iPEndPoint] = peerConnection;
     }
 
@@ -53,12 +53,12 @@ internal class P2PClient(
             var tcpClient = await _listener.AcceptTcpClientAsync(cancellationToken);
             var remoteEndPoint = (IPEndPoint)tcpClient.Client.RemoteEndPoint!;
             var peerConnection = new PeerConnection(tcpClient, remoteEndPoint);
+
             await peerConnection.ReceiveHandshakeAsync(
                 _metaInfo.Info.InfoHash,
                 peerId,
                 cancellationToken
             );
-            //TODO use the peerId here
             _knowPeers[remoteEndPoint] = peerConnection;
         }
     }
