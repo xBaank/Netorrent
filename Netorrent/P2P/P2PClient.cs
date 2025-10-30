@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using Netorrent.IO;
+using Netorrent.P2P.Structs;
 using Netorrent.TorrentFile.FileStructure;
 using TimeSpanXt;
 
@@ -17,7 +18,7 @@ internal class P2PClient(
 {
     private readonly TcpListener _listener = GetFreeTcpListenerInRange(6881, 6899);
     private readonly MetaInfo _metaInfo = metaInfo;
-    public IPEndPoint EndPoint => ((IPEndPoint)_listener.LocalEndpoint);
+    public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
 
     public FileManager FileManager { get; } = fileManager;
 
@@ -43,6 +44,22 @@ internal class P2PClient(
         );
 
         _knowPeers[iPEndPoint] = peerConnection;
+
+        await SendBitfieldAsync(peerConnection, cancellationToken);
+    }
+
+    private async Task SendBitfieldAsync(
+        PeerConnection peerConnection,
+        CancellationToken cancellationToken
+    )
+    {
+        if (!bitField.HasAnySet())
+            return;
+
+        var bitFieldPayload = new byte[bitField.Count];
+        bitField.CopyTo(bitFieldPayload, 0);
+        var message = Message.CreateBitfield(MemoryRented<byte>.From(bitFieldPayload));
+        await peerConnection.SendMessage(message, cancellationToken);
     }
 
     public async Task ListenForPeersAsync(CancellationToken cancellationToken = default)
