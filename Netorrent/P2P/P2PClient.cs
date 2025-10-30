@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System.Buffers;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
@@ -56,9 +57,12 @@ internal class P2PClient(
         if (!bitField.HasAnySet())
             return;
 
-        var bitFieldPayload = new byte[bitField.Count];
-        bitField.CopyTo(bitFieldPayload, 0);
-        var message = Message.CreateBitfield(MemoryRented<byte>.From(bitFieldPayload));
+        int byteCount = (bitField.Length + 7) / 8;
+        var owner = MemoryPool<byte>.Shared.Rent(byteCount);
+        var memory = owner.Memory[..byteCount];
+        PackBitsBigEndian(bitField, memory.Span);
+
+        var message = Message.CreateBitfield(new MemoryRented<byte>(owner, byteCount));
         await peerConnection.SendMessage(message, cancellationToken);
     }
 
@@ -98,6 +102,20 @@ internal class P2PClient(
         }
 
         throw new Exception("No free port found in the specified range.");
+    }
+
+    static void PackBitsBigEndian(BitArray bits, Span<byte> dest)
+    {
+        int byteLen = (bits.Length + 7) / 8;
+        if (dest.Length < byteLen)
+            throw new ArgumentException("dest too small", nameof(dest));
+        dest[..byteLen].Clear();
+
+        for (int i = 0; i < bits.Length; i++)
+        {
+            if (bits[i])
+                dest[i / 8] |= (byte)(1 << (7 - (i % 8)));
+        }
     }
 
     public void Dispose()
