@@ -37,7 +37,7 @@ internal class P2PClient(
         var client = new TcpClient();
         await client.ConnectAsync(iPEndPoint, cancellationToken);
 
-        var peerConnection = new PeerConnection(client, iPEndPoint);
+        var peerConnection = new PeerConnection(client, iPEndPoint, bitField);
         await peerConnection.PerformHandshakeAsync(
             _metaInfo.Info.InfoHash,
             peerId,
@@ -46,24 +46,7 @@ internal class P2PClient(
 
         _knowPeers[iPEndPoint] = peerConnection;
 
-        await SendBitfieldAsync(peerConnection, cancellationToken);
-    }
-
-    private async Task SendBitfieldAsync(
-        PeerConnection peerConnection,
-        CancellationToken cancellationToken
-    )
-    {
-        if (!bitField.HasAnySet())
-            return;
-
-        int byteCount = (bitField.Length + 7) / 8;
-        var owner = MemoryPool<byte>.Shared.Rent(byteCount);
-        var memory = owner.Memory[..byteCount];
-        PackBitsBigEndian(bitField, memory.Span);
-
-        var message = Message.CreateBitfield(new MemoryRented<byte>(owner, byteCount));
-        await peerConnection.SendMessage(message, cancellationToken);
+        await peerConnection.SendBitfieldAsync(bitField, cancellationToken);
     }
 
     public async Task ListenForPeersAsync(CancellationToken cancellationToken = default)
@@ -73,7 +56,7 @@ internal class P2PClient(
         {
             var tcpClient = await _listener.AcceptTcpClientAsync(cancellationToken);
             var remoteEndPoint = (IPEndPoint)tcpClient.Client.RemoteEndPoint!;
-            var peerConnection = new PeerConnection(tcpClient, remoteEndPoint);
+            var peerConnection = new PeerConnection(tcpClient, remoteEndPoint, bitField);
 
             await peerConnection.ReceiveHandshakeAsync(
                 _metaInfo.Info.InfoHash,
@@ -102,20 +85,6 @@ internal class P2PClient(
         }
 
         throw new Exception("No free port found in the specified range.");
-    }
-
-    static void PackBitsBigEndian(BitArray bits, Span<byte> dest)
-    {
-        int byteLen = (bits.Length + 7) / 8;
-        if (dest.Length < byteLen)
-            throw new ArgumentException("dest too small", nameof(dest));
-        dest[..byteLen].Clear();
-
-        for (int i = 0; i < bits.Length; i++)
-        {
-            if (bits[i])
-                dest[i / 8] |= (byte)(1 << (7 - (i % 8)));
-        }
     }
 
     public void Dispose()
