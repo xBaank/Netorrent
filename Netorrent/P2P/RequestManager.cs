@@ -45,6 +45,9 @@ internal class RequestManager : IDisposable
         return await _pendingRequests.Reader.ReadAsync(cancellationToken);
     }
 
+    public bool IsFull => _pendingRequests.Reader.Count >= 50;
+    public bool ShouldUnchoke => _pendingRequests.Reader.Count <= 40;
+
     public void Dispose()
     {
         _pendingRequests.Writer.Complete();

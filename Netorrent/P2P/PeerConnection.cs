@@ -44,16 +44,28 @@ internal class PeerConnection(
 
     public async Task HandleOutgoing(CancellationToken cancellationToken)
     {
-        await SendMessage(Message.CreateInterested(), cancellationToken);
+        using var message = Message.CreateInterested();
+        await SendMessage(message, cancellationToken);
         AmInterested = true;
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            if (AmChocking)
+            //SEEDER LOGIC
+            if (_requestManager.IsFull)
             {
-                await Task.Delay(500, cancellationToken);
-                continue;
+                AmChocking = true;
+                using var chokeMessage = Message.CreateChoke();
+                await SendMessage(message, cancellationToken);
             }
+
+            if (_requestManager.ShouldUnchoke)
+            {
+                AmChocking = false;
+            }
+
+            var request = await _requestManager.GetNextRequestAsync(cancellationToken);
+
+            //LEECHER LOGIC
 
             // Implement logic to send messages to the peer
             await Task.Delay(1000, cancellationToken); // Placeholder delay
@@ -64,7 +76,7 @@ internal class PeerConnection(
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            if (PeerChocking)
+            if (AmChocking)
             {
                 await Task.Delay(500, cancellationToken);
                 continue;
@@ -252,7 +264,7 @@ internal class PeerConnection(
     public async Task SendBitfieldAsync(Bitfield bitField, CancellationToken cancellationToken)
     {
         using var memoryRented = bitField.ToMemoryRented();
-        var message = Message.CreateBitfield(memoryRented);
+        using var message = Message.CreateBitfield(memoryRented);
         await SendMessage(message, cancellationToken);
     }
 
