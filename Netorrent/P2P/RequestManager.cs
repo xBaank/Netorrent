@@ -1,6 +1,4 @@
-﻿using System.Collections.Concurrent;
-using System.Threading.Channels;
-using Netorrent.Bencoding.Structs;
+﻿using System.Threading.Channels;
 
 namespace Netorrent.P2P;
 
@@ -45,8 +43,8 @@ internal class RequestManager : IDisposable
         return await _pendingRequests.Reader.ReadAsync(cancellationToken);
     }
 
-    public bool IsFull => _pendingRequests.Reader.Count >= 50;
-    public bool ShouldUnchoke => _pendingRequests.Reader.Count <= 40;
+    public bool IsChoking => _pendingRequests.Reader.Count >= 50;
+    public bool ShouldUnchoke => _pendingRequests.Reader.Count <= 25;
 
     public void Dispose()
     {

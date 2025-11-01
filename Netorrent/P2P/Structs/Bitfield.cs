@@ -5,6 +5,7 @@ namespace Netorrent.P2P.Structs;
 
 internal class Bitfield
 {
+    public event Func<int, CancellationToken, Task>? OnHavePieceAsync;
     private readonly BitArray _bits;
 
     public Bitfield(int pieceCount, bool isInitialized = false)
@@ -25,10 +26,14 @@ internal class Bitfield
         set => _bits[index] = value;
     }
 
-    public void HavePiece(int index)
+    public async Task HavePiece(int index, CancellationToken cancellationToken)
     {
-        if (index < _bits.Length)
-            _bits[index] = true;
+        if (index >= _bits.Length)
+            return;
+
+        _bits[index] = true;
+        if (OnHavePieceAsync is not null)
+            await OnHavePieceAsync(index, cancellationToken);
     }
 
     public MemoryRented<byte> ToMemoryRented()

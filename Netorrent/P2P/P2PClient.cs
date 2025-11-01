@@ -22,6 +22,10 @@ internal class P2PClient(
     public FileManager FileManager { get; } = fileManager;
 
     private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _knowPeers = [];
+    private readonly List<(
+        Task peerTask,
+        CancellationTokenSource cancellationTokenSource
+    )> peerTasks = [];
 
     public async Task ConnectToPeerAsync(
         IPEndPoint iPEndPoint,
@@ -41,15 +45,20 @@ internal class P2PClient(
             FileManager,
             _requestManager
         );
+
+        _knowPeers[iPEndPoint] = peerConnection;
+
         await peerConnection.PerformHandshakeAsync(
             _metaInfo.Info.InfoHash,
             peerId,
             cancellationToken
         );
-
-        _knowPeers[iPEndPoint] = peerConnection;
-
         await peerConnection.SendBitfieldAsync(bitField, cancellationToken);
+        var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken
+        );
+        var peerTask = HandlePeer(peerConnection, cancellationTokenSource.Token);
+        peerTasks.Add((peerTask, cancellationTokenSource));
     }
 
     public async Task ListenForPeersAsync(CancellationToken cancellationToken = default)
@@ -67,13 +76,29 @@ internal class P2PClient(
                 _requestManager
             );
 
+            _knowPeers[remoteEndPoint] = peerConnection;
+
             await peerConnection.ReceiveHandshakeAsync(
                 _metaInfo.Info.InfoHash,
                 peerId,
                 cancellationToken
             );
-            _knowPeers[remoteEndPoint] = peerConnection;
+            var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken
+            );
+            var peerTask = HandlePeer(peerConnection, cancellationTokenSource.Token);
+            peerTasks.Add((peerTask, cancellationTokenSource));
         }
+    }
+
+    private static async Task HandlePeer(
+        PeerConnection peerConnection,
+        CancellationToken cancellationToken
+    )
+    {
+        var outgoing = peerConnection.HandleOutgoing(cancellationToken);
+        var incoming = peerConnection.HandleIncoming(cancellationToken);
+        await Task.WhenAll(outgoing, incoming);
     }
 
     private static TcpListener GetFreeTcpListenerInRange(int start, int end)
@@ -99,6 +124,10 @@ internal class P2PClient(
     public void Dispose()
     {
         _listener.Stop();
+        foreach (var (_, cancellationTokenSource) in peerTasks)
+        {
+            cancellationTokenSource.Cancel();
+        }
         foreach (var item in _knowPeers)
         {
             item.Value.Dispose();

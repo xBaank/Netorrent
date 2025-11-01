@@ -1,9 +1,8 @@
-﻿namespace Netorrent.IO;
-
-using System.Collections;
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using Netorrent.P2P.Structs;
 using Netorrent.TorrentFile.FileStructure;
+
+namespace Netorrent.IO;
 
 internal class FileManager : IAsyncDisposable
 {
@@ -68,12 +67,13 @@ internal class FileManager : IAsyncDisposable
 
     public async ValueTask WritePieceAsync(
         int pieceIndex,
-        byte[] pieceData,
+        int begin,
+        ReadOnlyMemory<byte> pieceData,
         CancellationToken ct = default
     )
     {
         long globalOffset = (long)pieceIndex * _pieceLength;
-
+        globalOffset += begin;
         await WriteAsync(globalOffset, pieceData, ct);
 
         bool ok = await VerifyPieceAsync(pieceIndex, ct);
@@ -97,7 +97,11 @@ internal class FileManager : IAsyncDisposable
         return expectedHash.SequenceEqual(actualHash);
     }
 
-    private async ValueTask WriteAsync(long globalOffset, byte[] data, CancellationToken ct)
+    private async ValueTask WriteAsync(
+        long globalOffset,
+        ReadOnlyMemory<byte> data,
+        CancellationToken ct
+    )
     {
         long remaining = data.Length;
         int position = 0;
@@ -112,8 +116,12 @@ internal class FileManager : IAsyncDisposable
 
             Directory.CreateDirectory(Path.GetDirectoryName(file.FullPath)!);
 
-            file.FileStream.Seek(fileOffset, SeekOrigin.Begin);
-            await file.FileStream.WriteAsync(data.AsMemory(position, (int)writable), ct);
+            await RandomAccess.WriteAsync(
+                file.FileStream.SafeFileHandle,
+                data.Slice(position, (int)writable),
+                fileOffset,
+                ct
+            );
 
             globalOffset += writable;
             position += (int)writable;
@@ -149,16 +157,18 @@ internal class FileManager : IAsyncDisposable
             long fileOffset = Math.Max(0, globalOffset - file.StartOffset);
             long readable = Math.Min(length - totalRead, file.Length - fileOffset);
 
-            file.FileStream.Seek(fileOffset, SeekOrigin.Begin);
-            int bytesRead = await file.FileStream.ReadAsync(
+            // Perform thread-safe, offset-based async read
+            int bytesRead = await RandomAccess.ReadAsync(
+                file.FileStream.SafeFileHandle,
                 buffer.AsMemory(totalRead, (int)readable),
+                fileOffset,
                 ct
             );
 
             totalRead += bytesRead;
             globalOffset += bytesRead;
 
-            if (totalRead >= length)
+            if (totalRead >= length || bytesRead == 0)
                 break;
         }
 
@@ -180,7 +190,7 @@ internal class FileManager : IAsyncDisposable
         string FullPath,
         long StartOffset,
         long Length,
-        Stream FileStream
+        FileStream FileStream
     ) : IAsyncDisposable
     {
         public long EndOffset => StartOffset + Length;
