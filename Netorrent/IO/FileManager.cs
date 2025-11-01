@@ -2,22 +2,23 @@
 
 using System.Collections;
 using System.Security.Cryptography;
+using Netorrent.P2P.Structs;
 using Netorrent.TorrentFile.FileStructure;
 
-internal class FileManager
+internal class FileManager : IAsyncDisposable
 {
     private readonly string _outputDirectory;
     private readonly List<TorrentFileEntry> _files = [];
     private readonly int _pieceLength;
     private readonly List<byte[]> _pieceHashes;
-    public BitArray BitField { get; private set; }
+    public Bitfield BitField { get; private set; }
 
     public FileManager(
         string outputDirectory,
         List<InfoFile> torrentFiles,
         int pieceLength,
         List<byte[]> pieceHashes,
-        BitArray bitField
+        Bitfield bitField
     )
     {
         _outputDirectory = outputDirectory;
@@ -29,7 +30,15 @@ internal class FileManager
         foreach (var item in torrentFiles)
         {
             string fullPath = Path.Combine([_outputDirectory, .. item.Path]);
-            _files.Add(new TorrentFileEntry(fullPath, offset, item.Length));
+            var stream = new FileStream(
+                fullPath,
+                FileMode.OpenOrCreate,
+                FileAccess.ReadWrite,
+                FileShare.Read,
+                bufferSize: 4096,
+                options: FileOptions.Asynchronous | FileOptions.RandomAccess
+            );
+            _files.Add(new TorrentFileEntry(fullPath, offset, item.Length, stream));
             offset += item.Length;
         }
     }
@@ -57,7 +66,7 @@ internal class FileManager
         return totalSize - GetWrittenBytes();
     }
 
-    public async Task WritePieceAsync(
+    public async ValueTask WritePieceAsync(
         int pieceIndex,
         byte[] pieceData,
         CancellationToken ct = default
@@ -75,7 +84,7 @@ internal class FileManager
         }
     }
 
-    public async Task<bool> VerifyPieceAsync(int pieceIndex, CancellationToken ct = default)
+    public async ValueTask<bool> VerifyPieceAsync(int pieceIndex, CancellationToken ct = default)
     {
         var expectedHash = _pieceHashes[pieceIndex];
         long offset = (long)pieceIndex * _pieceLength;
@@ -88,32 +97,23 @@ internal class FileManager
         return expectedHash.SequenceEqual(actualHash);
     }
 
-    private async Task WriteAsync(long globalOffset, byte[] data, CancellationToken ct)
+    private async ValueTask WriteAsync(long globalOffset, byte[] data, CancellationToken ct)
     {
         long remaining = data.Length;
         int position = 0;
 
-        foreach (var entry in _files)
+        foreach (var file in _files)
         {
-            if (globalOffset >= entry.EndOffset)
+            if (globalOffset >= file.EndOffset)
                 continue;
 
-            long fileOffset = Math.Max(0, globalOffset - entry.StartOffset);
-            long writable = Math.Min(remaining, entry.Length - fileOffset);
+            long fileOffset = Math.Max(0, globalOffset - file.StartOffset);
+            long writable = Math.Min(remaining, file.Length - fileOffset);
 
-            Directory.CreateDirectory(Path.GetDirectoryName(entry.FullPath)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(file.FullPath)!);
 
-            using var stream = new FileStream(
-                entry.FullPath,
-                FileMode.OpenOrCreate,
-                FileAccess.Write,
-                FileShare.Read,
-                bufferSize: 4096,
-                useAsync: true
-            );
-
-            stream.Seek(fileOffset, SeekOrigin.Begin);
-            await stream.WriteAsync(data.AsMemory(position, (int)writable), ct);
+            file.FileStream.Seek(fileOffset, SeekOrigin.Begin);
+            await file.FileStream.WriteAsync(data.AsMemory(position, (int)writable), ct);
 
             globalOffset += writable;
             position += (int)writable;
@@ -124,30 +124,36 @@ internal class FileManager
         }
     }
 
-    private async Task<byte[]> ReadAsync(long globalOffset, int length, CancellationToken ct)
+    public async ValueTask<byte[]> ReadPieceAsync(
+        int pieceIndex,
+        int begin,
+        int length,
+        CancellationToken ct = default
+    )
+    {
+        long offset = (long)pieceIndex * _pieceLength;
+        offset += begin;
+        return await ReadAsync(offset, length, ct);
+    }
+
+    private async ValueTask<byte[]> ReadAsync(long globalOffset, int length, CancellationToken ct)
     {
         var buffer = new byte[length];
         int totalRead = 0;
 
-        foreach (var entry in _files)
+        foreach (var file in _files)
         {
-            if (globalOffset >= entry.EndOffset)
+            if (globalOffset >= file.EndOffset)
                 continue;
 
-            long fileOffset = Math.Max(0, globalOffset - entry.StartOffset);
-            long readable = Math.Min(length - totalRead, entry.Length - fileOffset);
+            long fileOffset = Math.Max(0, globalOffset - file.StartOffset);
+            long readable = Math.Min(length - totalRead, file.Length - fileOffset);
 
-            using var stream = new FileStream(
-                entry.FullPath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.ReadWrite,
-                bufferSize: 4096,
-                useAsync: true
+            file.FileStream.Seek(fileOffset, SeekOrigin.Begin);
+            int bytesRead = await file.FileStream.ReadAsync(
+                buffer.AsMemory(totalRead, (int)readable),
+                ct
             );
-
-            stream.Seek(fileOffset, SeekOrigin.Begin);
-            int bytesRead = await stream.ReadAsync(buffer.AsMemory(totalRead, (int)readable), ct);
 
             totalRead += bytesRead;
             globalOffset += bytesRead;
@@ -162,8 +168,23 @@ internal class FileManager
         return buffer;
     }
 
-    private sealed record TorrentFileEntry(string FullPath, long StartOffset, long Length)
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var item in _files)
+        {
+            await item.DisposeAsync();
+        }
+    }
+
+    private sealed record TorrentFileEntry(
+        string FullPath,
+        long StartOffset,
+        long Length,
+        Stream FileStream
+    ) : IAsyncDisposable
     {
         public long EndOffset => StartOffset + Length;
+
+        public async ValueTask DisposeAsync() => await FileStream.DisposeAsync();
     }
 }

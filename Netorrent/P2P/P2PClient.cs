@@ -1,12 +1,9 @@
-﻿using System.Buffers;
-using System.Collections;
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using Netorrent.IO;
 using Netorrent.P2P.Structs;
 using Netorrent.TorrentFile.FileStructure;
-using TimeSpanXt;
 
 namespace Netorrent.P2P;
 
@@ -14,17 +11,17 @@ internal class P2PClient(
     MetaInfo metaInfo,
     string peerId,
     FileManager fileManager,
-    BitArray bitField
+    Bitfield bitField
 ) : IDisposable
 {
     private readonly TcpListener _listener = GetFreeTcpListenerInRange(6881, 6899);
     private readonly MetaInfo _metaInfo = metaInfo;
+    private readonly RequestManager _requestManager = new();
     public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
 
     public FileManager FileManager { get; } = fileManager;
 
     private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _knowPeers = [];
-    private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _activePeers = [];
 
     public async Task ConnectToPeerAsync(
         IPEndPoint iPEndPoint,
@@ -37,7 +34,13 @@ internal class P2PClient(
         var client = new TcpClient();
         await client.ConnectAsync(iPEndPoint, cancellationToken);
 
-        var peerConnection = new PeerConnection(client, iPEndPoint, bitField);
+        var peerConnection = new PeerConnection(
+            client,
+            iPEndPoint,
+            bitField,
+            FileManager,
+            _requestManager
+        );
         await peerConnection.PerformHandshakeAsync(
             _metaInfo.Info.InfoHash,
             peerId,
@@ -56,7 +59,13 @@ internal class P2PClient(
         {
             var tcpClient = await _listener.AcceptTcpClientAsync(cancellationToken);
             var remoteEndPoint = (IPEndPoint)tcpClient.Client.RemoteEndPoint!;
-            var peerConnection = new PeerConnection(tcpClient, remoteEndPoint, bitField);
+            var peerConnection = new PeerConnection(
+                tcpClient,
+                remoteEndPoint,
+                bitField,
+                FileManager,
+                _requestManager
+            );
 
             await peerConnection.ReceiveHandshakeAsync(
                 _metaInfo.Info.InfoHash,

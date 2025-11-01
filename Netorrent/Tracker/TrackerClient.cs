@@ -38,8 +38,8 @@ internal class TrackerClient(
         CancellationToken cancellationToken
     )
     {
-        foreach (
-            var item in httpTrackerResponse.Peers.Where(ep =>
+        var connectTasks = httpTrackerResponse
+            .Peers.Where(ep =>
                 !(
                     (
                         ep.Address.Equals(IPAddress.Loopback)
@@ -48,10 +48,9 @@ internal class TrackerClient(
                     && ep.Port == p2PClient.EndPoint.Port
                 )
             )
-        )
-        {
-            await p2PClient.ConnectToPeerAsync(item, cancellationToken);
-        }
+            .Select(async item => await p2PClient.ConnectToPeerAsync(item, cancellationToken));
+
+        await Task.WhenAll(connectTasks);
     }
 
     internal async Task<HttpTrackerResponse> Announce(

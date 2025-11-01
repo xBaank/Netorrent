@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using Netorrent.IO;
 using Netorrent.P2P;
+using Netorrent.P2P.Structs;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker;
 
@@ -24,7 +25,7 @@ public class Torrent
     )
     {
         MetaInfo = metaInfo;
-        var bitField = new BitArray(metaInfo.Info.Pieces.Length / 20, bitfieldInitialized);
+        var bitField = new Bitfield(metaInfo.Info.Pieces.Length / 20, bitfieldInitialized);
         _fileManager = new FileManager(
             outputDirectory,
             metaInfo.Info.NormalizedFiles(),

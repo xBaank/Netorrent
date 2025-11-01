@@ -1,9 +1,13 @@
-﻿using System.Buffers;
+﻿using System;
+using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using Lazy;
+using Netorrent.Extensions;
+using Netorrent.IO;
 using Netorrent.P2P.Structs;
 using TimeSpanXt;
 
@@ -12,7 +16,9 @@ namespace Netorrent.P2P;
 internal class PeerConnection(
     TcpClient tcpClient,
     IPEndPoint iPEndPoint,
-    BitArray myBitField,
+    Bitfield myBitField,
+    FileManager fileManager,
+    RequestManager requestManager,
     bool amChocking = true,
     bool amInterested = false,
     bool peerChocking = true,
@@ -24,16 +30,23 @@ internal class PeerConnection(
 
     public TcpClient TcpClient { get; } = tcpClient;
     public IPEndPoint IPEndPoint { get; } = iPEndPoint;
-    public BitArray MyBitField { get; } = myBitField;
+    public Bitfield MyBitField { get; } = myBitField;
     public bool AmChocking { get; private set; } = amChocking;
     public bool AmInterested { get; private set; } = amInterested;
     public bool PeerChocking { get; private set; } = peerChocking;
     public bool PeerInterested { get; private set; } = peerInterested;
     public string? PeerId { get; private set; }
-    public BitArray PeerBitField { get; private set; } = new(0);
+    public Bitfield PeerBitField { get; private set; } = new(myBitField.Length);
+
+    private readonly FileManager _fileManager = fileManager;
+    private readonly RequestManager _requestManager = requestManager;
+    private readonly Dictionary<Request, CancellationTokenSource> _pendingRequests = [];
 
     public async Task HandleOutgoing(CancellationToken cancellationToken)
     {
+        await SendMessage(Message.CreateInterested(), cancellationToken);
+        AmInterested = true;
+
         while (!cancellationToken.IsCancellationRequested)
         {
             if (AmChocking)
@@ -65,7 +78,7 @@ internal class PeerConnection(
             if (message.Id == Message.Bitfield)
             {
                 var bitfieldBytes = message.Payload!.Value.Memory;
-                PeerBitField = new BitArray(bitfieldBytes.ToArray());
+                PeerBitField = new Bitfield(bitfieldBytes.ToArray());
             }
 
             if (message.Id == Message.Interested)
@@ -90,24 +103,18 @@ internal class PeerConnection(
 
             if (message.Id == Message.Have)
             {
-                message.Payload!.Value.Memory.Span.Reverse();
-
-                var pieceIndex = BitConverter.ToInt32(message.Payload!.Value.Memory.Span);
-                if (pieceIndex >= PeerBitField.Length)
-                {
-                    var newBitField = new BitArray(pieceIndex + 1);
-                    for (int i = 0; i < PeerBitField.Length; i++)
-                    {
-                        newBitField[i] = PeerBitField[i];
-                    }
-                    PeerBitField = newBitField;
-                }
-                PeerBitField[pieceIndex] = true;
+                int pieceIndex = BinaryPrimitives.ReadInt32BigEndian(
+                    message.Payload!.Value.Memory.Span
+                );
+                PeerBitField.HavePiece(pieceIndex);
             }
 
             if (message.Id == Message.Request)
             {
-                // Handle request message
+                if (!(await ProcessRequest(message, cancellationToken)))
+                {
+                    // Invalid request, handle accordingly
+                }
             }
 
             if (message.Id == Message.Piece)
@@ -117,13 +124,59 @@ internal class PeerConnection(
 
             if (message.Id == Message.Cancel)
             {
-                // Handle cancel message
+                if (!ProcessCancel(message))
+                {
+                    // Invalid cancel, handle accordingly
+                }
             }
 
             if (message.Id == Message.Port)
             {
                 //TODO Implement DHT port message handling
             }
+        }
+    }
+
+    private async ValueTask<bool> ProcessRequest(
+        Message message,
+        CancellationToken cancellationToken
+    )
+    {
+        var span = message.Payload!.Value.Memory.Span;
+        var index = BinaryPrimitives.ReadInt32BigEndian(span[..4]);
+        var begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
+        var length = BinaryPrimitives.ReadInt32BigEndian(span[8..12]);
+
+        if (index < 0)
+            return false;
+        if (index >= length)
+            return false;
+
+        var cts = new CancellationTokenSource();
+        var request = new Request(index, begin, length, cts.Token);
+        await _requestManager.AddRequestAsync(request, cancellationToken);
+        _pendingRequests[request] = cts;
+        return true;
+    }
+
+    private bool ProcessCancel(Message message)
+    {
+        var span = message.Payload!.Value.Memory.Span;
+        var index = BinaryPrimitives.ReadInt32BigEndian(span[..4]);
+        var begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
+        var length = BinaryPrimitives.ReadInt32BigEndian(span[8..12]);
+
+        var request = new Request(index, begin, length, CancellationToken.None);
+
+        if (_pendingRequests.TryGetValue(request, out CancellationTokenSource? value))
+        {
+            value.Cancel();
+            _pendingRequests.Remove(request);
+            return true;
+        }
+        else
+        {
+            return false;
         }
     }
 
@@ -173,16 +226,18 @@ internal class PeerConnection(
         CancellationToken cancellationToken = default
     )
     {
+        using var cts = cancellationToken.WithTimeout(10.Seconds());
         using var messageBytes = message.ToBytes();
-        await Stream.WriteAsync(messageBytes.Memory, cancellationToken);
-        await Stream.FlushAsync(cancellationToken);
+        await Stream.WriteAsync(messageBytes.Memory, cts.Token);
+        await Stream.FlushAsync(cts.Token);
     }
 
     public async ValueTask<Message> ReceiveMessage(CancellationToken cancellationToken = default)
     {
+        using var cts = cancellationToken.WithTimeout(10.Seconds());
         using var lengthPool = MemoryPool<byte>.Shared.Rent(4);
         var lengthBuffer = lengthPool.Memory[..4];
-        await Stream.ReadExactlyAsync(lengthBuffer, cancellationToken);
+        await Stream.ReadExactlyAsync(lengthBuffer, cts.Token);
         int messageLength = BitConverter.ToInt32(
             lengthBuffer.Span[..4].ToArray().Reverse().ToArray()
         );
@@ -190,21 +245,14 @@ internal class PeerConnection(
             return Message.CreateKeepAlive();
         using var messagePool = MemoryPool<byte>.Shared.Rent(messageLength);
         var messageBuffer = messagePool.Memory[..messageLength];
-        await Stream.ReadExactlyAsync(messageBuffer, cancellationToken);
+        await Stream.ReadExactlyAsync(messageBuffer, cts.Token);
         return Message.FromBytes(messageBuffer.Span);
     }
 
-    public async Task SendBitfieldAsync(BitArray bitField, CancellationToken cancellationToken)
+    public async Task SendBitfieldAsync(Bitfield bitField, CancellationToken cancellationToken)
     {
-        if (!bitField.HasAnySet())
-            return;
-
-        int byteCount = (bitField.Length + 7) / 8;
-        var owner = MemoryPool<byte>.Shared.Rent(byteCount);
-        var memory = owner.Memory[..byteCount];
-        PackBitsBigEndian(bitField, memory.Span);
-
-        var message = Message.CreateBitfield(new MemoryRented<byte>(owner, byteCount));
+        using var memoryRented = bitField.ToMemoryRented();
+        var message = Message.CreateBitfield(memoryRented);
         await SendMessage(message, cancellationToken);
     }
 
@@ -220,9 +268,10 @@ internal class PeerConnection(
         CancellationToken cancellationToken
     )
     {
+        using var cts = cancellationToken.WithTimeout(10.Seconds());
         using var pool = MemoryPool<byte>.Shared.Rent(Handshake.TotalLength);
         var buffer = pool.Memory[..Handshake.TotalLength];
-        await Stream.ReadExactlyAsync(buffer, cancellationToken);
+        await Stream.ReadExactlyAsync(buffer, cts.Token);
         var receivedHandshake = Handshake.FromBytes(buffer.Span);
         return (pool, receivedHandshake);
     }
@@ -233,10 +282,11 @@ internal class PeerConnection(
         CancellationToken cancellationToken
     )
     {
+        using var cts = cancellationToken.WithTimeout(10.Seconds());
         var handshake = Handshake.Create(infoHash.ToArray(), Encoding.ASCII.GetBytes(peerId));
         var bytesRented = handshake.ToBytes();
-        await Stream.WriteAsync(bytesRented.Memory, cancellationToken);
-        await Stream.FlushAsync(cancellationToken);
+        await Stream.WriteAsync(bytesRented.Memory, cts.Token);
+        await Stream.FlushAsync(cts.Token);
         return bytesRented;
     }
 
