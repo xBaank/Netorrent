@@ -2,6 +2,7 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Text;
+using Netorrent.Other;
 
 namespace Netorrent.P2P.Structs;
 

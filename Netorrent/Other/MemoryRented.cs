@@ -1,7 +1,6 @@
 ﻿using System.Buffers;
-using Lazy;
 
-namespace Netorrent.P2P.Structs;
+namespace Netorrent.Other;
 
 internal struct MemoryRented<T>(IMemoryOwner<T> owner, int length) : IDisposable
 {

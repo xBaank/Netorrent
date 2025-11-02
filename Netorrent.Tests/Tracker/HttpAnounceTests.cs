@@ -1,5 +1,4 @@
 ﻿using Netorrent.P2P;
-using Netorrent.Tests.Fakes;
 using Netorrent.Tests.Fixtures;
 using Netorrent.Tracker;
 using Shouldly;

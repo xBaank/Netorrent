@@ -1,5 +1,6 @@
 ﻿using System.Buffers;
 using System.Collections;
+using Netorrent.Other;
 
 namespace Netorrent.P2P.Structs;
 
