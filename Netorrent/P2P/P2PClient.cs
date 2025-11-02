@@ -2,6 +2,8 @@
 using System.Net;
 using System.Net.Sockets;
 using Netorrent.IO;
+using Netorrent.Other;
+using Netorrent.P2P.Managers.Piece;
 using Netorrent.P2P.Managers.Request;
 using Netorrent.P2P.Structs;
 using Netorrent.TorrentFile.FileStructure;
@@ -15,17 +17,19 @@ internal class P2PClient(
     Bitfield bitField
 ) : IDisposable
 {
-    private readonly TcpListener _listener = GetFreeTcpListenerInRange(6881, 6899);
+    private readonly TcpListener _listener = Tcp.GetFreeTcpListenerInRange(6881, 6899);
     private readonly MetaInfo _metaInfo = metaInfo;
-    public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
-
-    public FileManager FileManager { get; } = fileManager;
-
+    private readonly Random _rng = new();
     private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _knowPeers = [];
     private readonly List<(
         Task peerTask,
         CancellationTokenSource cancellationTokenSource
     )> peerTasks = [];
+
+    public FileManager FileManager { get; } = fileManager;
+
+    private IEnumerable<Bitfield> Bitfields => _knowPeers.Values.Select(i => i.PeerBitField);
+    public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
 
     public async Task ConnectToPeerAsync(
         IPEndPoint iPEndPoint,
@@ -43,7 +47,8 @@ internal class P2PClient(
             iPEndPoint,
             bitField,
             FileManager,
-            new RequestManager()
+            new RequestManager(),
+            new PieceManager(bitField, _knowPeers)
         );
 
         _knowPeers[iPEndPoint] = peerConnection;
@@ -57,6 +62,12 @@ internal class P2PClient(
         var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
+        var excluded = _knowPeers
+            .Values.Select(pc => pc._currentPieceDownloading)
+            .Where(piece => piece.HasValue)
+            .Select(piece => piece!.Value)
+            .ToHashSet();
+        peerConnection.SetCurrentPieceToDownload(GetNextRarestPiece(excluded));
         var peerTask = HandlePeer(peerConnection, cancellationTokenSource.Token);
         peerTasks.Add((peerTask, cancellationTokenSource));
     }
@@ -73,7 +84,8 @@ internal class P2PClient(
                 remoteEndPoint,
                 bitField,
                 FileManager,
-                new RequestManager()
+                new RequestManager(),
+                new PieceManager(bitField, _knowPeers)
             );
 
             _knowPeers[remoteEndPoint] = peerConnection;
@@ -86,6 +98,12 @@ internal class P2PClient(
             var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
                 cancellationToken
             );
+            var excluded = _knowPeers
+                .Values.Select(pc => pc._currentPieceDownloading)
+                .Where(piece => piece.HasValue)
+                .Select(piece => piece!.Value)
+                .ToHashSet();
+            peerConnection.SetCurrentPieceToDownload(GetNextRarestPiece(excluded));
             var peerTask = HandlePeer(peerConnection, cancellationTokenSource.Token);
             peerTasks.Add((peerTask, cancellationTokenSource));
         }
@@ -101,24 +119,47 @@ internal class P2PClient(
         await Task.WhenAll(outgoing, incoming);
     }
 
-    private static TcpListener GetFreeTcpListenerInRange(int start, int end)
+    public Dictionary<int, int> GetPieceAvailability()
     {
-        for (int port = start; port <= end; port++)
+        int pieceCount = bitField.Length;
+        var availability = new int[pieceCount];
+
+        foreach (var peerBits in Bitfields)
         {
-            try
+            for (int i = 0; i < pieceCount; i++)
             {
-                var listener = new TcpListener(IPAddress.IPv6Any, port);
-                listener.Server.DualMode = true;
-                listener.Start(); // Try to bind — this reserves the port
-                return listener;
-            }
-            catch (SocketException)
-            {
-                // Port already in use — try next one
+                if (peerBits[i])
+                    availability[i]++;
             }
         }
 
-        throw new Exception("No free port found in the specified range.");
+        var dict = new Dictionary<int, int>(pieceCount);
+        for (int i = 0; i < pieceCount; i++)
+        {
+            if (availability[i] > 0 && !bitField[i])
+                dict[i] = availability[i];
+        }
+
+        return dict;
+    }
+
+    public int? GetNextRarestPiece(HashSet<int>? excluded = null, int rarestSampleSize = 5)
+    {
+        var availability = GetPieceAvailability();
+
+        if (excluded is not null)
+        {
+            foreach (var ex in excluded)
+                availability.Remove(ex);
+        }
+
+        if (availability.Count == 0)
+            return null;
+
+        var sorted = availability.OrderBy(kv => kv.Value).ToList();
+        var subset = sorted.Take(rarestSampleSize).ToList();
+        int choiceIndex = _rng.Next(subset.Count);
+        return subset[choiceIndex].Key;
     }
 
     public void Dispose()

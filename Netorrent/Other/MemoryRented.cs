@@ -14,4 +14,11 @@ internal struct MemoryRented<T>(IMemoryOwner<T> owner, int length) : IDisposable
         rented.AsSpan().CopyTo(owner.Memory.Span);
         return new MemoryRented<T>(owner, rented.Length);
     }
+
+    public static MemoryRented<T> From(MemoryRented<T> rented)
+    {
+        var owner = MemoryPool<T>.Shared.Rent(rented.Memory.Length);
+        rented.Memory.CopyTo(owner.Memory);
+        return new MemoryRented<T>(owner, rented.Memory.Length);
+    }
 }

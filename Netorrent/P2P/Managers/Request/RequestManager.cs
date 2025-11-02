@@ -5,7 +5,7 @@ namespace Netorrent.P2P.Managers.Request;
 internal class RequestManager : IDisposable
 {
     private readonly Channel<Request> _pendingRequests = Channel.CreateBounded<Request>(
-        new BoundedChannelOptions(50) { SingleWriter = false, SingleReader = true }
+        new BoundedChannelOptions(50) { SingleWriter = true, SingleReader = true }
     );
 
     private readonly IList<Request> _requestList = [];

@@ -1,4 +1,5 @@
 ﻿using System.Security.Cryptography;
+using Netorrent.P2P.Managers.Request;
 using Netorrent.P2P.Structs;
 using Netorrent.TorrentFile.FileStructure;
 
@@ -11,6 +12,9 @@ internal class FileManager : IAsyncDisposable
     private readonly int _pieceLength;
     private readonly List<byte[]> _pieceHashes;
     public Bitfield BitField { get; private set; }
+
+    public const long BlockSize = 16 * 1024;
+    public long TotalSize => _files.Sum(f => f.Length);
 
     public FileManager(
         string outputDirectory,
@@ -40,6 +44,35 @@ internal class FileManager : IAsyncDisposable
             _files.Add(new TorrentFileEntry(fullPath, offset, item.Length, stream));
             offset += item.Length;
         }
+    }
+
+    public Request[] GetBlocksByPieceIndex(int pieceIndex)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(pieceIndex);
+
+        // total number of pieces
+        var pieceCount = (TotalSize + _pieceLength - 1) / _pieceLength;
+        if (pieceIndex >= pieceCount)
+            throw new ArgumentOutOfRangeException(nameof(pieceIndex));
+
+        // compute actual piece length (last piece may be smaller)
+        var pieceLength =
+            (pieceIndex == pieceCount - 1)
+                ? TotalSize - (long)pieceIndex * _pieceLength
+                : _pieceLength;
+
+        // number of blocks in this piece (ceiling division)
+        int blockCount = (int)((pieceLength + BlockSize - 1) / BlockSize);
+        var requests = new Request[blockCount];
+
+        for (int i = 0; i < blockCount; i++)
+        {
+            var begin = (int)(i * BlockSize);
+            var length = (int)Math.Min(BlockSize, pieceLength - begin);
+            requests[i] = new Request(pieceIndex, begin, length);
+        }
+
+        return requests;
     }
 
     public ulong GetWrittenBytes()
@@ -75,13 +108,6 @@ internal class FileManager : IAsyncDisposable
         long globalOffset = (long)pieceIndex * _pieceLength;
         globalOffset += begin;
         await WriteAsync(globalOffset, pieceData, ct);
-
-        bool ok = await VerifyPieceAsync(pieceIndex, ct);
-        if (!ok)
-        {
-            // Optionally delete or mark as bad
-            throw new InvalidDataException($"Piece {pieceIndex} failed hash verification.");
-        }
     }
 
     public async ValueTask<bool> VerifyPieceAsync(int pieceIndex, CancellationToken ct = default)

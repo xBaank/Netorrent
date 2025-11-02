@@ -2,11 +2,13 @@
 using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Principal;
 using System.Text;
 using Lazy;
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.Other;
+using Netorrent.P2P.Managers.Piece;
 using Netorrent.P2P.Managers.Request;
 using Netorrent.P2P.Structs;
 using TimeSpanXt;
@@ -19,6 +21,7 @@ internal class PeerConnection(
     Bitfield myBitField,
     FileManager fileManager,
     RequestManager requestManager,
+    PieceManager pieceManager,
     bool amChocking = true,
     bool amInterested = false,
     bool peerChocking = true,
@@ -37,9 +40,20 @@ internal class PeerConnection(
     public bool PeerInterested { get; private set; } = peerInterested;
     public string? PeerId { get; private set; }
     public Bitfield PeerBitField { get; private set; } = new(myBitField.Length);
+    private int? _currentPieceDownloading;
+    private Request[] _blocks = [];
 
     private readonly FileManager _fileManager = fileManager;
     private readonly RequestManager _requestManager = requestManager;
+    private readonly PieceManager _pieceManager = pieceManager;
+
+    public void SetCurrentPieceToDownload(int? index)
+    {
+        _currentPieceDownloading = index;
+        if (index is null)
+            return;
+        _blocks = _fileManager.GetBlocksByPieceIndex(index.Value);
+    }
 
     public async Task WriteLoop(CancellationToken cancellationToken)
     {
@@ -181,15 +195,17 @@ internal class PeerConnection(
         await SendMessage(pieceMessage, cancellationToken);
     }
 
-    private async Task ReceivePieceAsync(Message message, CancellationToken cancellationToken)
+    private async ValueTask ReceivePieceAsync(Message message, CancellationToken cancellationToken)
     {
         var span = message.Payload!.Value.Memory.Span;
         var index = BinaryPrimitives.ReadInt32BigEndian(span[..4]);
         var begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
-        var pieceData = message.Payload!.Value.Memory[8..];
-        await _fileManager.WritePieceAsync(index, begin, pieceData, cancellationToken);
+        var block = new Block(index, begin, MemoryRented<byte>.From(message.Payload!.Value));
+        await _pieceManager.AddBlockAsync(block);
         await MyBitField.HavePiece(index, cancellationToken);
     }
+
+    private async ValueTask SendPieceAsync(CancellationToken cancellationToken) { }
 
     private void ReceiveCancel(Message message)
     {
@@ -202,7 +218,7 @@ internal class PeerConnection(
         _requestManager.CancelRequest(request);
     }
 
-    public async Task PerformHandshakeAsync(
+    public async ValueTask PerformHandshakeAsync(
         ReadOnlyMemory<byte> infoHash,
         string peerId,
         CancellationToken cancellationToken = default
@@ -292,9 +308,10 @@ internal class PeerConnection(
         PeerId = receivedHandshake.PeerId;
     }
 
-    private async Task<(IMemoryOwner<byte> pool, Handshake receivedHandshake)> ReceiveHandshake(
-        CancellationToken cancellationToken
-    )
+    private async ValueTask<(
+        IMemoryOwner<byte> pool,
+        Handshake receivedHandshake
+    )> ReceiveHandshake(CancellationToken cancellationToken)
     {
         using var cts = cancellationToken.WithTimeout(10.Seconds());
         using var pool = MemoryPool<byte>.Shared.Rent(Handshake.TotalLength);
@@ -304,7 +321,7 @@ internal class PeerConnection(
         return (pool, receivedHandshake);
     }
 
-    private async Task<MemoryRented<byte>> SendHandHandshake(
+    private async ValueTask<MemoryRented<byte>> SendHandHandshake(
         ReadOnlyMemory<byte> infoHash,
         string peerId,
         CancellationToken cancellationToken
