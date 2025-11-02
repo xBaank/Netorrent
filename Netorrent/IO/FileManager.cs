@@ -2,6 +2,7 @@
 using Netorrent.P2P.Managers.Request;
 using Netorrent.P2P.Structs;
 using Netorrent.TorrentFile.FileStructure;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Netorrent.IO;
 
@@ -46,7 +47,7 @@ internal class FileManager : IAsyncDisposable
         }
     }
 
-    public Request[] GetBlocksByPieceIndex(int pieceIndex)
+    public List<RequestBlock> GetBlocksByPieceIndex(int pieceIndex)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(pieceIndex);
 
@@ -63,13 +64,13 @@ internal class FileManager : IAsyncDisposable
 
         // number of blocks in this piece (ceiling division)
         int blockCount = (int)((pieceLength + BlockSize - 1) / BlockSize);
-        var requests = new Request[blockCount];
+        var requests = new List<RequestBlock>(blockCount);
 
         for (int i = 0; i < blockCount; i++)
         {
             var begin = (int)(i * BlockSize);
             var length = (int)Math.Min(BlockSize, pieceLength - begin);
-            requests[i] = new Request(pieceIndex, begin, length);
+            requests[i] = new RequestBlock(pieceIndex, begin, length);
         }
 
         return requests;
@@ -121,6 +122,44 @@ internal class FileManager : IAsyncDisposable
         var actualHash = SHA1.HashData(actualData);
 
         return expectedHash.SequenceEqual(actualHash);
+    }
+
+    public async ValueTask ClearPieceAsync(int pieceIndex, CancellationToken ct)
+    {
+        // Calculate where the piece starts in the torrent
+        long globalOffset = (long)pieceIndex * _pieceLength;
+        long remaining = _pieceLength;
+
+        // Reuse a shared zero buffer instead of allocating new arrays per write
+        byte[] zeroBuffer = [];
+
+        foreach (var file in _files)
+        {
+            if (globalOffset >= file.EndOffset)
+                continue;
+
+            long fileOffset = Math.Max(0, globalOffset - file.StartOffset);
+            long writable = Math.Min(remaining, file.Length - fileOffset);
+
+            // lazily allocate a zero buffer large enough for current write
+            if (zeroBuffer.Length < writable)
+                zeroBuffer = new byte[writable];
+
+            Directory.CreateDirectory(Path.GetDirectoryName(file.FullPath)!);
+
+            await RandomAccess.WriteAsync(
+                file.FileStream.SafeFileHandle,
+                zeroBuffer.AsMemory(0, (int)writable),
+                fileOffset,
+                ct
+            );
+
+            globalOffset += writable;
+            remaining -= writable;
+
+            if (remaining <= 0)
+                break;
+        }
     }
 
     private async ValueTask WriteAsync(
@@ -208,6 +247,7 @@ internal class FileManager : IAsyncDisposable
     {
         foreach (var item in _files)
         {
+            RandomAccess.FlushToDisk(item.FileStream.SafeFileHandle);
             await item.DisposeAsync();
         }
     }

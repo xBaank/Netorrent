@@ -37,6 +37,21 @@ internal class Bitfield
             await OnHavePieceAsync(index, cancellationToken);
     }
 
+    public bool HasAnyMissingPiece(Bitfield other)
+    {
+        if (other.Length != Length)
+            throw new ArgumentException("Bitfields must have the same length.", nameof(other));
+
+        for (int i = 0; i < Length; i++)
+        {
+            // If the peer has the piece and I don't, I'm missing something they have
+            if (other[i] && !this[i])
+                return true;
+        }
+
+        return false;
+    }
+
     public MemoryRented<byte> ToMemoryRented()
     {
         if (!_bits.HasAnySet())

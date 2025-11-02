@@ -1,4 +1,5 @@
-﻿using System.Buffers;
+﻿using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
@@ -30,6 +31,9 @@ internal class PeerConnection(
 {
     [Lazy]
     private NetworkStream Stream => TcpClient.GetStream();
+    private readonly FileManager _fileManager = fileManager;
+    private readonly RequestManager _requestManager = requestManager;
+    private readonly PieceManager _pieceManager = pieceManager;
 
     public TcpClient TcpClient { get; } = tcpClient;
     public IPEndPoint IPEndPoint { get; } = iPEndPoint;
@@ -40,19 +44,13 @@ internal class PeerConnection(
     public bool PeerInterested { get; private set; } = peerInterested;
     public string? PeerId { get; private set; }
     public Bitfield PeerBitField { get; private set; } = new(myBitField.Length);
-    private int? _currentPieceDownloading;
-    private Request[] _blocks = [];
-
-    private readonly FileManager _fileManager = fileManager;
-    private readonly RequestManager _requestManager = requestManager;
-    private readonly PieceManager _pieceManager = pieceManager;
+    public int? CurrentPieceDownloading => _pieceManager.CurrentDownloadingPieceIndex;
+    public event Func<int, PeerConnection, Task>? OnPieceDownloadedAsync;
 
     public void SetCurrentPieceToDownload(int? index)
     {
-        _currentPieceDownloading = index;
-        if (index is null)
-            return;
-        _blocks = _fileManager.GetBlocksByPieceIndex(index.Value);
+        var blocks = index.HasValue ? _fileManager.GetBlocksByPieceIndex(index.Value).ToList() : [];
+        _pieceManager.SetCurrentPiece(index, blocks);
     }
 
     public async Task WriteLoop(CancellationToken cancellationToken)
@@ -64,6 +62,7 @@ internal class PeerConnection(
 
         while (!cancellationToken.IsCancellationRequested)
         {
+            //TODO Use taskCompletitionSource and implement sendRequest
             //SEEDER LOGIC
             if (_requestManager.IsChoking)
             {
@@ -80,6 +79,7 @@ internal class PeerConnection(
             }
 
             //LEECHER LOGIC
+            //TODO Implement request sending logic
 
             await Task.Yield();
         }
@@ -135,7 +135,7 @@ internal class PeerConnection(
 
             if (message.Id == Message.Piece)
             {
-                await ReceivePieceAsync(message, cancellationToken);
+                await ReceiveBlockAsync(message, cancellationToken);
             }
 
             if (message.Id == Message.Cancel)
@@ -152,10 +152,32 @@ internal class PeerConnection(
 
     public async Task ProcessLoop(CancellationToken cancellationToken)
     {
-        await foreach (var item in _requestManager.Requests.WithCancellation(cancellationToken))
-        {
-            await ProcessPieceAsync(item, cancellationToken);
-        }
+        var readRequestTask = Task.Run(
+            async () =>
+            {
+                await foreach (
+                    var item in _requestManager.Requests.WithCancellation(cancellationToken)
+                )
+                {
+                    await ProcessRequestAsync(item, cancellationToken);
+                }
+            },
+            cancellationToken
+        );
+        var writeBlocksTask = Task.Run(
+            async () =>
+            {
+                await foreach (
+                    var item in _pieceManager.BlocksToWrite.WithCancellation(cancellationToken)
+                )
+                {
+                    await ProcessBlockAsync(item, cancellationToken);
+                }
+            },
+            cancellationToken
+        );
+
+        await Task.WhenAll(readRequestTask, writeBlocksTask);
     }
 
     private async ValueTask ReceiveRequestAsync(
@@ -168,7 +190,7 @@ internal class PeerConnection(
         var begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
         var length = BinaryPrimitives.ReadInt32BigEndian(span[8..12]);
 
-        var request = new Request(index, begin, length);
+        var request = new RequestBlock(index, begin, length);
         var response = await _requestManager.AddRequestAsync(request, cancellationToken);
 
         if (response == RequestResponseType.Violation)
@@ -181,7 +203,10 @@ internal class PeerConnection(
             return;
     }
 
-    private async ValueTask ProcessPieceAsync(Request request, CancellationToken cancellationToken)
+    private async ValueTask ProcessRequestAsync(
+        RequestBlock request,
+        CancellationToken cancellationToken
+    )
     {
         var pieceData = await _fileManager.ReadPieceAsync(
             request.Index,
@@ -191,21 +216,56 @@ internal class PeerConnection(
         );
 
         using var pieceMessage = Message.CreatePiece(request.Index, request.Begin, pieceData);
-
         await SendMessage(pieceMessage, cancellationToken);
     }
 
-    private async ValueTask ReceivePieceAsync(Message message, CancellationToken cancellationToken)
+    private async ValueTask ReceiveBlockAsync(Message message, CancellationToken cancellationToken)
     {
         var span = message.Payload!.Value.Memory.Span;
         var index = BinaryPrimitives.ReadInt32BigEndian(span[..4]);
         var begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
         var block = new Block(index, begin, MemoryRented<byte>.From(message.Payload!.Value));
         await _pieceManager.AddBlockAsync(block);
-        await MyBitField.HavePiece(index, cancellationToken);
     }
 
-    private async ValueTask SendPieceAsync(CancellationToken cancellationToken) { }
+    private async ValueTask ProcessBlockAsync(Block block, CancellationToken cancellationToken)
+    {
+        using var payload = block.Payload;
+        await _fileManager.WritePieceAsync(
+            block.Index,
+            block.Begin,
+            payload.Memory,
+            cancellationToken
+        );
+        if (_pieceManager.HasFinishedCurrentPiece)
+        {
+            var isOk = await _fileManager.VerifyPieceAsync(
+                _pieceManager.CurrentDownloadingPieceIndex!.Value,
+                cancellationToken
+            );
+
+            if (!isOk)
+            {
+                await _fileManager.ClearPieceAsync(
+                    _pieceManager.CurrentDownloadingPieceIndex!.Value,
+                    cancellationToken
+                );
+                return;
+            }
+
+            if (OnPieceDownloadedAsync is not null)
+            {
+                await MyBitField.HavePiece(
+                    _pieceManager.CurrentDownloadingPieceIndex!.Value,
+                    cancellationToken
+                );
+                await OnPieceDownloadedAsync(
+                    _pieceManager.CurrentDownloadingPieceIndex.Value,
+                    this
+                );
+            }
+        }
+    }
 
     private void ReceiveCancel(Message message)
     {
@@ -214,7 +274,7 @@ internal class PeerConnection(
         var begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
         var length = BinaryPrimitives.ReadInt32BigEndian(span[8..12]);
 
-        var request = new Request(index, begin, length);
+        var request = new RequestBlock(index, begin, length);
         _requestManager.CancelRequest(request);
     }
 

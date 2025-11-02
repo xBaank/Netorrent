@@ -4,22 +4,27 @@ namespace Netorrent.P2P.Managers.Request;
 
 internal class RequestManager : IDisposable
 {
-    private readonly Channel<Request> _pendingRequests = Channel.CreateBounded<Request>(
-        new BoundedChannelOptions(50) { SingleWriter = true, SingleReader = true }
-    );
-
-    private readonly IList<Request> _requestList = [];
-
     private const int PEER_REQUEST_LIMIT = 8;
     private const int MAX_IGNORED_REQUESTS = 16;
     private const int MAX_VIOLATION_COUNT = 16;
     private const int MAX_BLOCK_LENGTH = 16 * 1024;
 
+    private readonly Channel<RequestBlock> _pendingRequests = Channel.CreateBounded<RequestBlock>(
+        new BoundedChannelOptions(50) { SingleWriter = true, SingleReader = true }
+    );
+    private readonly IList<RequestBlock> _requestList = [];
     private int _violationCount = 0;
     private int _ignoredRequests = 0;
 
+    public bool IsChoking =>
+        _pendingRequests.Reader.Count >= MAX_IGNORED_REQUESTS + PEER_REQUEST_LIMIT;
+    public bool IsIgnoring => _pendingRequests.Reader.Count >= PEER_REQUEST_LIMIT;
+    public bool ShouldUnchoke => _pendingRequests.Reader.Count <= 4;
+    public IAsyncEnumerable<RequestBlock> Requests =>
+        _pendingRequests.Reader.ReadAllAsync().Where(i => !i.IsCancelled);
+
     public async ValueTask<RequestResponseType> AddRequestAsync(
-        Request request,
+        RequestBlock request,
         CancellationToken cancellationToken
     )
     {
@@ -58,7 +63,7 @@ internal class RequestManager : IDisposable
         return RequestResponseType.Ok;
     }
 
-    public void CancelRequest(Request request)
+    public void CancelRequest(RequestBlock request)
     {
         var toCancel = _requestList.FirstOrDefault(i => i == request);
         if (toCancel == default)
@@ -66,13 +71,6 @@ internal class RequestManager : IDisposable
         toCancel.IsCancelled = true;
         _requestList.Remove(request);
     }
-
-    public bool IsChoking =>
-        _pendingRequests.Reader.Count >= MAX_IGNORED_REQUESTS + PEER_REQUEST_LIMIT;
-    public bool IsIgnoring => _pendingRequests.Reader.Count >= PEER_REQUEST_LIMIT;
-    public bool ShouldUnchoke => _pendingRequests.Reader.Count <= 4;
-    public IAsyncEnumerable<Request> Requests =>
-        _pendingRequests.Reader.ReadAllAsync().Where(i => !i.IsCancelled);
 
     public void Dispose()
     {
