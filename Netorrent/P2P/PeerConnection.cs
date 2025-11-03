@@ -28,7 +28,7 @@ internal class PeerConnection(
     bool peerInterested = false
 ) : IAsyncDisposable
 {
-    private const int TimeoutInSeconds = 10;
+    private const int TimeoutInSeconds = 120;
 
     [Lazy]
     private NetworkStream Stream => TcpClient.GetStream();
@@ -146,7 +146,7 @@ internal class PeerConnection(
             if (message.Id == Message.Bitfield)
             {
                 var bitfieldBytes = message.Payload!.Value.Memory;
-                PeerBitField = new Bitfield(bitfieldBytes.ToArray());
+                PeerBitField = new Bitfield(bitfieldBytes.Span, MyBitField.Length);
                 await SendInterest(cancellationToken);
                 continue;
             }
@@ -408,7 +408,7 @@ internal class PeerConnection(
 
     private async Task SendInterest(CancellationToken cancellationToken)
     {
-        var interest = PeerBitField.HasAnyMissingPiece(MyBitField);
+        var interest = MyBitField.HasAnyMissingPiece(PeerBitField);
         if (interest != AmInterested)
         {
             var message = Message.CreateInterested();
@@ -447,9 +447,7 @@ internal class PeerConnection(
         using var lengthPool = MemoryPool<byte>.Shared.Rent(4);
         var lengthBuffer = lengthPool.Memory[..4];
         await Stream.ReadExactlyAsync(lengthBuffer, cts.Token);
-        int messageLength = BitConverter.ToInt32(
-            lengthBuffer.Span[..4].ToArray().Reverse().ToArray()
-        );
+        int messageLength = BinaryPrimitives.ReadInt32BigEndian(lengthBuffer.Span[..4]);
         if (messageLength == 0)
             return Message.CreateKeepAlive();
         using var messagePool = MemoryPool<byte>.Shared.Rent(lengthBuffer.Length + messageLength);

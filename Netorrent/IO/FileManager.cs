@@ -70,7 +70,7 @@ internal class FileManager : IAsyncDisposable
 
         // number of blocks in this piece (ceiling division)
         int blockCount = (int)((pieceLength + BlockSize - 1) / BlockSize);
-        var requests = new List<RequestBlock>(blockCount);
+        var requests = new RequestBlock[blockCount];
 
         for (int i = 0; i < blockCount; i++)
         {
@@ -79,7 +79,7 @@ internal class FileManager : IAsyncDisposable
             requests[i] = new RequestBlock(pieceIndex, begin, length);
         }
 
-        return requests;
+        return [.. requests];
     }
 
     public ulong GetWrittenBytes()

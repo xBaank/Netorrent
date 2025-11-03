@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections;
 using Netorrent.Other;
 
@@ -14,9 +15,20 @@ internal class Bitfield
         _bits = new BitArray(pieceCount, isInitialized);
     }
 
-    public Bitfield(byte[] bytes)
+    public Bitfield(ReadOnlySpan<byte> bytes, int pieceCount)
     {
-        _bits = new BitArray(bytes);
+        ArgumentOutOfRangeException.ThrowIfNegative(pieceCount);
+
+        _bits = new BitArray(pieceCount);
+
+        for (int i = 0; i < pieceCount; i++)
+        {
+            int byteIndex = i / 8;
+            int bitIndex = 7 - (i % 8); // Most significant byte
+
+            bool bit = (bytes[byteIndex] & (1 << bitIndex)) != 0;
+            _bits[i] = bit;
+        }
     }
 
     public int Length => _bits.Length;

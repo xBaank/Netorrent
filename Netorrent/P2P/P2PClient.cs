@@ -108,7 +108,8 @@ internal class P2PClient(
             .Where(piece => piece.HasValue)
             .Select(piece => piece!.Value)
             .ToHashSet();
-        await peerConnection.SetCurrentPieceToDownloadAsync(GetNextRarestPiece(excluded));
+        var pieceIndex = GetNextRarestPiece(excluded);
+        await peerConnection.SetCurrentPieceToDownloadAsync(pieceIndex);
     }
 
     private async Task SetNewPieceAsync(int pieceIndex, PeerConnection peerConnection)

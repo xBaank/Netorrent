@@ -71,9 +71,9 @@ internal readonly record struct Message(byte Id, MemoryRented<byte>? Payload) : 
 
         if (length == 1)
             return new Message(id, null);
-        //TODO Fix this
+        //TODO fix memory pool
         var memoryOwner = MemoryPool<byte>.Shared.Rent(length - 1);
-        var buffer = memoryOwner.Memory[5..(length - 1)];
+        var buffer = memoryOwner.Memory[..(length - 1)];
 
         data.Slice(5, length - 1).CopyTo(buffer.Span);
 
