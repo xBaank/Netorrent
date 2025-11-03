@@ -15,7 +15,7 @@ internal class P2PClient(
     string peerId,
     FileManager fileManager,
     Bitfield bitField
-) : IDisposable
+) : IAsyncDisposable
 {
     private readonly TcpListener _listener = Tcp.GetFreeTcpListenerInRange(6881, 6899);
     private readonly MetaInfo _metaInfo = metaInfo;
@@ -58,11 +58,10 @@ internal class P2PClient(
             peerId,
             cancellationToken
         );
-        await peerConnection.SendBitfieldAsync(bitField, cancellationToken);
         var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
-        SetPieceToDownload(peerConnection);
+        await SetPieceToDownload(peerConnection);
         peerConnection.OnPieceDownloadedAsync += PieceDownloadedAsync;
         var peerTask = HandlePeer(peerConnection, cancellationTokenSource.Token);
         peerTasks.Add((peerTask, cancellationTokenSource));
@@ -94,14 +93,14 @@ internal class P2PClient(
             var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
                 cancellationToken
             );
-            SetPieceToDownload(peerConnection);
+            await SetPieceToDownload(peerConnection);
             peerConnection.OnPieceDownloadedAsync += PieceDownloadedAsync;
             var peerTask = HandlePeer(peerConnection, cancellationTokenSource.Token);
             peerTasks.Add((peerTask, cancellationTokenSource));
         }
     }
 
-    private void SetPieceToDownload(PeerConnection peerConnection)
+    private async ValueTask SetPieceToDownload(PeerConnection peerConnection)
     {
         var excluded = _knowPeers
             .Values.Where(i => i != peerConnection)
@@ -109,13 +108,12 @@ internal class P2PClient(
             .Where(piece => piece.HasValue)
             .Select(piece => piece!.Value)
             .ToHashSet();
-        peerConnection.SetCurrentPieceToDownload(GetNextRarestPiece(excluded));
+        await peerConnection.SetCurrentPieceToDownloadAsync(GetNextRarestPiece(excluded));
     }
 
-    private Task PieceDownloadedAsync(int pieceIndex, PeerConnection peerConnection)
+    private async Task PieceDownloadedAsync(int pieceIndex, PeerConnection peerConnection)
     {
-        SetPieceToDownload(peerConnection);
-        return Task.CompletedTask;
+        await SetPieceToDownload(peerConnection);
     }
 
     private static async Task HandlePeer(
@@ -123,9 +121,7 @@ internal class P2PClient(
         CancellationToken cancellationToken
     )
     {
-        var outgoing = peerConnection.WriteLoop(cancellationToken);
-        var incoming = peerConnection.ReadLoop(cancellationToken);
-        await Task.WhenAll(outgoing, incoming);
+        await peerConnection.ProcessLoopAsync(cancellationToken);
     }
 
     public Dictionary<int, int> GetPieceAvailability()
@@ -171,7 +167,7 @@ internal class P2PClient(
         return subset[choiceIndex].Key;
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         _listener.Stop();
         foreach (var (_, cancellationTokenSource) in peerTasks)
@@ -181,7 +177,7 @@ internal class P2PClient(
         foreach (var item in _knowPeers)
         {
             item.Value.OnPieceDownloadedAsync -= PieceDownloadedAsync;
-            item.Value.Dispose();
+            await item.Value.DisposeAsync();
         }
     }
 }

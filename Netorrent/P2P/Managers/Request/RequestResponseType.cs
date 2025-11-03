@@ -3,7 +3,6 @@
 internal enum RequestResponseType
 {
     Ok,
-    Choked,
     Ignored,
     Violation,
 }
