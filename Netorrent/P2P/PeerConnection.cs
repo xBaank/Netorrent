@@ -3,7 +3,6 @@ using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading;
 using System.Threading.Channels;
 using Lazy;
 using Netorrent.Extensions;
@@ -11,7 +10,7 @@ using Netorrent.IO;
 using Netorrent.Other;
 using Netorrent.P2P.Managers.Piece;
 using Netorrent.P2P.Managers.Request;
-using Netorrent.P2P.Structs;
+using Netorrent.P2P.Messages;
 using TimeSpanXt;
 
 namespace Netorrent.P2P;
@@ -29,6 +28,8 @@ internal class PeerConnection(
     bool peerInterested = false
 ) : IAsyncDisposable
 {
+    private const int TimeoutInSeconds = 10;
+
     [Lazy]
     private NetworkStream Stream => TcpClient.GetStream();
     private readonly FileManager _fileManager = fileManager;
@@ -53,7 +54,7 @@ internal class PeerConnection(
     public string? PeerId { get; private set; }
     public Bitfield PeerBitField { get; private set; } = new(myBitField.Length);
     public int? CurrentPieceDownloading => _pieceManager.CurrentDownloadingPieceIndex;
-    public event Func<int, PeerConnection, Task>? OnPieceDownloadedAsync;
+    public event Func<int, PeerConnection, Task>? NewPieceNededAsync;
 
     public async ValueTask SetCurrentPieceToDownloadAsync(int? index)
     {
@@ -325,16 +326,13 @@ internal class PeerConnection(
                 return;
             }
 
-            if (OnPieceDownloadedAsync is not null)
+            if (NewPieceNededAsync is not null)
             {
                 await MyBitField.HavePiece(
                     _pieceManager.CurrentDownloadingPieceIndex!.Value,
                     cancellationToken
                 );
-                await OnPieceDownloadedAsync(
-                    _pieceManager.CurrentDownloadingPieceIndex.Value,
-                    this
-                );
+                await NewPieceNededAsync(_pieceManager.CurrentDownloadingPieceIndex.Value, this);
             }
         }
     }
@@ -356,7 +354,7 @@ internal class PeerConnection(
         CancellationToken cancellationToken = default
     )
     {
-        using var timeoutCts = new CancellationTokenSource(10.Seconds());
+        using var timeoutCts = new CancellationTokenSource(TimeoutInSeconds.Seconds());
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             timeoutCts.Token
@@ -376,7 +374,7 @@ internal class PeerConnection(
         CancellationToken cancellationToken = default
     )
     {
-        using var timeoutCts = new CancellationTokenSource(10.Seconds());
+        using var timeoutCts = new CancellationTokenSource(TimeoutInSeconds.Seconds());
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             timeoutCts.Token
@@ -396,7 +394,7 @@ internal class PeerConnection(
         CancellationToken cancellationToken = default
     )
     {
-        using var cts = cancellationToken.WithTimeout(10.Seconds());
+        using var cts = cancellationToken.WithTimeout(TimeoutInSeconds.Seconds());
         using var messageBytes = message.ToBytes();
         await Stream.WriteAsync(messageBytes.Memory, cts.Token);
         await Stream.FlushAsync(cts.Token);
@@ -416,6 +414,10 @@ internal class PeerConnection(
             var message = Message.CreateInterested();
             await _outgoingMessages.Writer.WriteAsync(message, cancellationToken);
             AmInterested = interest;
+            if (CurrentPieceDownloading is null && NewPieceNededAsync is not null)
+            {
+                await NewPieceNededAsync(-1, this);
+            }
         }
     }
 
@@ -441,7 +443,7 @@ internal class PeerConnection(
 
     public async ValueTask<Message> ReceiveMessage(CancellationToken cancellationToken = default)
     {
-        using var cts = cancellationToken.WithTimeout(10.Seconds());
+        using var cts = cancellationToken.WithTimeout(TimeoutInSeconds.Seconds());
         using var lengthPool = MemoryPool<byte>.Shared.Rent(4);
         var lengthBuffer = lengthPool.Memory[..4];
         await Stream.ReadExactlyAsync(lengthBuffer, cts.Token);
@@ -450,10 +452,12 @@ internal class PeerConnection(
         );
         if (messageLength == 0)
             return Message.CreateKeepAlive();
-        using var messagePool = MemoryPool<byte>.Shared.Rent(messageLength);
-        var messageBuffer = messagePool.Memory[..messageLength];
+        using var messagePool = MemoryPool<byte>.Shared.Rent(lengthBuffer.Length + messageLength);
+        var totalMessageBuffer = messagePool.Memory[..(lengthBuffer.Length + messageLength)];
+        var messageBuffer = messagePool.Memory.Slice(lengthBuffer.Length, messageLength);
+        lengthBuffer.CopyTo(totalMessageBuffer);
         await Stream.ReadExactlyAsync(messageBuffer, cts.Token);
-        return Message.FromBytes(messageBuffer.Span);
+        return Message.FromBytes(totalMessageBuffer.Span);
     }
 
     public async Task SendBitfieldAsync(Bitfield bitField, CancellationToken cancellationToken)
@@ -476,7 +480,7 @@ internal class PeerConnection(
         Handshake receivedHandshake
     )> ReceiveHandshake(CancellationToken cancellationToken)
     {
-        using var cts = cancellationToken.WithTimeout(10.Seconds());
+        using var cts = cancellationToken.WithTimeout(TimeoutInSeconds.Seconds());
         using var pool = MemoryPool<byte>.Shared.Rent(Handshake.TotalLength);
         var buffer = pool.Memory[..Handshake.TotalLength];
         await Stream.ReadExactlyAsync(buffer, cts.Token);
@@ -490,7 +494,7 @@ internal class PeerConnection(
         CancellationToken cancellationToken
     )
     {
-        using var cts = cancellationToken.WithTimeout(10.Seconds());
+        using var cts = cancellationToken.WithTimeout(TimeoutInSeconds.Seconds());
         var handshake = Handshake.Create(infoHash.ToArray(), Encoding.ASCII.GetBytes(peerId));
         var bytesRented = handshake.ToBytes();
         await Stream.WriteAsync(bytesRented.Memory, cts.Token);

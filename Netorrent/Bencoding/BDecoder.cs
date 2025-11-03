@@ -1,5 +1,4 @@
-﻿using System.Text;
-using Netorrent.Bencoding.Structs;
+﻿using Netorrent.Bencoding.Structs;
 
 namespace Netorrent.Bencoding;
 

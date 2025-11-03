@@ -1,6 +1,4 @@
-﻿using Netorrent.P2P.Managers.Piece;
-
-namespace Netorrent.P2P.Managers.Request;
+﻿namespace Netorrent.P2P.Managers.Request;
 
 internal struct RequestBlock(int index, int begin, int length)
 {

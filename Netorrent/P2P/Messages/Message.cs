@@ -1,10 +1,8 @@
-﻿using System;
-using System.Buffers;
+﻿using System.Buffers;
 using System.Buffers.Binary;
-using System.Text;
 using Netorrent.Other;
 
-namespace Netorrent.P2P.Structs;
+namespace Netorrent.P2P.Messages;
 
 /// <summary>
 /// Represents a generic BitTorrent protocol message.
@@ -73,7 +71,7 @@ internal readonly record struct Message(byte Id, MemoryRented<byte>? Payload) : 
 
         if (length == 1)
             return new Message(id, null);
-
+        //TODO Fix this
         var memoryOwner = MemoryPool<byte>.Shared.Rent(length - 1);
         var buffer = memoryOwner.Memory[5..(length - 1)];
 

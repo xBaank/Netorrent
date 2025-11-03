@@ -1,7 +1,6 @@
-﻿using System.Collections;
-using Netorrent.IO;
+﻿using Netorrent.IO;
 using Netorrent.P2P;
-using Netorrent.P2P.Structs;
+using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker;
 

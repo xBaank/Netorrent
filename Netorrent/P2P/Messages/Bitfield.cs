@@ -2,7 +2,7 @@
 using System.Collections;
 using Netorrent.Other;
 
-namespace Netorrent.P2P.Structs;
+namespace Netorrent.P2P.Messages;
 
 internal class Bitfield
 {
@@ -54,9 +54,6 @@ internal class Bitfield
 
     public MemoryRented<byte> ToMemoryRented()
     {
-        if (!_bits.HasAnySet())
-            return MemoryRented<byte>.From([]);
-
         int byteCount = (_bits.Length + 7) / 8;
         var owner = MemoryPool<byte>.Shared.Rent(byteCount);
         var memory = owner.Memory[..byteCount];
@@ -75,7 +72,7 @@ internal class Bitfield
         for (int i = 0; i < _bits.Length; i++)
         {
             if (_bits[i])
-                dest[i / 8] |= (byte)(1 << (7 - (i % 8)));
+                dest[i / 8] |= (byte)(1 << 7 - i % 8);
         }
     }
 }

@@ -5,7 +5,7 @@ using Netorrent.IO;
 using Netorrent.Other;
 using Netorrent.P2P.Managers.Piece;
 using Netorrent.P2P.Managers.Request;
-using Netorrent.P2P.Structs;
+using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.P2P;
@@ -48,7 +48,7 @@ internal class P2PClient(
             bitField,
             FileManager,
             new RequestManager(),
-            new PieceManager()
+            new PieceManager(FileManager.MaxBlocksByPiece)
         );
 
         _knowPeers[iPEndPoint] = peerConnection;
@@ -62,7 +62,7 @@ internal class P2PClient(
             cancellationToken
         );
         await SetPieceToDownload(peerConnection);
-        peerConnection.OnPieceDownloadedAsync += PieceDownloadedAsync;
+        peerConnection.NewPieceNededAsync += SetNewPieceAsync;
         var peerTask = HandlePeer(peerConnection, cancellationTokenSource.Token);
         peerTasks.Add((peerTask, cancellationTokenSource));
     }
@@ -80,7 +80,7 @@ internal class P2PClient(
                 bitField,
                 FileManager,
                 new RequestManager(),
-                new PieceManager()
+                new PieceManager(FileManager.MaxBlocksByPiece)
             );
 
             _knowPeers[remoteEndPoint] = peerConnection;
@@ -94,7 +94,7 @@ internal class P2PClient(
                 cancellationToken
             );
             await SetPieceToDownload(peerConnection);
-            peerConnection.OnPieceDownloadedAsync += PieceDownloadedAsync;
+            peerConnection.NewPieceNededAsync += SetNewPieceAsync;
             var peerTask = HandlePeer(peerConnection, cancellationTokenSource.Token);
             peerTasks.Add((peerTask, cancellationTokenSource));
         }
@@ -111,7 +111,7 @@ internal class P2PClient(
         await peerConnection.SetCurrentPieceToDownloadAsync(GetNextRarestPiece(excluded));
     }
 
-    private async Task PieceDownloadedAsync(int pieceIndex, PeerConnection peerConnection)
+    private async Task SetNewPieceAsync(int pieceIndex, PeerConnection peerConnection)
     {
         await SetPieceToDownload(peerConnection);
     }
@@ -176,7 +176,7 @@ internal class P2PClient(
         }
         foreach (var item in _knowPeers)
         {
-            item.Value.OnPieceDownloadedAsync -= PieceDownloadedAsync;
+            item.Value.NewPieceNededAsync -= SetNewPieceAsync;
             await item.Value.DisposeAsync();
         }
     }

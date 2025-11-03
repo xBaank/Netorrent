@@ -4,14 +4,16 @@ using Netorrent.P2P.Managers.Request;
 
 namespace Netorrent.P2P.Managers.Piece;
 
-internal class PieceManager()
+internal class PieceManager(int maxBlocks)
 {
     private readonly Channel<Block> _blocksToWrite = Channel.CreateBounded<Block>(
         new BoundedChannelOptions(50) { SingleWriter = true, SingleReader = true }
     );
+    private readonly Channel<RequestBlock> _requestsToSend = Channel.CreateBounded<RequestBlock>(
+        new BoundedChannelOptions(maxBlocks) { SingleWriter = false, SingleReader = true }
+    );
     private readonly List<RequestBlock> _sentRequests = [];
 
-    private Channel<RequestBlock>? _requestsToSend;
     private List<RequestBlock> _currentPieceRequests = [];
 
     public int? CurrentDownloadingPieceIndex { get; set; } = null;
@@ -22,16 +24,13 @@ internal class PieceManager()
 
     public async ValueTask SetCurrentPieceAsync(int? index, List<RequestBlock> requests)
     {
+        if (index is null)
+            return;
+
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxBlocks, requests.Count);
+
         CurrentDownloadingPieceIndex = index;
-        if (index is not null)
-            _currentPieceRequests = requests;
-        _requestsToSend = Channel.CreateBounded<RequestBlock>(
-            new BoundedChannelOptions(_currentPieceRequests.Count)
-            {
-                SingleWriter = false,
-                SingleReader = true,
-            }
-        );
+        _currentPieceRequests = requests;
         foreach (var request in _currentPieceRequests)
         {
             await _requestsToSend.Writer.WriteAsync(request);
@@ -66,7 +65,7 @@ internal class PieceManager()
         [EnumeratorCancellation] CancellationToken cancellationToken = default
     )
     {
-        await foreach (var request in _requestsToSend!.Reader.ReadAllAsync(cancellationToken))
+        await foreach (var request in _requestsToSend.Reader.ReadAllAsync(cancellationToken))
         {
             if (_sentRequests.Count > 8)
             {

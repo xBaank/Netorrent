@@ -1,8 +1,7 @@
 ﻿using System.Security.Cryptography;
 using Netorrent.P2P.Managers.Request;
-using Netorrent.P2P.Structs;
+using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Netorrent.IO;
 
@@ -14,8 +13,10 @@ internal class FileManager : IAsyncDisposable
     private readonly List<byte[]> _pieceHashes;
     public Bitfield BitField { get; private set; }
 
-    public const long BlockSize = 16 * 1024;
+    public const int BlockSize = 16 * 1024;
+
     public long TotalSize => _files.Sum(f => f.Length);
+    public int MaxBlocksByPiece => _pieceLength / BlockSize;
 
     public FileManager(
         string outputDirectory,
@@ -34,6 +35,11 @@ internal class FileManager : IAsyncDisposable
         foreach (var item in torrentFiles)
         {
             string fullPath = Path.Combine([_outputDirectory, .. item.Path]);
+            var folder = Path.GetDirectoryName(fullPath);
+
+            if (folder is not null)
+                Directory.CreateDirectory(folder);
+
             var stream = new FileStream(
                 fullPath,
                 FileMode.OpenOrCreate,
