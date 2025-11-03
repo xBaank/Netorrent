@@ -40,6 +40,7 @@ internal class PeerConnection(
     private readonly Channel<Message> _outgoingMessages = Channel.CreateBounded<Message>(
         new BoundedChannelOptions(50) { SingleWriter = false, SingleReader = true }
     );
+    private DateTime _lastPeerKeepAlive;
     private DateTime _lastKeepAlive;
 
     public TcpClient TcpClient { get; } = tcpClient;
@@ -62,6 +63,7 @@ internal class PeerConnection(
 
     public async Task ProcessLoopAsync(CancellationToken cancellationToken)
     {
+        _lastPeerKeepAlive = DateTime.UtcNow;
         _lastKeepAlive = DateTime.UtcNow;
         await SendBitfieldAsync(MyBitField, cancellationToken);
         MyBitField.OnHavePieceAsync += SendHave;
@@ -73,8 +75,22 @@ internal class PeerConnection(
             ProcessBlocksToRequestAsync(cancellationToken),
             ProcessReceivedBlocksAsync(cancellationToken),
             ProcessReceivedRequestsAsync(cancellationToken),
+            CheckPeerTimeout(cancellationToken),
             CheckTimeout(cancellationToken)
         );
+    }
+
+    public async Task CheckPeerTimeout(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var timePassed = DateTime.UtcNow - _lastPeerKeepAlive;
+            if (timePassed > 2.Minutes())
+            {
+                throw new TimeoutException();
+            }
+            await Task.Delay(10.Seconds(), cancellationToken);
+        }
     }
 
     public async Task CheckTimeout(CancellationToken cancellationToken)
@@ -82,9 +98,9 @@ internal class PeerConnection(
         while (!cancellationToken.IsCancellationRequested)
         {
             var timePassed = DateTime.UtcNow - _lastKeepAlive;
-            if (timePassed > 2.Minutes())
+            if (timePassed > 1.Minutes())
             {
-                throw new TimeoutException();
+                await _outgoingMessages.Writer.WriteAsync(Message.KeepAlive, cancellationToken);
             }
             await Task.Delay(10.Seconds(), cancellationToken);
         }
@@ -103,6 +119,7 @@ internal class PeerConnection(
 
             using var message = item;
             await SendMessage(message, cancellationToken);
+            _lastKeepAlive = DateTime.UtcNow;
         }
     }
 
@@ -120,7 +137,7 @@ internal class PeerConnection(
         await foreach (var item in _incomingMessages.Reader.ReadAllAsync(cancellationToken))
         {
             using var message = item;
-            _lastKeepAlive = DateTime.UtcNow;
+            _lastPeerKeepAlive = DateTime.UtcNow;
 
             if (message.Id == 255) //Keep-alive
                 continue;

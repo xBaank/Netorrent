@@ -85,6 +85,6 @@ internal class TrackerClient(
     public async ValueTask DisposeAsync()
     {
         await Announce(Events.Stopped);
-        p2PClient.Dispose();
+        await p2PClient.DisposeAsync();
     }
 }
