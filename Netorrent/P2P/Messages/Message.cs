@@ -105,7 +105,7 @@ internal readonly record struct Message(byte Id, MemoryRented<byte>? Payload) : 
     public static Message CreatePiece(int index, int begin, ReadOnlySpan<byte> block)
     {
         var memoryOwner = MemoryPool<byte>.Shared.Rent(8 + block.Length);
-        var buffer = memoryOwner.Memory[..block.Length];
+        var buffer = memoryOwner.Memory[..(8 + block.Length)];
 
         BinaryPrimitives.WriteInt32BigEndian(buffer.Span[..4], index);
         BinaryPrimitives.WriteInt32BigEndian(buffer.Span.Slice(4, 4), begin);

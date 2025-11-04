@@ -41,8 +41,8 @@ internal class PeerConnection(
     private readonly Channel<Message> _outgoingMessages = Channel.CreateBounded<Message>(
         new BoundedChannelOptions(50) { SingleWriter = false, SingleReader = true }
     );
-    private DateTime _lastPeerKeepAlive;
     private DateTime _lastKeepAlive;
+    private Task? _loopTask;
 
     public TcpClient TcpClient { get; } = tcpClient;
     public IPEndPoint IPEndPoint { get; } = iPEndPoint;
@@ -62,37 +62,25 @@ internal class PeerConnection(
         await _pieceManager.SetCurrentPieceAsync(index, blocks);
     }
 
-    public async Task ProcessLoopAsync(CancellationToken cancellationToken)
-    {
-        _lastPeerKeepAlive = DateTime.UtcNow;
-        _lastKeepAlive = DateTime.UtcNow;
-        await SendBitfieldAsync(MyBitField, cancellationToken);
-        MyBitField.OnHavePieceAsync += SendHave;
-
-        await Task.WhenAll(
-            WriteLoopAsync(cancellationToken),
-            ReadLoopAsync(cancellationToken),
-            ProcessIncomingMessagesAsync(cancellationToken),
-            ProcessBlocksToRequestAsync(cancellationToken),
-            ProcessReceivedBlocksAsync(cancellationToken),
-            ProcessReceivedRequestsAsync(cancellationToken),
-            CheckPeerTimeout(cancellationToken),
-            CheckTimeout(cancellationToken)
-        );
-    }
-
-    public async Task CheckPeerTimeout(CancellationToken cancellationToken)
-    {
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            var timePassed = DateTime.UtcNow - _lastPeerKeepAlive;
-            if (timePassed > 2.Minutes())
+    public void Start(CancellationToken cancellationToken) =>
+        _loopTask ??= Task.Run(
+            async () =>
             {
-                throw new TimeoutException();
-            }
-            await Task.Delay(10.Seconds(), cancellationToken);
-        }
-    }
+                _lastKeepAlive = DateTime.UtcNow;
+                await SendBitfieldAsync(MyBitField, cancellationToken);
+                MyBitField.OnHavePieceAsync += SendHave;
+                await TaskUtils.WhenAllOrOneThrows(
+                    WriteLoopAsync(cancellationToken),
+                    ReadLoopAsync(cancellationToken),
+                    ProcessIncomingMessagesAsync(cancellationToken),
+                    ProcessBlocksToRequestAsync(cancellationToken),
+                    ProcessReceivedBlocksAsync(cancellationToken),
+                    ProcessReceivedRequestsAsync(cancellationToken),
+                    CheckTimeout(cancellationToken)
+                );
+            },
+            cancellationToken
+        );
 
     public async Task CheckTimeout(CancellationToken cancellationToken)
     {
@@ -120,7 +108,6 @@ internal class PeerConnection(
 
             using var message = item;
             await SendMessage(message, cancellationToken);
-            _lastKeepAlive = DateTime.UtcNow;
         }
     }
 
@@ -138,7 +125,6 @@ internal class PeerConnection(
         await foreach (var item in _incomingMessages.Reader.ReadAllAsync(cancellationToken))
         {
             using var message = item;
-            _lastPeerKeepAlive = DateTime.UtcNow;
 
             if (message.Id == 255) //Keep-alive
                 continue;
@@ -297,7 +283,9 @@ internal class PeerConnection(
         var span = message.Payload!.Value.Memory.Span;
         var index = BinaryPrimitives.ReadInt32BigEndian(span[..4]);
         var begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
-        var block = new Block(index, begin, MemoryRented<byte>.From(message.Payload!.Value));
+        var memoryPool = MemoryPool<byte>.Shared.Rent(span.Length - 8);
+        span[8..].CopyTo(memoryPool.Memory.Span);
+        var block = new Block(index, begin, new MemoryRented<byte>(memoryPool, span.Length - 8));
         await _pieceManager.AddBlockAsync(block, cancellationToken);
     }
 
@@ -398,6 +386,7 @@ internal class PeerConnection(
         using var messageBytes = message.ToBytes();
         await Stream.WriteAsync(messageBytes.Memory, cts.Token);
         await Stream.FlushAsync(cts.Token);
+        _lastKeepAlive = DateTime.UtcNow;
     }
 
     private async Task SendHave(int pieceIndex, CancellationToken cancellationToken)

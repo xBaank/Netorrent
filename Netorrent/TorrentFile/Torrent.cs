@@ -13,6 +13,7 @@ public class Torrent
     private readonly HttpClient _httpClient;
     private readonly P2PClient _p2pClient;
     private readonly FileManager _fileManager;
+    private readonly Bitfield _myBitfield;
     private readonly string _peerId;
 
     internal Torrent(
@@ -24,22 +25,24 @@ public class Torrent
     )
     {
         MetaInfo = metaInfo;
-        var bitField = new Bitfield(metaInfo.Info.Pieces.Length / 20, bitfieldInitialized);
+        _myBitfield = new Bitfield(metaInfo.Info.Pieces.Length / 20, bitfieldInitialized);
         _fileManager = new FileManager(
             outputDirectory,
             metaInfo.Info.NormalizedFiles(),
             (int)metaInfo.Info.PieceLength,
             [.. metaInfo.Info.Pieces.Chunk(20)],
-            bitField
+            _myBitfield
         );
-        _p2pClient = new P2PClient(metaInfo, peerId, _fileManager, bitField);
+        _p2pClient = new P2PClient(metaInfo, peerId, _fileManager, _myBitfield);
         _httpClient = httpClient;
         _peerId = peerId;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        var trackerClients = MetaInfo
+        _p2pClient.ListenForPeers(cancellationToken);
+
+        var trackers = MetaInfo
             .AnnounceList?.Append(MetaInfo.Announce)
             .Where(url => url.StartsWith("http://") || url.StartsWith("https://"))
             .Distinct()
@@ -52,22 +55,22 @@ public class Torrent
             ))
             .ToList();
 
-        if (trackerClients is null || trackerClients.Count == 0)
+        if (trackers is null || trackers.Count == 0)
             throw new InvalidOperationException("No supported tracker URLs found.");
 
         try
         {
-            var trakersTasks = trackerClients
-                .Select(client => client.StartAsync(cancellationToken))
-                .ToList();
-
-            await Task.WhenAll(trakersTasks);
+            foreach (var tracker in trackers)
+            {
+                tracker.Start(cancellationToken);
+                await tracker.TrackerTask;
+            }
         }
         finally
         {
-            foreach (var client in trackerClients)
+            foreach (var tracker in trackers)
             {
-                await client.DisposeAsync();
+                await tracker.DisposeAsync();
             }
         }
     }

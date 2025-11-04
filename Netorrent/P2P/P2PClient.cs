@@ -21,11 +21,7 @@ internal class P2PClient(
     private readonly MetaInfo _metaInfo = metaInfo;
     private readonly Random _rng = new();
     private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _knowPeers = [];
-    private readonly List<(
-        Task peerTask,
-        CancellationTokenSource cancellationTokenSource
-    )> peerTasks = [];
-
+    private Task? _listenerTask;
     public FileManager FileManager { get; } = fileManager;
 
     private IEnumerable<Bitfield> Bitfields => _knowPeers.Values.Select(i => i.PeerBitField);
@@ -58,46 +54,49 @@ internal class P2PClient(
             peerId,
             cancellationToken
         );
-        var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken
-        );
-        await SetPieceToDownload(peerConnection);
-        peerConnection.NewPieceNededAsync += SetNewPieceAsync;
-        var peerTask = HandlePeer(peerConnection, cancellationTokenSource.Token);
-        peerTasks.Add((peerTask, cancellationTokenSource));
+
+        await HandlePeer(peerConnection, cancellationToken);
     }
 
-    public async Task ListenForPeersAsync(CancellationToken cancellationToken = default)
+    public void ListenForPeers(CancellationToken cancellationToken = default) =>
+        _listenerTask ??= Task.Run(
+            async () =>
+            {
+                _listener.Start();
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    var tcpClient = await _listener.AcceptTcpClientAsync(cancellationToken);
+                    var remoteEndPoint = (IPEndPoint)tcpClient.Client.RemoteEndPoint!;
+                    var peerConnection = new PeerConnection(
+                        tcpClient,
+                        remoteEndPoint,
+                        bitField,
+                        FileManager,
+                        new RequestManager(),
+                        new PieceManager(FileManager.MaxBlocksByPiece)
+                    );
+
+                    _knowPeers[remoteEndPoint] = peerConnection;
+
+                    await peerConnection.ReceiveHandshakeAsync(
+                        _metaInfo.Info.InfoHash,
+                        peerId,
+                        cancellationToken
+                    );
+                    await HandlePeer(peerConnection, cancellationToken);
+                }
+            },
+            cancellationToken
+        );
+
+    private async Task HandlePeer(
+        PeerConnection peerConnection,
+        CancellationToken cancellationToken
+    )
     {
-        _listener.Start();
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            var tcpClient = await _listener.AcceptTcpClientAsync(cancellationToken);
-            var remoteEndPoint = (IPEndPoint)tcpClient.Client.RemoteEndPoint!;
-            var peerConnection = new PeerConnection(
-                tcpClient,
-                remoteEndPoint,
-                bitField,
-                FileManager,
-                new RequestManager(),
-                new PieceManager(FileManager.MaxBlocksByPiece)
-            );
-
-            _knowPeers[remoteEndPoint] = peerConnection;
-
-            await peerConnection.ReceiveHandshakeAsync(
-                _metaInfo.Info.InfoHash,
-                peerId,
-                cancellationToken
-            );
-            var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken
-            );
-            await SetPieceToDownload(peerConnection);
-            peerConnection.NewPieceNededAsync += SetNewPieceAsync;
-            var peerTask = HandlePeer(peerConnection, cancellationTokenSource.Token);
-            peerTasks.Add((peerTask, cancellationTokenSource));
-        }
+        await SetPieceToDownload(peerConnection);
+        peerConnection.NewPieceNededAsync += SetNewPieceAsync;
+        peerConnection.Start(cancellationToken);
     }
 
     private async ValueTask SetPieceToDownload(PeerConnection peerConnection)
@@ -115,14 +114,6 @@ internal class P2PClient(
     private async Task SetNewPieceAsync(int pieceIndex, PeerConnection peerConnection)
     {
         await SetPieceToDownload(peerConnection);
-    }
-
-    private static async Task HandlePeer(
-        PeerConnection peerConnection,
-        CancellationToken cancellationToken
-    )
-    {
-        await peerConnection.ProcessLoopAsync(cancellationToken);
     }
 
     public Dictionary<int, int> GetPieceAvailability()
@@ -171,10 +162,6 @@ internal class P2PClient(
     public async ValueTask DisposeAsync()
     {
         _listener.Stop();
-        foreach (var (_, cancellationTokenSource) in peerTasks)
-        {
-            cancellationTokenSource.Cancel();
-        }
         foreach (var item in _knowPeers)
         {
             item.Value.NewPieceNededAsync -= SetNewPieceAsync;

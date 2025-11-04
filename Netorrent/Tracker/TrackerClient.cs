@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using Netorrent.Other;
 using Netorrent.P2P;
 using TimeSpanXt;
 
@@ -12,26 +13,27 @@ internal class TrackerClient(
     string announceUrl
 ) : IAsyncDisposable
 {
-    private Task _listenTask = Task.CompletedTask;
+    private Task? _trackerTask;
+    public Task TrackerTask => _trackerTask ?? Task.CompletedTask;
 
-    public async Task StartAsync(CancellationToken cancellationToken = default)
-    {
-        _listenTask = Task.Run(
-            async () => await p2PClient.ListenForPeersAsync(cancellationToken),
+    public void Start(CancellationToken cancellationToken = default) =>
+        _trackerTask ??= Task.Run(
+            async () =>
+            {
+                var httpTrackerResponse = await Announce(Events.Started, cancellationToken);
+
+                await ConnectToPeers(httpTrackerResponse, cancellationToken);
+
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    await Task.Delay(httpTrackerResponse.Interval.Seconds(), cancellationToken);
+
+                    var response = await Announce(cancellationToken: cancellationToken);
+                    await ConnectToPeers(response, cancellationToken);
+                }
+            },
             cancellationToken
         );
-        var httpTrackerResponse = await Announce(Events.Started, cancellationToken);
-
-        await ConnectToPeers(httpTrackerResponse, cancellationToken);
-
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            await Task.Delay(httpTrackerResponse.Interval.Seconds(), cancellationToken);
-
-            var response = await Announce(cancellationToken: cancellationToken);
-            await ConnectToPeers(response, cancellationToken);
-        }
-    }
 
     private async Task ConnectToPeers(
         HttpTrackerResponse httpTrackerResponse,
@@ -53,7 +55,7 @@ internal class TrackerClient(
         await Task.WhenAll(connectTasks);
     }
 
-    internal async Task<HttpTrackerResponse> Announce(
+    private async Task<HttpTrackerResponse> Announce(
         string? @event = null,
         CancellationToken cancellationToken = default
     )

@@ -1,4 +1,5 @@
-﻿using Netorrent.Tests.Fixtures;
+﻿using Netorrent.Other;
+using Netorrent.Tests.Fixtures;
 using Netorrent.TorrentFile;
 using TimeSpanXt;
 
@@ -28,6 +29,6 @@ public class TorrentTests(OpenTrackerFixture fixture) : IClassFixture<OpenTracke
         // Act
         var torrent2Task = torrent2.StartAsync(TestContext.Current.CancellationToken);
 
-        await Task.WhenAll(torrent1Task, torrent2Task);
+        await TaskUtils.WhenAllOrOneThrows(torrent1Task, torrent2Task);
     }
 }

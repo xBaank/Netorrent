@@ -7,14 +7,11 @@ using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.TorrentFile;
 
-public class TorrentClient
+public class TorrentClient(HttpClient? httpClient = null)
 {
     private readonly PeerIdService _peerIdService = new();
-    private readonly HttpClient _httpClient;
+    private readonly HttpClient _httpClient = httpClient ?? new HttpClient();
     private readonly List<Torrent> torrents = [];
-
-    public TorrentClient(HttpClient? httpClient = null) =>
-        _httpClient = httpClient ?? new HttpClient();
 
     public async ValueTask<Torrent> AddTorrentAsync(
         string path,

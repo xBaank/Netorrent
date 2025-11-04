@@ -1,5 +1,4 @@
 ﻿using System.Buffers;
-using System.Buffers.Binary;
 using System.Collections;
 using Netorrent.Other;
 
@@ -8,6 +7,8 @@ namespace Netorrent.P2P.Messages;
 internal class Bitfield
 {
     public event Func<int, CancellationToken, Task>? OnHavePieceAsync;
+
+    private readonly TaskCompletionSource _completedTask = new();
     private readonly BitArray _bits;
 
     public Bitfield(int pieceCount, bool isInitialized = false)
@@ -45,6 +46,7 @@ internal class Bitfield
             return;
 
         _bits[index] = true;
+
         if (OnHavePieceAsync is not null)
             await OnHavePieceAsync(index, cancellationToken);
     }
