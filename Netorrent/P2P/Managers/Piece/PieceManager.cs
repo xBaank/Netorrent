@@ -22,18 +22,19 @@ internal class PieceManager(int maxBlocks)
     public IAsyncEnumerable<Block> BlocksToWrite => _blocksToWrite.Reader.ReadAllAsync();
     public IAsyncEnumerable<RequestBlock> BlocksToRequest => GetBlocksToRequest();
 
-    public async ValueTask SetCurrentPieceAsync(int? index, List<RequestBlock> requests)
+    public async ValueTask SetCurrentPieceAsync(
+        int index,
+        List<RequestBlock> requests,
+        CancellationToken cancellationToken
+    )
     {
-        if (index is null)
-            return;
-
         ArgumentOutOfRangeException.ThrowIfLessThan(maxBlocks, requests.Count);
 
         CurrentDownloadingPieceIndex = index;
         _currentPieceRequests = requests;
         foreach (var request in _currentPieceRequests)
         {
-            await _requestsToSend.Writer.WriteAsync(request);
+            await _requestsToSend.Writer.WriteAsync(request, cancellationToken);
         }
     }
 
@@ -45,9 +46,17 @@ internal class PieceManager(int maxBlocks)
         if (toRemove.Equals(default(RequestBlock)))
             throw new InvalidOperationException("Received unexpected block.");
 
-        _currentPieceRequests.Remove(toRemove);
         _sentRequests.Remove(toRemove);
         await _blocksToWrite.Writer.WriteAsync(block, cancellationToken);
+    }
+
+    public void SetBlockWritten(Block block)
+    {
+        var toRemove = _currentPieceRequests.FirstOrDefault(r =>
+            r.Index == block.Index && r.Begin == block.Begin
+        );
+        Console.WriteLine(_currentPieceRequests.Count);
+        _currentPieceRequests.Remove(toRemove);
     }
 
     public async ValueTask DiscardSentRequests(CancellationToken cancellationToken)

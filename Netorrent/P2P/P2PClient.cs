@@ -24,7 +24,6 @@ internal class P2PClient(
     private Task? _listenerTask;
     public FileManager FileManager { get; } = fileManager;
 
-    private IEnumerable<Bitfield> Bitfields => _knowPeers.Values.Select(i => i.PeerBitField);
     public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
 
     public async Task ConnectToPeerAsync(
@@ -44,7 +43,8 @@ internal class P2PClient(
             bitField,
             FileManager,
             new RequestManager(),
-            new PieceManager(FileManager.MaxBlocksByPiece)
+            new PieceManager(FileManager.MaxBlocksByPiece),
+            new PieceSelector(_knowPeers, bitField)
         );
 
         _knowPeers[iPEndPoint] = peerConnection;
@@ -55,7 +55,7 @@ internal class P2PClient(
             cancellationToken
         );
 
-        await HandlePeer(peerConnection, cancellationToken);
+        HandlePeer(peerConnection, cancellationToken);
     }
 
     public void ListenForPeers(CancellationToken cancellationToken = default) =>
@@ -73,7 +73,8 @@ internal class P2PClient(
                         bitField,
                         FileManager,
                         new RequestManager(),
-                        new PieceManager(FileManager.MaxBlocksByPiece)
+                        new PieceManager(FileManager.MaxBlocksByPiece),
+                        new PieceSelector(_knowPeers, bitField)
                     );
 
                     _knowPeers[remoteEndPoint] = peerConnection;
@@ -83,80 +84,15 @@ internal class P2PClient(
                         peerId,
                         cancellationToken
                     );
-                    await HandlePeer(peerConnection, cancellationToken);
+                    HandlePeer(peerConnection, cancellationToken);
                 }
             },
             cancellationToken
         );
 
-    private async Task HandlePeer(
-        PeerConnection peerConnection,
-        CancellationToken cancellationToken
-    )
+    private void HandlePeer(PeerConnection peerConnection, CancellationToken cancellationToken)
     {
-        await SetPieceToDownload(peerConnection);
-        peerConnection.NewPieceNededAsync += SetNewPieceAsync;
         peerConnection.Start(cancellationToken);
-    }
-
-    private async ValueTask SetPieceToDownload(PeerConnection peerConnection)
-    {
-        var excluded = _knowPeers
-            .Values.Where(i => i != peerConnection)
-            .Select(pc => pc.CurrentPieceDownloading)
-            .Where(piece => piece.HasValue)
-            .Select(piece => piece!.Value)
-            .ToHashSet();
-        var pieceIndex = GetNextRarestPiece(excluded);
-        await peerConnection.SetCurrentPieceToDownloadAsync(pieceIndex);
-    }
-
-    private async Task SetNewPieceAsync(int pieceIndex, PeerConnection peerConnection)
-    {
-        await SetPieceToDownload(peerConnection);
-    }
-
-    public Dictionary<int, int> GetPieceAvailability()
-    {
-        int pieceCount = bitField.Length;
-        var availability = new int[pieceCount];
-
-        foreach (var peerBits in Bitfields)
-        {
-            for (int i = 0; i < pieceCount; i++)
-            {
-                if (peerBits[i])
-                    availability[i]++;
-            }
-        }
-
-        var dict = new Dictionary<int, int>(pieceCount);
-        for (int i = 0; i < pieceCount; i++)
-        {
-            if (availability[i] > 0 && !bitField[i])
-                dict[i] = availability[i];
-        }
-
-        return dict;
-    }
-
-    public int? GetNextRarestPiece(HashSet<int>? excluded = null, int rarestSampleSize = 5)
-    {
-        var availability = GetPieceAvailability();
-
-        if (excluded is not null)
-        {
-            foreach (var ex in excluded)
-                availability.Remove(ex);
-        }
-
-        if (availability.Count == 0)
-            return null;
-
-        var sorted = availability.OrderBy(kv => kv.Value).ToList();
-        var subset = sorted.Take(rarestSampleSize).ToList();
-        int choiceIndex = _rng.Next(subset.Count);
-        return subset[choiceIndex].Key;
     }
 
     public async ValueTask DisposeAsync()
@@ -164,7 +100,6 @@ internal class P2PClient(
         _listener.Stop();
         foreach (var item in _knowPeers)
         {
-            item.Value.NewPieceNededAsync -= SetNewPieceAsync;
             await item.Value.DisposeAsync();
         }
     }

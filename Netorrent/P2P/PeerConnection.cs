@@ -22,6 +22,7 @@ internal class PeerConnection(
     FileManager fileManager,
     RequestManager requestManager,
     PieceManager pieceManager,
+    PieceSelector pieceSelector,
     bool amChocking = true,
     bool amInterested = false,
     bool peerChocking = true,
@@ -35,6 +36,7 @@ internal class PeerConnection(
     private readonly FileManager _fileManager = fileManager;
     private readonly RequestManager _requestManager = requestManager;
     private readonly PieceManager _pieceManager = pieceManager;
+    private readonly PieceSelector _pieceSelector = pieceSelector;
     private readonly Channel<Message> _incomingMessages = Channel.CreateBounded<Message>(
         new BoundedChannelOptions(50) { SingleWriter = true, SingleReader = true }
     );
@@ -54,13 +56,6 @@ internal class PeerConnection(
     public string? PeerId { get; private set; }
     public Bitfield PeerBitField { get; private set; } = new(myBitField.Length);
     public int? CurrentPieceDownloading => _pieceManager.CurrentDownloadingPieceIndex;
-    public event Func<int, PeerConnection, Task>? NewPieceNededAsync;
-
-    public async ValueTask SetCurrentPieceToDownloadAsync(int? index)
-    {
-        var blocks = index.HasValue ? _fileManager.GetBlocksByPieceIndex(index.Value).ToList() : [];
-        await _pieceManager.SetCurrentPieceAsync(index, blocks);
-    }
 
     public void Start(CancellationToken cancellationToken) =>
         _loopTask ??= Task.Run(
@@ -232,6 +227,17 @@ internal class PeerConnection(
         }
     }
 
+    private async ValueTask SetPieceToDownloadAsync(CancellationToken cancellationToken)
+    {
+        var index = _pieceSelector.GetNextRarestPiece();
+
+        if (index is null)
+            return;
+
+        var blocks = index.HasValue ? _fileManager.GetBlocksByPieceIndex(index.Value).ToList() : [];
+        await _pieceManager.SetCurrentPieceAsync(index.Value, blocks, cancellationToken);
+    }
+
     private async ValueTask ReceiveRequestAsync(
         Message message,
         CancellationToken cancellationToken
@@ -298,6 +304,7 @@ internal class PeerConnection(
             payload.Memory,
             cancellationToken
         );
+        _pieceManager.SetBlockWritten(block);
         if (_pieceManager.HasFinishedCurrentPiece)
         {
             var isOk = await _fileManager.VerifyPieceAsync(
@@ -314,14 +321,11 @@ internal class PeerConnection(
                 return;
             }
 
-            if (NewPieceNededAsync is not null)
-            {
-                await MyBitField.HavePiece(
-                    _pieceManager.CurrentDownloadingPieceIndex!.Value,
-                    cancellationToken
-                );
-                await NewPieceNededAsync(_pieceManager.CurrentDownloadingPieceIndex.Value, this);
-            }
+            await MyBitField.HavePiece(
+                _pieceManager.CurrentDownloadingPieceIndex!.Value,
+                cancellationToken
+            );
+            await SetPieceToDownloadAsync(cancellationToken);
         }
     }
 
@@ -403,10 +407,7 @@ internal class PeerConnection(
             var message = Message.CreateInterested();
             await _outgoingMessages.Writer.WriteAsync(message, cancellationToken);
             AmInterested = interest;
-            if (CurrentPieceDownloading is null && NewPieceNededAsync is not null)
-            {
-                await NewPieceNededAsync(-1, this);
-            }
+            await SetPieceToDownloadAsync(cancellationToken);
         }
     }
 
