@@ -76,10 +76,9 @@ internal class PieceManager(int maxBlocks)
     {
         await foreach (var request in _requestsToSend.Reader.ReadAllAsync(cancellationToken))
         {
-            if (_sentRequests.Count > 8)
+            while (!cancellationToken.IsCancellationRequested && _sentRequests.Count > 8)
             {
-                await Task.Delay(100, cancellationToken);
-                continue;
+                await Task.Delay(50, cancellationToken);
             }
             _sentRequests.Add(request);
             yield return request;

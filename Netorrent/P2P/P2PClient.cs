@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using Microsoft.Extensions.Logging;
 using Netorrent.IO;
 using Netorrent.Other;
 using Netorrent.P2P.Managers.Piece;
@@ -14,12 +15,13 @@ internal class P2PClient(
     MetaInfo metaInfo,
     string peerId,
     FileManager fileManager,
-    Bitfield bitField
+    Bitfield bitField,
+    ILogger logger
 ) : IAsyncDisposable
 {
     private readonly TcpListener _listener = Tcp.GetFreeTcpListenerInRange(6881, 6899);
     private readonly MetaInfo _metaInfo = metaInfo;
-    private readonly Random _rng = new();
+    private readonly ILogger _logger = logger;
     private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _knowPeers = [];
     private Task? _listenerTask;
     public FileManager FileManager { get; } = fileManager;
@@ -44,7 +46,8 @@ internal class P2PClient(
             FileManager,
             new RequestManager(),
             new PieceManager(FileManager.MaxBlocksByPiece),
-            new PieceSelector(_knowPeers, bitField)
+            new PieceSelector(_knowPeers, bitField),
+            _logger
         );
 
         _knowPeers[iPEndPoint] = peerConnection;
@@ -54,6 +57,8 @@ internal class P2PClient(
             peerId,
             cancellationToken
         );
+
+        _logger.LogInformation("Connected to peer {PeerId}", peerConnection.PeerId);
 
         HandlePeer(peerConnection, cancellationToken);
     }
@@ -74,7 +79,8 @@ internal class P2PClient(
                         FileManager,
                         new RequestManager(),
                         new PieceManager(FileManager.MaxBlocksByPiece),
-                        new PieceSelector(_knowPeers, bitField)
+                        new PieceSelector(_knowPeers, bitField),
+                        _logger
                     );
 
                     _knowPeers[remoteEndPoint] = peerConnection;
@@ -84,6 +90,9 @@ internal class P2PClient(
                         peerId,
                         cancellationToken
                     );
+
+                    _logger.LogInformation("Connected from peer {PeerId}", peerConnection.PeerId);
+
                     HandlePeer(peerConnection, cancellationToken);
                 }
             },

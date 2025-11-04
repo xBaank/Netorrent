@@ -1,4 +1,6 @@
 ﻿using System.Security.Cryptography;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
 using Netorrent.Extensions;
@@ -7,10 +9,11 @@ using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.TorrentFile;
 
-public class TorrentClient(HttpClient? httpClient = null)
+public class TorrentClient(HttpClient? httpClient = null, ILogger? logger = null)
 {
     private readonly PeerIdService _peerIdService = new();
     private readonly HttpClient _httpClient = httpClient ?? new HttpClient();
+    private readonly ILogger _logger = logger ?? NullLogger.Instance;
     private readonly List<Torrent> torrents = [];
 
     public async ValueTask<Torrent> AddTorrentAsync(
@@ -32,7 +35,8 @@ public class TorrentClient(HttpClient? httpClient = null)
             metaInfo,
             _httpClient,
             _peerIdService.PeerId,
-            Path.GetFullPath(outputDirectory)
+            Path.GetFullPath(outputDirectory),
+            _logger
         );
         torrents.Add(torrent);
         return torrent;
@@ -44,7 +48,8 @@ public class TorrentClient(HttpClient? httpClient = null)
             metaInfo,
             _httpClient,
             _peerIdService.PeerId,
-            Path.GetFullPath(outputDirectory)
+            Path.GetFullPath(outputDirectory),
+            _logger
         );
         torrents.Add(torrent);
         return torrent;
@@ -69,6 +74,7 @@ public class TorrentClient(HttpClient? httpClient = null)
             _httpClient,
             _peerIdService.PeerId,
             Path.GetFullPath(Path.GetDirectoryName(path) ?? ""),
+            _logger,
             true
         );
         torrents.Add(torrent);
@@ -92,7 +98,7 @@ public class TorrentClient(HttpClient? httpClient = null)
 
         // --- Step 1: Compute SHA1 hashes for each piece ---
         var piecesBytes = new List<byte>();
-        using (var fs = File.OpenRead(path))
+        using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
         {
             byte[] buffer = new byte[pieceLength];
             int bytesRead;

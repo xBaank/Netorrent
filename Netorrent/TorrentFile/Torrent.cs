@@ -1,4 +1,5 @@
-﻿using Netorrent.IO;
+﻿using Microsoft.Extensions.Logging;
+using Netorrent.IO;
 using Netorrent.P2P;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
@@ -15,12 +16,14 @@ public class Torrent
     private readonly FileManager _fileManager;
     private readonly Bitfield _myBitfield;
     private readonly string _peerId;
+    private readonly ILogger _logger;
 
     internal Torrent(
         MetaInfo metaInfo,
         HttpClient httpClient,
         string peerId,
         string outputDirectory,
+        ILogger logger,
         bool bitfieldInitialized = false
     )
     {
@@ -33,7 +36,8 @@ public class Torrent
             [.. metaInfo.Info.Pieces.Chunk(20)],
             _myBitfield
         );
-        _p2pClient = new P2PClient(metaInfo, peerId, _fileManager, _myBitfield);
+        _logger = logger;
+        _p2pClient = new P2PClient(metaInfo, peerId, _fileManager, _myBitfield, _logger);
         _httpClient = httpClient;
         _peerId = peerId;
     }

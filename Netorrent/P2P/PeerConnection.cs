@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading.Channels;
 using Lazy;
+using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.Other;
@@ -23,6 +24,7 @@ internal class PeerConnection(
     RequestManager requestManager,
     PieceManager pieceManager,
     PieceSelector pieceSelector,
+    ILogger logger,
     bool amChocking = true,
     bool amInterested = false,
     bool peerChocking = true,
@@ -37,6 +39,7 @@ internal class PeerConnection(
     private readonly RequestManager _requestManager = requestManager;
     private readonly PieceManager _pieceManager = pieceManager;
     private readonly PieceSelector _pieceSelector = pieceSelector;
+    private readonly ILogger _logger = logger;
     private readonly Channel<Message> _incomingMessages = Channel.CreateBounded<Message>(
         new BoundedChannelOptions(50) { SingleWriter = true, SingleReader = true }
     );
@@ -101,6 +104,8 @@ internal class PeerConnection(
                 continue;
             }
 
+            _logger.LogInformation("Sending message with id {Id}", item.Id);
+
             using var message = item;
             await SendMessage(message, cancellationToken);
         }
@@ -111,6 +116,9 @@ internal class PeerConnection(
         while (!cancellationToken.IsCancellationRequested)
         {
             var message = await ReceiveMessage(cancellationToken);
+
+            _logger.LogInformation("Receive message with id {Id}", message.Id);
+
             await _incomingMessages.Writer.WriteAsync(message, cancellationToken);
         }
     }
@@ -221,7 +229,7 @@ internal class PeerConnection(
         {
             while (!cancellationToken.IsCancellationRequested && PeerChocking)
             {
-                await Task.Delay(100, cancellationToken);
+                await Task.Delay(50, cancellationToken);
             }
             await SendRequestAsync(item, cancellationToken);
         }
@@ -395,6 +403,8 @@ internal class PeerConnection(
 
     private async Task SendHave(int pieceIndex, CancellationToken cancellationToken)
     {
+        _logger.LogInformation("Sending message Have");
+
         var message = Message.CreateHave(pieceIndex);
         await _outgoingMessages.Writer.WriteAsync(message, cancellationToken);
     }
@@ -404,6 +414,8 @@ internal class PeerConnection(
         var interest = MyBitField.HasAnyMissingPiece(PeerBitField);
         if (interest != AmInterested)
         {
+            _logger.LogInformation("Sending interest");
+
             var message = Message.CreateInterested();
             await _outgoingMessages.Writer.WriteAsync(message, cancellationToken);
             AmInterested = interest;
@@ -415,6 +427,8 @@ internal class PeerConnection(
     {
         if (!AmChocking)
         {
+            _logger.LogInformation("Sending choked");
+
             var message = Message.CreateChoke();
             await _outgoingMessages.Writer.WriteAsync(message, cancellationToken);
             AmChocking = true;
@@ -425,6 +439,8 @@ internal class PeerConnection(
     {
         if (AmChocking)
         {
+            _logger.LogInformation("Sending unchoked");
+
             var message = Message.CreateUnchoke();
             await _outgoingMessages.Writer.WriteAsync(message, cancellationToken);
             AmChocking = false;
@@ -450,6 +466,8 @@ internal class PeerConnection(
 
     public async Task SendBitfieldAsync(Bitfield bitField, CancellationToken cancellationToken)
     {
+        _logger.LogInformation("Sending bitfield");
+
         var memoryRented = bitField.ToMemoryRented();
         var message = Message.CreateBitfield(memoryRented);
         await _outgoingMessages.Writer.WriteAsync(message, cancellationToken);

@@ -44,7 +44,7 @@ internal class FileManager : IAsyncDisposable
                 fullPath,
                 FileMode.OpenOrCreate,
                 FileAccess.ReadWrite,
-                FileShare.Read,
+                FileShare.ReadWrite,
                 bufferSize: 4096,
                 options: FileOptions.Asynchronous | FileOptions.RandomAccess
             );
