@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Netorrent", "Netorrent\Neto
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Netorrent.Tests", "Netorrent.Tests\Netorrent.Tests.csproj", "{F3B94B1F-F48C-47B4-AD6B-516834938EA3}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Netorrent.Example", "Netorrent.Example\Netorrent.Example.csproj", "{A36E606A-4537-4468-8B55-F14493432BEA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{F3B94B1F-F48C-47B4-AD6B-516834938EA3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F3B94B1F-F48C-47B4-AD6B-516834938EA3}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F3B94B1F-F48C-47B4-AD6B-516834938EA3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A36E606A-4537-4468-8B55-F14493432BEA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A36E606A-4537-4468-8B55-F14493432BEA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A36E606A-4537-4468-8B55-F14493432BEA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A36E606A-4537-4468-8B55-F14493432BEA}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

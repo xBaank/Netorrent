@@ -16,9 +16,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Lazy.Fody" Version="1.11.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.10" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.10" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.10" />
     <PackageReference Include="System.Linq.Async" Version="6.0.3" />
     <PackageReference Include="TimeSpan.Xt" Version="0.5.3" />
   </ItemGroup>
