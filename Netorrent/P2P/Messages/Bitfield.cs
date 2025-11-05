@@ -4,19 +4,19 @@ using Netorrent.Other;
 
 namespace Netorrent.P2P.Messages;
 
-internal class Bitfield
+public class Bitfield
 {
-    public event Func<int, CancellationToken, Task>? OnHavePieceAsync;
+    internal event Func<int, CancellationToken, Task>? OnHavePieceAsync;
 
     private readonly TaskCompletionSource _completedTask = new();
     private readonly BitArray _bits;
 
-    public Bitfield(int pieceCount, bool isInitialized = false)
+    internal Bitfield(int pieceCount, bool isInitialized = false)
     {
         _bits = new BitArray(pieceCount, isInitialized);
     }
 
-    public Bitfield(ReadOnlySpan<byte> bytes, int pieceCount)
+    internal Bitfield(ReadOnlySpan<byte> bytes, int pieceCount)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(pieceCount);
 
@@ -40,7 +40,7 @@ internal class Bitfield
         set => _bits[index] = value;
     }
 
-    public async Task HavePiece(int index, CancellationToken cancellationToken)
+    internal async Task HavePiece(int index, CancellationToken cancellationToken)
     {
         if (index >= _bits.Length)
             return;
@@ -51,7 +51,7 @@ internal class Bitfield
             await OnHavePieceAsync(index, cancellationToken);
     }
 
-    public bool HasAnyMissingPiece(Bitfield other)
+    internal bool HasAnyMissingPiece(Bitfield other)
     {
         if (other.Length != Length)
             throw new ArgumentException("Bitfields must have the same length.", nameof(other));
@@ -66,7 +66,7 @@ internal class Bitfield
         return false;
     }
 
-    public MemoryRented<byte> ToMemoryRented()
+    internal MemoryRented<byte> ToMemoryRented()
     {
         int byteCount = (_bits.Length + 7) / 8;
         var owner = MemoryPool<byte>.Shared.Rent(byteCount);
@@ -76,7 +76,7 @@ internal class Bitfield
         return new MemoryRented<byte>(owner, byteCount);
     }
 
-    void PackBitsBigEndian(Span<byte> dest)
+    internal void PackBitsBigEndian(Span<byte> dest)
     {
         int byteLen = (_bits.Length + 7) / 8;
         if (dest.Length < byteLen)

@@ -10,7 +10,7 @@ internal class RequestManager : IDisposable
     private const int MAX_BLOCK_LENGTH = 16 * 1024;
 
     private readonly Channel<RequestBlock> _pendingRequests = Channel.CreateBounded<RequestBlock>(
-        new BoundedChannelOptions(50) { SingleWriter = true, SingleReader = true }
+        new BoundedChannelOptions(200) { SingleWriter = true, SingleReader = true }
     );
     private readonly IList<RequestBlock> _requestList = [];
     private int _violationCount = 0;

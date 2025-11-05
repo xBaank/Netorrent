@@ -10,6 +10,7 @@ namespace Netorrent.TorrentFile;
 public class Torrent
 {
     public MetaInfo MetaInfo { get; init; }
+    public Bitfield Bitfield => _myBitfield;
 
     private readonly HttpClient _httpClient;
     private readonly P2PClient _p2pClient;
@@ -17,6 +18,8 @@ public class Torrent
     private readonly Bitfield _myBitfield;
     private readonly string _peerId;
     private readonly ILogger _logger;
+
+    public double TotalDownloadSpeedKbps => _p2pClient.TotalDownloadSpeedKbps;
 
     internal Torrent(
         MetaInfo metaInfo,
@@ -55,7 +58,8 @@ public class Torrent
                 _httpClient,
                 _peerId,
                 MetaInfo.Info.InfoHash,
-                url
+                url,
+                _logger
             ))
             .ToList();
 
@@ -67,8 +71,10 @@ public class Torrent
             foreach (var tracker in trackers)
             {
                 tracker.Start(cancellationToken);
-                await tracker.TrackerTask;
             }
+
+            var tasks = trackers.Select(i => i.TrackerTask);
+            await Task.WhenAll(tasks);
         }
         finally
         {

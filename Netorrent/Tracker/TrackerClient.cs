@@ -1,5 +1,4 @@
-﻿using System.Net;
-using Netorrent.Other;
+﻿using Microsoft.Extensions.Logging;
 using Netorrent.P2P;
 using TimeSpanXt;
 
@@ -10,23 +9,30 @@ internal class TrackerClient(
     HttpClient client,
     string peerId,
     byte[] infoHash,
-    string announceUrl
+    string announceUrl,
+    ILogger logger
 ) : IAsyncDisposable
 {
     private Task? _trackerTask;
+    private readonly ILogger _logger = logger;
+
     public Task TrackerTask => _trackerTask ?? Task.CompletedTask;
 
     public void Start(CancellationToken cancellationToken = default) =>
         _trackerTask ??= Task.Run(
             async () =>
             {
+                _logger.LogInformation(Convert.ToHexString(infoHash).ToLower());
                 var httpTrackerResponse = await Announce(Events.Started, cancellationToken);
 
                 await ConnectToPeers(httpTrackerResponse, cancellationToken);
 
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    await Task.Delay(httpTrackerResponse.Interval.Seconds(), cancellationToken);
+                    var interval = httpTrackerResponse.Interval.Seconds();
+                    _logger.LogInformation("Waiting {seconds} seconds", interval.TotalSeconds);
+
+                    await Task.Delay(interval, cancellationToken);
 
                     var response = await Announce(cancellationToken: cancellationToken);
                     await ConnectToPeers(response, cancellationToken);
@@ -40,17 +46,9 @@ internal class TrackerClient(
         CancellationToken cancellationToken
     )
     {
-        var connectTasks = httpTrackerResponse
-            .Peers.Where(ep =>
-                !(
-                    (
-                        ep.Address.Equals(IPAddress.Loopback)
-                        || ep.Address.Equals(IPAddress.IPv6Loopback)
-                    )
-                    && ep.Port == p2PClient.EndPoint.Port
-                )
-            )
-            .Select(async item => await p2PClient.ConnectToPeerAsync(item, cancellationToken));
+        var connectTasks = httpTrackerResponse.Peers.Select(async item =>
+            await p2PClient.ConnectToPeerAsync(item, cancellationToken)
+        );
 
         await Task.WhenAll(connectTasks);
     }
@@ -60,6 +58,8 @@ internal class TrackerClient(
         CancellationToken cancellationToken = default
     )
     {
+        _logger.LogInformation("Announcing to {url}", announceUrl);
+
         var request = new HttpTrackerRequest(
             infoHash,
             peerId,

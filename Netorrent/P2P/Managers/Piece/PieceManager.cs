@@ -55,7 +55,6 @@ internal class PieceManager(int maxBlocks)
         var toRemove = _currentPieceRequests.FirstOrDefault(r =>
             r.Index == block.Index && r.Begin == block.Begin
         );
-        Console.WriteLine(_currentPieceRequests.Count);
         _currentPieceRequests.Remove(toRemove);
     }
 

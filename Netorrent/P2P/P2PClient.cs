@@ -22,22 +22,34 @@ internal class P2PClient(
     private readonly TcpListener _listener = Tcp.GetFreeTcpListenerInRange(6881, 6899);
     private readonly MetaInfo _metaInfo = metaInfo;
     private readonly ILogger _logger = logger;
-    private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _knowPeers = [];
+    private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _knownPeers = [];
     private Task? _listenerTask;
     public FileManager FileManager { get; } = fileManager;
 
     public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
+    public double TotalDownloadSpeedBps => _knownPeers.Values.Sum(p => p.SpeedTracker.CurrentBps);
+    public double TotalDownloadSpeedKbps => TotalDownloadSpeedBps / 1024.0;
+    public long TotalBytesDownloaded => _knownPeers.Values.Sum(p => p.SpeedTracker.TotalBytes);
 
     public async Task ConnectToPeerAsync(
         IPEndPoint iPEndPoint,
         CancellationToken cancellationToken = default
     )
     {
-        if (_knowPeers.ContainsKey(iPEndPoint))
+        if (_knownPeers.ContainsKey(iPEndPoint))
             return;
 
         var client = new TcpClient();
-        await client.ConnectAsync(iPEndPoint, cancellationToken);
+
+        try
+        {
+            await client.ConnectAsync(iPEndPoint, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError("Error conecting to {ip}", iPEndPoint);
+            return;
+        }
 
         var peerConnection = new PeerConnection(
             client,
@@ -46,11 +58,11 @@ internal class P2PClient(
             FileManager,
             new RequestManager(),
             new PieceManager(FileManager.MaxBlocksByPiece),
-            new PieceSelector(_knowPeers, bitField),
+            new PieceSelector(_knownPeers, bitField),
             _logger
         );
 
-        _knowPeers[iPEndPoint] = peerConnection;
+        _knownPeers[iPEndPoint] = peerConnection;
 
         await peerConnection.PerformHandshakeAsync(
             _metaInfo.Info.InfoHash,
@@ -79,11 +91,11 @@ internal class P2PClient(
                         FileManager,
                         new RequestManager(),
                         new PieceManager(FileManager.MaxBlocksByPiece),
-                        new PieceSelector(_knowPeers, bitField),
+                        new PieceSelector(_knownPeers, bitField),
                         _logger
                     );
 
-                    _knowPeers[remoteEndPoint] = peerConnection;
+                    _knownPeers[remoteEndPoint] = peerConnection;
 
                     await peerConnection.ReceiveHandshakeAsync(
                         _metaInfo.Info.InfoHash,
@@ -107,7 +119,7 @@ internal class P2PClient(
     public async ValueTask DisposeAsync()
     {
         _listener.Stop();
-        foreach (var item in _knowPeers)
+        foreach (var item in _knownPeers)
         {
             await item.Value.DisposeAsync();
         }

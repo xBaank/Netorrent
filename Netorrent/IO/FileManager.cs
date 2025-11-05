@@ -159,7 +159,6 @@ internal class FileManager : IAsyncDisposable
                 fileOffset,
                 ct
             );
-            RandomAccess.FlushToDisk(file.FileStream.SafeFileHandle);
 
             globalOffset += writable;
             remaining -= writable;
@@ -194,7 +193,6 @@ internal class FileManager : IAsyncDisposable
                 fileOffset,
                 ct
             );
-            RandomAccess.FlushToDisk(file.FileStream.SafeFileHandle);
 
             globalOffset += writable;
             position += (int)writable;

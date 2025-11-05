@@ -44,7 +44,7 @@ public sealed class BEncoder : IAsyncDisposable
 
     private void EncodeString(BString value)
     {
-        var bytes = Encoding.UTF8.GetBytes(value);
+        var bytes = value.RawData;
         var lengthBytes = Encoding.ASCII.GetBytes(bytes.Length.ToString() + ":");
         stream.Write(lengthBytes, 0, lengthBytes.Length);
         stream.Write(bytes, 0, bytes.Length);
@@ -70,13 +70,37 @@ public sealed class BEncoder : IAsyncDisposable
     {
         stream.WriteByte((byte)'d');
 
-        foreach (var kvp in dic.Elements.OrderBy(k => k.Key.Data, StringComparer.Ordinal))
+        foreach (
+            var kvp in dic.Elements.OrderBy(
+                k => k.Key.RawData,
+                Comparer<byte[]>.Create(BytewiseCompare)
+            )
+        )
         {
             EncodeString(kvp.Key);
             EncodeToStream(kvp.Value);
         }
 
         stream.WriteByte((byte)'e');
+    }
+
+    private static int BytewiseCompare(byte[]? a, byte[]? b)
+    {
+        if (ReferenceEquals(a, b))
+            return 0;
+        if (a is null)
+            return -1;
+        if (b is null)
+            return 1;
+
+        int len = Math.Min(a.Length, b.Length);
+        for (int i = 0; i < len; i++)
+        {
+            int diff = a[i].CompareTo(b[i]);
+            if (diff != 0)
+                return diff;
+        }
+        return a.Length.CompareTo(b.Length);
     }
 
     public async ValueTask DisposeAsync() => await stream.DisposeAsync();
