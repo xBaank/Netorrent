@@ -22,7 +22,6 @@ internal class TrackerClient(
         _trackerTask ??= Task.Run(
             async () =>
             {
-                _logger.LogInformation(Convert.ToHexString(infoHash).ToLower());
                 var httpTrackerResponse = await Announce(Events.Started, cancellationToken);
 
                 await ConnectToPeers(httpTrackerResponse, cancellationToken);

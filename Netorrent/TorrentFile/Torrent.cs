@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using Netorrent.IO;
 using Netorrent.P2P;
+using Netorrent.P2P.Managers;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker;
@@ -19,7 +20,9 @@ public class Torrent
     private readonly string _peerId;
     private readonly ILogger _logger;
 
-    public double TotalDownloadSpeedKbps => _p2pClient.TotalDownloadSpeedKbps;
+    public DownloadSpeed DownloadSpeed => _p2pClient.DownloadSpeed;
+    public long DownloadedBytes => _p2pClient.DownloadedBytes;
+    public long TotalBytes => _p2pClient.TotalBytes;
 
     internal Torrent(
         MetaInfo metaInfo,
@@ -33,7 +36,7 @@ public class Torrent
         MetaInfo = metaInfo;
         _myBitfield = new Bitfield(metaInfo.Info.Pieces.Length / 20, bitfieldInitialized);
         _fileManager = new FileManager(
-            outputDirectory,
+            Path.Combine(outputDirectory, MetaInfo.Title ?? ""),
             metaInfo.Info.NormalizedFiles(),
             (int)metaInfo.Info.PieceLength,
             [.. metaInfo.Info.Pieces.Chunk(20)],

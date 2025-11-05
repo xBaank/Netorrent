@@ -1,9 +1,11 @@
 ﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using Lazy;
 using Microsoft.Extensions.Logging;
 using Netorrent.IO;
 using Netorrent.Other;
+using Netorrent.P2P.Managers;
 using Netorrent.P2P.Managers.Piece;
 using Netorrent.P2P.Managers.Request;
 using Netorrent.P2P.Messages;
@@ -27,15 +29,21 @@ internal class P2PClient(
     public FileManager FileManager { get; } = fileManager;
 
     public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
-    public double TotalDownloadSpeedBps => _knownPeers.Values.Sum(p => p.SpeedTracker.CurrentBps);
-    public double TotalDownloadSpeedKbps => TotalDownloadSpeedBps / 1024.0;
-    public long TotalBytesDownloaded => _knownPeers.Values.Sum(p => p.SpeedTracker.TotalBytes);
+    public DownloadSpeed DownloadSpeed =>
+        _knownPeers.Values.Where(i => !i.FailedConnection).Sum(p => p.SpeedTracker.CurrentBps.Bps);
+    public long DownloadedBytes => _knownPeers.Values.Sum(p => p.SpeedTracker.TotalBytes);
+
+    [Lazy]
+    public long TotalBytes => FileManager.TotalSize;
 
     public async Task ConnectToPeerAsync(
         IPEndPoint iPEndPoint,
         CancellationToken cancellationToken = default
     )
     {
+        if (_knownPeers.Count > 100)
+            return;
+
         if (_knownPeers.ContainsKey(iPEndPoint))
             return;
 

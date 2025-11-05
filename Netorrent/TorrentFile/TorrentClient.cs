@@ -154,14 +154,20 @@ public class TorrentClient(HttpClient? httpClient = null, ILogger? logger = null
         var announceList = dictionary
             .Elements.GetValueOrDefault("announce-list")
             ?.As<BList>()
-            ?.Elements?.Select(i => i.As<BList>()!.Value.Elements)
+            ?.Elements.Select(i => i.As<BList>()!.Value.Elements)
             .SelectMany(i => i)
             .Select<IBencodingNode, string>(i => i.As<BString>()!.Value)
+            .ToList();
+        var urlList = dictionary
+            .Elements.GetValueOrDefault("url-list")
+            ?.As<BList>()
+            ?.Elements.Select<IBencodingNode, string>(i => i.As<BString>()!.Value)
             .ToList();
         var creationDate = dictionary.Elements.GetValueOrDefault("creation date")?.As<BInt>();
         var comment = dictionary.Elements.GetValueOrDefault("comment")?.As<BString>();
         var createdBy = dictionary.Elements.GetValueOrDefault("created by")?.As<BString>();
         var encoding = dictionary.Elements.GetValueOrDefault("encoding")?.As<BString>();
+        var title = dictionary.Elements.GetValueOrDefault("title").As<BString>();
 
         //info parts
         var name = info.Elements["name"].As<BString>() ?? throw new InvalidDataException();
@@ -198,7 +204,9 @@ public class TorrentClient(HttpClient? httpClient = null, ILogger? logger = null
             CreationDate: creationDate,
             Comment: comment,
             CreatedBy: createdBy,
-            Encoding: encoding
+            Encoding: encoding,
+            Title: title,
+            UrlList: urlList
         );
     }
 

@@ -7,5 +7,7 @@ public record MetaInfo(
     long? CreationDate = null,
     string? Comment = null,
     string? CreatedBy = null,
-    string? Encoding = null
+    string? Encoding = null,
+    string? Title = null,
+    List<string>? UrlList = null
 );

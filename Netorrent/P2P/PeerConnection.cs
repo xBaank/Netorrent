@@ -61,6 +61,7 @@ internal class PeerConnection(
     public string? PeerId { get; private set; }
     public Bitfield PeerBitField { get; private set; } = new(myBitField.Length);
     public int? CurrentPieceDownloading => _pieceManager.CurrentDownloadingPieceIndex;
+    public bool FailedConnection => _loopTask?.IsFaulted ?? false;
 
     public void Start(CancellationToken cancellationToken) =>
         _loopTask ??= Task.Run(
