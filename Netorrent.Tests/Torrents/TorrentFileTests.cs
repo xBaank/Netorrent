@@ -10,7 +10,7 @@ public class TorrentFileTests
     public async Task Should_export_torrent_file()
     {
         var torrentClient = new TorrentClient();
-        var torrent = await torrentClient.AddTorrentAsync(
+        var torrent = await torrentClient.ImportTorrentAsync(
             "Data/nosferatu.torrent",
             "Output",
             TestContext.Current.CancellationToken
@@ -57,5 +57,46 @@ public class TorrentFileTests
         originalMetainfo.Info.Type.ShouldBeEquivalentTo(expectedMetainfo.Info.Type);
 
         originalMetainfo.Info.InfoHash.ShouldBeEquivalentTo(expectedMetainfo.Info.InfoHash);
+    }
+
+    [Fact]
+    public async Task Should_create_torrent_file_from_directory()
+    {
+        var torrentClient = new TorrentClient();
+        var torrent = await torrentClient.CreateTorrentAsync(
+            "Data/MultifileTest",
+            "http://test.com",
+            ["http://test.com"],
+            ["http://test.com"],
+            cancellationToken: TestContext.Current.CancellationToken
+        );
+
+        torrent.MetaInfo.Info.Type.ShouldBe(TorrentFile.FileStructure.InfoType.Multiple);
+        torrent.MetaInfo.Info.Files.ShouldNotBeNull();
+        torrent.MetaInfo.Info.Files.Count.ShouldBe(3);
+        var filePath1 = string.Join("/", torrent.MetaInfo.Info.Files[0].Path);
+        var filePath2 = string.Join("/", torrent.MetaInfo.Info.Files[1].Path);
+        var filePath3 = string.Join("/", torrent.MetaInfo.Info.Files[2].Path);
+        string[] paths = [filePath1, filePath2, filePath3];
+        paths.ShouldContain("test.txt");
+        paths.ShouldContain("Folder1/test2.txt");
+        paths.ShouldContain("Folder1/Folder2/test3.txt");
+    }
+
+    [Fact]
+    public async Task Should_create_torrent_file_from_file()
+    {
+        var torrentClient = new TorrentClient();
+        var torrent = await torrentClient.CreateTorrentAsync(
+            "Data/MultifileTest/test.txt",
+            "http://test.com",
+            ["http://test.com"],
+            ["http://test.com"],
+            cancellationToken: TestContext.Current.CancellationToken
+        );
+
+        torrent.MetaInfo.Info.Type.ShouldBe(TorrentFile.FileStructure.InfoType.Single);
+        torrent.MetaInfo.Info.Files.ShouldBeNull();
+        torrent.MetaInfo.Info.Name.ShouldBe("test.txt");
     }
 }

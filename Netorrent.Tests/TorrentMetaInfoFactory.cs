@@ -5,7 +5,7 @@ using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.Tests;
 
-public static class TestMetaInfoFactory
+public static class TorrentMetaInfoFactory
 {
     /// <summary>
     /// Creates a simple single-file MetaInfo for testing

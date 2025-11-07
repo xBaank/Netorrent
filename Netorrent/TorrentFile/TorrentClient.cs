@@ -1,4 +1,5 @@
-﻿using System.Security.Cryptography;
+﻿using System.Buffers;
+using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Netorrent.Bencoding;
@@ -16,7 +17,7 @@ public class TorrentClient(HttpClient? httpClient = null, ILogger? logger = null
     private readonly ILogger _logger = logger ?? NullLogger.Instance;
     private readonly List<Torrent> torrents = [];
 
-    public async ValueTask<Torrent> AddTorrentAsync(
+    public async ValueTask<Torrent> ImportTorrentAsync(
         string path,
         string outputDirectory,
         CancellationToken cancellationToken = default
@@ -58,16 +59,18 @@ public class TorrentClient(HttpClient? httpClient = null, ILogger? logger = null
     public async ValueTask<Torrent> CreateTorrentAsync(
         string path,
         string announceUrl,
-        List<string>? announceUrls,
+        List<string>? announceUrls = null,
+        List<string>? webUrls = null,
         int pieceLength = 256 * 1024, // 256 KB default
         CancellationToken cancellationToken = default
     )
     {
         var torrent = new Torrent(
-            await CreateMetaInfoFromFileAsync(
+            await CreateMetaInfoFromPathAsync(
                 path,
                 announceUrl,
                 announceUrls,
+                webUrls,
                 pieceLength,
                 cancellationToken
             ),
@@ -81,62 +84,218 @@ public class TorrentClient(HttpClient? httpClient = null, ILogger? logger = null
         return torrent;
     }
 
-    internal static async ValueTask<MetaInfo> CreateMetaInfoFromFileAsync(
+    internal static async ValueTask<MetaInfo> CreateMetaInfoFromPathAsync(
         string path,
         string announceUrl,
         List<string>? announceUrls,
-        int pieceLength, // 256 KB default
+        List<string>? webUrls,
+        int pieceLength = 256 * 1024, // 256 KB default
         CancellationToken cancellationToken = default
     )
     {
-        var fileInfo = new FileInfo(path);
-        if (!fileInfo.Exists)
-            throw new FileNotFoundException("File not found.", path);
-
-        var fileName = fileInfo.Name;
-        var fileLength = fileInfo.Length;
-
-        // --- Step 1: Compute SHA1 hashes for each piece ---
-        var piecesBytes = new List<byte>();
-        using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+        static bool IsValidUrl(string? url, bool allowHttp = true)
         {
-            byte[] buffer = new byte[pieceLength];
-            int bytesRead;
-            while ((bytesRead = await fs.ReadAsync(buffer, cancellationToken)) > 0)
+            if (string.IsNullOrWhiteSpace(url))
+                return false;
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+                return false;
+            if (uri.Scheme == Uri.UriSchemeHttp && allowHttp)
+                return true;
+            if (uri.Scheme == Uri.UriSchemeHttps)
+                return true;
+            if (uri.Scheme == "udp" || uri.Scheme == "udp4" || uri.Scheme == "udp6")
+                return true; // Trackers can be UDP
+            return false;
+        }
+
+        if (!IsValidUrl(announceUrl))
+            throw new ArgumentException($"Invalid announce URL: '{announceUrl}'");
+
+        string[] allUrls = [.. announceUrls ?? [], .. webUrls ?? []];
+        foreach (string url in allUrls)
+        {
+            if (!IsValidUrl(url))
             {
-                byte[] chunk = buffer.AsSpan(0, bytesRead).ToArray();
-                byte[] hash = SHA1.HashData(chunk);
-                piecesBytes.AddRange(hash);
+                throw new ArgumentException($"Invalid announce URL: '{url}'");
             }
         }
 
-        // --- Step 2: Create info dictionary ---
-        var infoDict = new BDictionary(
-            new Dictionary<BString, IBencodingNode>
+        path = Path.GetFullPath(path);
+
+        bool isDirectory = Directory.Exists(path);
+        bool isFile = File.Exists(path);
+        if (!isDirectory && !isFile)
+            throw new FileNotFoundException("File or directory not found.", path);
+
+        var files = new List<(string FullPath, string RelativePath, long Length)>();
+
+        if (isFile)
+        {
+            var fi = new FileInfo(path);
+            files.Add((fi.FullName, fi.Name, fi.Length));
+        }
+        else
+        {
+            var root = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var allFiles = Directory
+                .EnumerateFiles(root, "*", SearchOption.AllDirectories)
+                .Select(full => new
+                {
+                    Full = full,
+                    Rel = full[root.Length..]
+                        .TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                })
+                .OrderBy(x => x.Rel, StringComparer.Ordinal)
+                .ToList();
+
+            foreach (var f in allFiles)
             {
-                [new BString("name")] = new BString(fileName),
-                [new BString("length")] = new BInt(fileLength),
-                [new BString("piece length")] = new BInt(pieceLength),
-                [new BString("pieces")] = new BString(piecesBytes.ToArray()), // raw bytes
+                var fi = new FileInfo(f.Full);
+                var relParts = f
+                    .Rel.Split(
+                        [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                        StringSplitOptions.None
+                    )
+                    .ToList();
+                files.Add((fi.FullName, string.Join("/", relParts), fi.Length));
             }
-        );
 
-        // --- Step 3: Create Info object ---
-        var info = new Info(
-            infoDict,
-            PieceLength: pieceLength,
-            Pieces: piecesBytes.ToArray(), // optional string representation
-            Private: 0,
-            Type: InfoType.Single,
-            Name: fileName,
-            Length: fileLength
-        );
+            if (files.Count == 0)
+                throw new InvalidOperationException(
+                    "Directory contains no files to create a torrent."
+                );
+        }
 
-        // --- Step 4: Create MetaInfo ---
+        var piecesBytes = new List<byte>();
+        using var pool = MemoryPool<byte>.Shared.Rent(pieceLength);
+        var pieceBuffer = pool.Memory[..pieceLength];
+        int bufferPos = 0;
+
+        foreach (var (fullPath, _, _) in files)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            using var fs = new FileStream(
+                fullPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite,
+                4096,
+                useAsync: true
+            );
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                int toRead = pieceLength - bufferPos;
+                int bytesRead = await fs.ReadAsync(
+                    pieceBuffer.Slice(bufferPos, toRead),
+                    cancellationToken
+                );
+                if (bytesRead <= 0)
+                    break;
+
+                bufferPos += bytesRead;
+
+                // If buffer full, hash and reset
+                if (bufferPos == pieceLength)
+                {
+                    var pieceData = pieceBuffer[..pieceLength].ToArray();
+                    var hash = SHA1.HashData(pieceData);
+                    piecesBytes.AddRange(hash);
+                    bufferPos = 0;
+                }
+            }
+        }
+
+        if (bufferPos > 0)
+        {
+            var lastPiece = pieceBuffer[..bufferPos].ToArray();
+            var hash = SHA1.HashData(lastPiece);
+            piecesBytes.AddRange(hash);
+        }
+
+        // --- Step 2: Create info dictionary ---
+        var infoElements = new Dictionary<BString, IBencodingNode>
+        {
+            [new BString("piece length")] = new BInt(pieceLength),
+            [new BString("pieces")] = new BString([.. piecesBytes]), // raw bytes
+        };
+
+        Info infoObj;
+        if (isFile)
+        {
+            // Single-file mode
+            var (FullPath, RelativePath, Length) = files[0];
+            infoElements[new BString("name")] = new BString(RelativePath);
+            infoElements[new BString("length")] = new BInt(Length);
+
+            var infoDict = new BDictionary(infoElements);
+
+            infoObj = new Info(
+                RawInfo: infoDict,
+                PieceLength: pieceLength,
+                Pieces: [.. piecesBytes],
+                Private: 0,
+                Type: InfoType.Single,
+                Name: RelativePath,
+                Length: Length
+            );
+        }
+        else
+        {
+            // Multi-file mode: build "files" list
+            var filesListNodes = new List<IBencodingNode>();
+            var infoFiles = new List<InfoFile>();
+
+            foreach (var (fullPath, relPath, length) in files)
+            {
+                // path components are split by '/' which we set earlier
+                var pathParts = relPath
+                    .Split(['/'], StringSplitOptions.None)
+                    .Select(p => (IBencodingNode)new BString(p))
+                    .ToList();
+
+                var fileDict = new BDictionary(
+                    new Dictionary<BString, IBencodingNode>
+                    {
+                        [new BString("length")] = new BInt(length),
+                        [new BString("path")] = new BList(pathParts),
+                    }
+                );
+
+                filesListNodes.Add(fileDict);
+
+                // Also create InfoFile instances for the Info object (adjust constructor as needed)
+                infoFiles.Add(new InfoFile(length, [.. pathParts.Select(n => ((BString)n).Data)]));
+            }
+
+            infoElements[new BString("name")] = new BString(
+                Path.GetFileName(Path.GetFileName(path) ?? path)
+            );
+            infoElements[new BString("files")] = new BList(filesListNodes);
+
+            var infoDict = new BDictionary(infoElements);
+
+            infoObj = new Info(
+                RawInfo: infoDict,
+                PieceLength: pieceLength,
+                Pieces: [.. piecesBytes],
+                Private: 0,
+                Type: InfoType.Multiple,
+                Name: Path.GetFileName(
+                    path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                ),
+                Files: infoFiles
+            );
+        }
+
+        // --- Step 3: Create MetaInfo ---
         var meta = new MetaInfo(
-            Info: info,
+            Info: infoObj,
             Announce: announceUrl,
             AnnounceList: announceUrls,
+            UrlList: webUrls,
             CreationDate: DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             CreatedBy: "Netorrent",
             Encoding: "UTF-8"
