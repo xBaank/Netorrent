@@ -4,7 +4,7 @@ using Netorrent.P2P.Managers.Request;
 
 namespace Netorrent.P2P.Managers.Piece;
 
-internal class PieceManager(int maxBlocks)
+internal class PieceManager(int maxBlocks) : IAsyncDisposable
 {
     private readonly Channel<Block> _blocksToWrite = Channel.CreateBounded<Block>(
         new BoundedChannelOptions(50) { SingleWriter = true, SingleReader = true }
@@ -82,5 +82,20 @@ internal class PieceManager(int maxBlocks)
             _sentRequests.Add(request);
             yield return request;
         }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _blocksToWrite.Writer.TryComplete();
+        _requestsToSend.Writer.TryComplete();
+        await _blocksToWrite.Reader.Completion;
+        await _requestsToSend.Reader.Completion;
+        await foreach (var item in _blocksToWrite.Reader.ReadAllAsync())
+        {
+            item.Dispose();
+        }
+        await _requestsToSend.Reader.ReadAllAsync().ToListAsync();
+        _sentRequests.Clear();
+        _currentPieceRequests.Clear();
     }
 }

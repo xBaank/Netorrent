@@ -2,7 +2,7 @@
 
 namespace Netorrent.P2P.Managers.Request;
 
-internal class RequestManager : IDisposable
+internal class RequestManager : IAsyncDisposable
 {
     private const int PEER_REQUEST_LIMIT = 8;
     private const int MAX_IGNORED_REQUESTS = 16;
@@ -64,8 +64,11 @@ internal class RequestManager : IDisposable
         _requestList.Remove(request);
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _pendingRequests.Writer.Complete();
+        _pendingRequests.Writer.TryComplete();
+        await _pendingRequests.Reader.Completion;
+        await _pendingRequests.Reader.ReadAllAsync().ToListAsync();
+        _requestList.Clear();
     }
 }

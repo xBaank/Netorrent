@@ -503,11 +503,10 @@ internal class PeerConnection(
     public async ValueTask DisposeAsync()
     {
         MyBitField.OnHavePieceAsync -= SendHave;
-        _outgoingMessages.Writer.Complete();
-        _incomingMessages.Writer.Complete();
-        await _outgoingMessages.Reader.ReadAllAsync().ForEachAsync(static i => i.Dispose());
-        await _incomingMessages.Reader.ReadAllAsync().ForEachAsync(static i => i.Dispose());
+        _outgoingMessages.Writer.TryComplete();
+        _incomingMessages.Writer.TryComplete();
+        await _requestManager.DisposeAsync();
+        await _pieceManager.DisposeAsync();
         TcpClient.Close();
-        TcpClient.Dispose();
     }
 }
