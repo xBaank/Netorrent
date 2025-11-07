@@ -5,7 +5,6 @@ using Netorrent.Other;
 using Netorrent.Tests.Fixtures;
 using Netorrent.TorrentFile;
 using TimeSpanXt;
-using Xunit.Sdk;
 
 namespace Netorrent.Tests.Torrents;
 
