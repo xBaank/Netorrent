@@ -1,4 +1,5 @@
 ﻿using System.Security.Cryptography;
+using Lazy;
 using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
 
@@ -14,7 +15,7 @@ public record Info(
     BDictionary RawInfo,
     long PieceLength,
     byte[] Pieces,
-    long Private,
+    long? Private,
     InfoType Type,
     string Name,
     //Single file mode
@@ -24,12 +25,12 @@ public record Info(
     List<InfoFile>? Files = null
 )
 {
-    public readonly byte[] InfoHash = ComputeInfoHash(RawInfo);
+    [Lazy]
+    public byte[] InfoHash => ComputeInfoHash(RawInfo);
 
     private static byte[] ComputeInfoHash(BDictionary info)
     {
-        var encoder = new BEncoder();
-
+        using var encoder = new BEncoder();
         var infoBytes = encoder.Encode(info);
         return SHA1.HashData(infoBytes);
     }

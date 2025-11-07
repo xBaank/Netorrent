@@ -15,7 +15,7 @@ public class TorrentTests(OpenTrackerFixture fixture, ITestOutputHelper outputHe
     private readonly OpenTrackerFixture _fixture = fixture;
 
     [Fact]
-    public async Task Should_Download_Torrent()
+    public async Task Should_download_torrent()
     {
         // Arrange
         var loggerFactory = LoggerFactory.Create(builder =>

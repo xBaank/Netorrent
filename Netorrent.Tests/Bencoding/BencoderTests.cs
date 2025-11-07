@@ -21,9 +21,9 @@ public class BEncoderTests
     [InlineData(9223372036854775807, "i9223372036854775807e")] // max 64-bit
     [InlineData(-9223372036854775808, "i-9223372036854775808e")] // min 64-bit
     [InlineData(7, "i7e")] // normalized leading zeros
-    public void CanEncodeBInt(long value, string expected)
+    public async Task Should_encode_BInt(long value, string expected)
     {
-        var encoder = new BEncoder();
+        await using var encoder = new BEncoder();
         var bint = new BInt(value);
 
         byte[] encoded = encoder.Encode(bint);
@@ -45,9 +45,9 @@ public class BEncoderTests
     [InlineData("12:áéíóúñ", "áéíóúñ")]
     [InlineData("9:🙂emoji", "🙂emoji")]
     [InlineData("1:a", "a")]
-    public void CanEncodeBString(string expectedEncoded, string value)
+    public async Task Should_encode_BString(string expectedEncoded, string value)
     {
-        var encoder = new BEncoder();
+        await using var encoder = new BEncoder();
         var bstring = new BString(value);
 
         byte[] encoded = encoder.Encode(bstring);
@@ -59,9 +59,9 @@ public class BEncoderTests
     [Theory]
     [ClassData(typeof(BDictionaryData))]
     [ClassData(typeof(BlistData))]
-    public void CanEncodeNonPrimitives(string expectedEncoded, IBencodingNode dictionary)
+    public async Task Shoud_encode_collections(string expectedEncoded, IBencodingNode dictionary)
     {
-        var encoder = new BEncoder();
+        await using var encoder = new BEncoder();
 
         byte[] encoded = encoder.Encode(dictionary);
         string result = Encoding.UTF8.GetString(encoded);

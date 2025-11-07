@@ -21,10 +21,10 @@ public class BDecoderTests
     [InlineData("12:áéíóúñ", "áéíóúñ")]
     [InlineData("9:🙂emoji", "🙂emoji")]
     [InlineData("1:a", "a")]
-    public void CanDecodeBString(string input, string actual)
+    public void Should_decode_BString(string input, string actual)
     {
         var bytes = Encoding.UTF8.GetBytes(input);
-        var decoder = new BDecoder(bytes.AsSpan());
+        var decoder = new BDecoder(bytes);
 
         var decoded = (BString)decoder.Decode();
 
@@ -46,10 +46,10 @@ public class BDecoderTests
     [InlineData("i007e", 7)] // technically invalid in strict bencoding (leading zeros), but useful for tests
     [InlineData("i-0e", 0)] // another edge case: negative zero normalization
     [InlineData("i000000e", 0)] // leading zeros case
-    public void CanDecodeBInt(string input, long actual)
+    public void Should_decode_BInt(string input, long actual)
     {
         var bytes = Encoding.UTF8.GetBytes(input);
-        var decoder = new BDecoder(bytes.AsSpan());
+        var decoder = new BDecoder(bytes);
 
         var decoded = (BInt)decoder.Decode();
 
@@ -59,10 +59,10 @@ public class BDecoderTests
     [Theory]
     [ClassData(typeof(BDictionaryData))]
     [ClassData(typeof(BlistData))]
-    public void CanDecodeNonPrimitives(string input, IBencodingNode actual)
+    public void Should_decode_collections(string input, IBencodingNode actual)
     {
         var bytes = Encoding.UTF8.GetBytes(input);
-        var decoder = new BDecoder(bytes.AsSpan());
+        var decoder = new BDecoder(bytes);
 
         var decoded = decoder.Decode();
 

@@ -1,11 +1,13 @@
-﻿using System.Security.Cryptography;
+﻿using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using Microsoft.Win32.SafeHandles;
 using Netorrent.P2P.Managers.Request;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.IO;
 
-internal class FileManager : IAsyncDisposable
+internal class FileManager : IDisposable
 {
     private readonly string _outputDirectory;
     private readonly List<TorrentFileEntry> _files = [];
@@ -40,15 +42,14 @@ internal class FileManager : IAsyncDisposable
             if (folder is not null)
                 Directory.CreateDirectory(folder);
 
-            var stream = new FileStream(
+            var handle = File.OpenHandle(
                 fullPath,
                 FileMode.OpenOrCreate,
                 FileAccess.ReadWrite,
                 FileShare.ReadWrite,
-                bufferSize: 4096,
                 options: FileOptions.Asynchronous | FileOptions.RandomAccess
             );
-            _files.Add(new TorrentFileEntry(fullPath, offset, item.Length, stream));
+            _files.Add(new TorrentFileEntry(fullPath, offset, item.Length, handle));
             offset += item.Length;
         }
     }
@@ -154,7 +155,7 @@ internal class FileManager : IAsyncDisposable
             Directory.CreateDirectory(Path.GetDirectoryName(file.FullPath)!);
 
             await RandomAccess.WriteAsync(
-                file.FileStream.SafeFileHandle,
+                file.SafeHandle,
                 zeroBuffer.AsMemory(0, (int)writable),
                 fileOffset,
                 ct
@@ -188,7 +189,7 @@ internal class FileManager : IAsyncDisposable
             Directory.CreateDirectory(Path.GetDirectoryName(file.FullPath)!);
 
             await RandomAccess.WriteAsync(
-                file.FileStream.SafeFileHandle,
+                file.SafeHandle,
                 data.Slice(position, (int)writable),
                 fileOffset,
                 ct
@@ -230,7 +231,7 @@ internal class FileManager : IAsyncDisposable
 
             // Perform thread-safe, offset-based async read
             int bytesRead = await RandomAccess.ReadAsync(
-                file.FileStream.SafeFileHandle,
+                file.SafeHandle,
                 buffer.AsMemory(totalRead, (int)readable),
                 fileOffset,
                 ct
@@ -249,12 +250,11 @@ internal class FileManager : IAsyncDisposable
         return buffer;
     }
 
-    public async ValueTask DisposeAsync()
+    public void Dispose()
     {
         foreach (var item in _files)
         {
-            RandomAccess.FlushToDisk(item.FileStream.SafeFileHandle);
-            await item.DisposeAsync();
+            RandomAccess.FlushToDisk(item.SafeHandle);
         }
     }
 
@@ -262,11 +262,9 @@ internal class FileManager : IAsyncDisposable
         string FullPath,
         long StartOffset,
         long Length,
-        FileStream FileStream
-    ) : IAsyncDisposable
+        SafeFileHandle SafeHandle
+    )
     {
         public long EndOffset => StartOffset + Length;
-
-        public async ValueTask DisposeAsync() => await FileStream.DisposeAsync();
     }
 }

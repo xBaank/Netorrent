@@ -41,7 +41,7 @@ public static class TestMetaInfoFactory
         var rawInfo = new BDictionary(infoDict);
 
         var info = new Info(
-            RawInfo: rawInfo,
+            rawInfo,
             PieceLength: pieceLength,
             Pieces: piecesBytes.ToArray(),
             Private: 0,
@@ -112,7 +112,7 @@ public static class TestMetaInfoFactory
         var rawInfo = new BDictionary(infoDict);
 
         var info = new Info(
-            RawInfo: rawInfo,
+            rawInfo,
             PieceLength: pieceLength,
             Pieces: piecesBytes.ToArray(),
             Private: 0,

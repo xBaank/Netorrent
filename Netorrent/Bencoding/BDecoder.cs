@@ -2,12 +2,12 @@
 
 namespace Netorrent.Bencoding;
 
-public ref struct BDecoder
+public class BDecoder
 {
-    private readonly ReadOnlySpan<byte> _data;
+    private readonly byte[] _data;
     private int _pos;
 
-    public BDecoder(ReadOnlySpan<byte> data)
+    public BDecoder(byte[] data)
     {
         _data = data;
     }
@@ -47,9 +47,9 @@ public ref struct BDecoder
             current = (char)_data[++_pos];
         }
 
-        if (int.TryParse(_data.Slice(startOffset, length), out var totalLength))
+        if (int.TryParse(_data.AsSpan().Slice(startOffset, length), out var totalLength))
         {
-            var result = _data.Slice(++_pos, totalLength);
+            var result = _data.AsSpan().Slice(++_pos, totalLength);
             _pos += totalLength;
             return new BString(result.ToArray());
         }
@@ -69,7 +69,7 @@ public ref struct BDecoder
             current = (char)_data[++_pos];
         }
 
-        var slice = _data.Slice(startingOffset, length);
+        var slice = _data.AsSpan().Slice(startingOffset, length);
 
         if (long.TryParse(slice, out var result))
         {

@@ -81,7 +81,7 @@ public class TorrentClient(HttpClient? httpClient = null, ILogger? logger = null
         return torrent;
     }
 
-    private static async ValueTask<MetaInfo> CreateMetaInfoFromFileAsync(
+    internal static async ValueTask<MetaInfo> CreateMetaInfoFromFileAsync(
         string path,
         string announceUrl,
         List<string>? announceUrls,
@@ -123,7 +123,7 @@ public class TorrentClient(HttpClient? httpClient = null, ILogger? logger = null
 
         // --- Step 3: Create Info object ---
         var info = new Info(
-            RawInfo: infoDict,
+            infoDict,
             PieceLength: pieceLength,
             Pieces: piecesBytes.ToArray(), // optional string representation
             Private: 0,
@@ -145,7 +145,7 @@ public class TorrentClient(HttpClient? httpClient = null, ILogger? logger = null
         return meta;
     }
 
-    private static MetaInfo ParseMetaInfo(BDictionary dictionary)
+    internal static MetaInfo ParseMetaInfo(BDictionary dictionary)
     {
         var info =
             dictionary.Elements["info"].As<BDictionary>() ?? throw new InvalidDataException();
@@ -192,7 +192,7 @@ public class TorrentClient(HttpClient? httpClient = null, ILogger? logger = null
                 info,
                 pieceLength,
                 pieces.RawData,
-                privateFlag ?? 0,
+                privateFlag,
                 files is null ? InfoType.Single : InfoType.Multiple,
                 name,
                 length,
@@ -210,7 +210,7 @@ public class TorrentClient(HttpClient? httpClient = null, ILogger? logger = null
         );
     }
 
-    public static InfoFile ParseFile(IBencodingNode data)
+    internal static InfoFile ParseFile(IBencodingNode data)
     {
         var dic = data.As<BDictionary>() ?? throw new InvalidDataException();
         var length = dic.Elements["length"].As<BInt>() ?? throw new InvalidDataException();

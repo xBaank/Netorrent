@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
+using Netorrent.Bencoding;
 using Netorrent.IO;
 using Netorrent.P2P;
 using Netorrent.P2P.Managers;
@@ -86,5 +87,17 @@ public class Torrent
                 await tracker.DisposeAsync();
             }
         }
+    }
+
+    public async Task ExportAsync(string outputPath, CancellationToken cancellationToken = default)
+    {
+        var folder = Path.GetDirectoryName(outputPath);
+
+        if (folder is not null)
+            Directory.CreateDirectory(folder);
+
+        var rawMetainfo = MetaInfo.ToBDictionary();
+        await using var encoder = new BEncoder();
+        await File.WriteAllBytesAsync(outputPath, encoder.Encode(rawMetainfo), cancellationToken);
     }
 }

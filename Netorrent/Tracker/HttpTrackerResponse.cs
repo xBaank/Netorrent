@@ -21,7 +21,7 @@ internal class HttpTrackerResponse
         response.EnsureSuccessStatusCode();
 
         var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-        var decoder = new BDecoder(bytes.AsSpan());
+        var decoder = new BDecoder(bytes);
         var root = decoder.Decode();
 
         if (root is not BDictionary dict)

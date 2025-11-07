@@ -3,20 +3,19 @@ using Netorrent.Bencoding.Structs;
 
 namespace Netorrent.Bencoding;
 
-//TODO change impl to prealocated span instead of using memory stream
-public sealed class BEncoder : IAsyncDisposable
+public sealed class BEncoder : IAsyncDisposable, IDisposable
 {
-    private readonly MemoryStream stream;
+    private readonly MemoryStream _stream;
 
     public BEncoder()
     {
-        stream = new MemoryStream(4096);
+        _stream = new MemoryStream(4096);
     }
 
     public byte[] Encode(IBencodingNode value)
     {
         EncodeToStream(value);
-        return stream.ToArray();
+        return _stream.ToArray();
     }
 
     private void EncodeToStream(IBencodingNode value)
@@ -46,29 +45,29 @@ public sealed class BEncoder : IAsyncDisposable
     {
         var bytes = value.RawData;
         var lengthBytes = Encoding.ASCII.GetBytes(bytes.Length.ToString() + ":");
-        stream.Write(lengthBytes, 0, lengthBytes.Length);
-        stream.Write(bytes, 0, bytes.Length);
+        _stream.Write(lengthBytes, 0, lengthBytes.Length);
+        _stream.Write(bytes, 0, bytes.Length);
     }
 
     private void EncodeInt(BInt value)
     {
         var bytes = Encoding.ASCII.GetBytes($"i{value.Data}e");
-        stream.Write(bytes, 0, bytes.Length);
+        _stream.Write(bytes, 0, bytes.Length);
     }
 
     private void EncodeList(BList list)
     {
-        stream.WriteByte((byte)'l');
+        _stream.WriteByte((byte)'l');
         foreach (var item in list.Elements)
         {
             EncodeToStream(item);
         }
-        stream.WriteByte((byte)'e');
+        _stream.WriteByte((byte)'e');
     }
 
     private void EncodeDictionary(BDictionary dic)
     {
-        stream.WriteByte((byte)'d');
+        _stream.WriteByte((byte)'d');
 
         foreach (
             var kvp in dic.Elements.OrderBy(
@@ -81,7 +80,7 @@ public sealed class BEncoder : IAsyncDisposable
             EncodeToStream(kvp.Value);
         }
 
-        stream.WriteByte((byte)'e');
+        _stream.WriteByte((byte)'e');
     }
 
     private static int BytewiseCompare(byte[]? a, byte[]? b)
@@ -103,5 +102,7 @@ public sealed class BEncoder : IAsyncDisposable
         return a.Length.CompareTo(b.Length);
     }
 
-    public async ValueTask DisposeAsync() => await stream.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _stream.DisposeAsync();
+
+    public void Dispose() => _stream.Dispose();
 }
