@@ -505,6 +505,16 @@ internal class PeerConnection(
         MyBitField.OnHavePieceAsync -= SendHave;
         _outgoingMessages.Writer.TryComplete();
         _incomingMessages.Writer.TryComplete();
+        await _outgoingMessages.Reader.Completion;
+        await _incomingMessages.Reader.Completion;
+        await foreach (var item in _outgoingMessages.Reader.ReadAllAsync())
+        {
+            item.Dispose();
+        }
+        await foreach (var item in _incomingMessages.Reader.ReadAllAsync())
+        {
+            item.Dispose();
+        }
         await _requestManager.DisposeAsync();
         await _pieceManager.DisposeAsync();
         TcpClient.Close();
