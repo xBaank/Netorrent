@@ -7,7 +7,7 @@ ILogger logger = LoggerFactory.Create(builder => builder.AddConsole()).CreateLog
 
 var torrentClient = new TorrentClient(logger: logger);
 var torrent = await torrentClient.ImportTorrentAsync(
-    "D:\\repos\\Netorrent\\Netorrent.Tests\\Data\\Clair Obscur - Expedition 33 [FitGirl Repack].torrent",
+    "C:\\Users\\elrob\\Downloads\\Clair Obscur - Expedition 33 [FitGirl Repack].torrent",
     "C:\\Users\\elrob\\Downloads\\output"
 );
 

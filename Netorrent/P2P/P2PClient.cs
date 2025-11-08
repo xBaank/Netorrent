@@ -55,7 +55,7 @@ internal class P2PClient : IAsyncDisposable
         CancellationToken cancellationToken = default
     )
     {
-        if (_knownPeers.Count > 50)
+        if (_knownPeers.Count > 60)
             return;
 
         if (_knownPeers.ContainsKey(iPEndPoint))
@@ -92,8 +92,11 @@ internal class P2PClient : IAsyncDisposable
 
         if (peerConnection.PeerId == peerId)
         {
+            _logger.LogInformation(
+                "Ignored self connection to {EndPoint}",
+                peerConnection.IPEndPoint
+            );
             await peerConnection.DisposeAsync();
-            _logger.LogInformation("Cant connect to self");
             return;
         }
 
@@ -131,8 +134,11 @@ internal class P2PClient : IAsyncDisposable
 
                     if (peerConnection.PeerId == peerId)
                     {
+                        _logger.LogInformation(
+                            "Ignored self connection from {EndPoint}",
+                            peerConnection.IPEndPoint
+                        );
                         await peerConnection.DisposeAsync();
-                        _logger.LogInformation("Cant connect to self");
                         continue;
                     }
 
