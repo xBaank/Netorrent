@@ -40,6 +40,8 @@ public class Bitfield
         set => _bits[index] = value;
     }
 
+    public bool IsComplete => _bits.HasAllSet();
+
     internal async Task HavePiece(int index, CancellationToken cancellationToken)
     {
         if (index >= _bits.Length)

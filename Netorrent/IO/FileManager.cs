@@ -13,6 +13,8 @@ internal class FileManager : IDisposable
     private readonly List<TorrentFileEntry> _files = [];
     private readonly int _pieceLength;
     private readonly List<byte[]> _pieceHashes;
+    private readonly Lock _lock = new();
+    private long _writtenBytes;
     public Bitfield BitField { get; private set; }
 
     public const int BlockSize = 16 * 1024;
@@ -160,6 +162,7 @@ internal class FileManager : IDisposable
                 fileOffset,
                 ct
             );
+            RandomAccess.FlushToDisk(file.SafeHandle);
 
             globalOffset += writable;
             remaining -= writable;
@@ -195,12 +198,23 @@ internal class FileManager : IDisposable
                 ct
             );
 
+            _writtenBytes += writable;
+
             globalOffset += writable;
             position += (int)writable;
             remaining -= writable;
 
             if (remaining <= 0)
                 break;
+        }
+
+        if (_writtenBytes > 25 * 1024 * 1024)
+        {
+            foreach (var file in _files)
+                RandomAccess.FlushToDisk(file.SafeHandle);
+
+            lock (_lock)
+                _writtenBytes = 0;
         }
     }
 

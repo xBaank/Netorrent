@@ -23,35 +23,23 @@ public class TorrentTests(OpenTrackerFixture fixture, ITestOutputHelper outputHe
 
         var logger = loggerFactory.CreateLogger("Torrent");
 
-        logger.LogInformation("Logger is working inside test!");
-        outputHelper.WriteLine("OutputHelper works directly!");
-
-        var torrentSeeder = new TorrentClient(logger: logger);
-        var torrentSeeder2 = new TorrentClient(logger: logger);
-        var torrentLeecher = new TorrentClient(logger: logger);
+        var seeder = new TorrentClient(logger: logger);
+        var leecher = new TorrentClient(logger: logger);
 
         using var cts = TestContext.Current.CancellationToken.WithTimeout(30.Seconds());
 
-        var torrent1 = await torrentSeeder.CreateTorrentAsync(
-            "Data/test.txt",
-            _fixture.AnnounceUrl,
-            [_fixture.AnnounceUrl],
-            cancellationToken: cts.Token
-        );
-        var torrent2 = await torrentSeeder.CreateTorrentAsync(
+        var seederTorrent = await seeder.CreateTorrentAsync(
             "Data/test.txt",
             _fixture.AnnounceUrl,
             [_fixture.AnnounceUrl],
             cancellationToken: cts.Token
         );
 
-        var torrent3 = torrentLeecher.AddTorrent(torrent1.MetaInfo, "Output");
+        var leecherTorrent = leecher.AddTorrent(seederTorrent.MetaInfo, "Output");
 
-        var torrent1Task = torrent1.StartAsync(cts.Token);
-        await Task.Delay(5.Seconds(), cts.Token);
-        var torrent2Task = torrent2.StartAsync(cts.Token);
-        var torrent3Task = torrent3.StartAsync(cts.Token);
+        var seederTask = seederTorrent.StartAsync(cts.Token);
+        var leecherTask = leecherTorrent.StartAsync(cts.Token);
 
-        await TaskUtils.WhenAllOrOneThrows(torrent1Task, torrent2Task, torrent3Task);
+        await leecherTorrent.DownloadTask;
     }
 }

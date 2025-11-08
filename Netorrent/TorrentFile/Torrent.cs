@@ -25,6 +25,8 @@ public class Torrent
     public long DownloadedBytes => _p2pClient.DownloadedBytes;
     public long TotalBytes => _p2pClient.TotalBytes;
 
+    public Task DownloadTask => _p2pClient.DownloadTask;
+
     internal Torrent(
         MetaInfo metaInfo,
         HttpClient httpClient,

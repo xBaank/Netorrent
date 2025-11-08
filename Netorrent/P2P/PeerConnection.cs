@@ -49,6 +49,7 @@ internal class PeerConnection(
     );
     private DateTime _lastKeepAlive;
     private Task? _loopTask;
+    private CancellationTokenSource? _cancellationTokenSource;
 
     public SpeedTracker SpeedTracker { get; } = new();
     public TcpClient TcpClient { get; } = tcpClient;
@@ -61,7 +62,7 @@ internal class PeerConnection(
     public string? PeerId { get; private set; }
     public Bitfield PeerBitField { get; private set; } = new(myBitField.Length);
     public int? CurrentPieceDownloading => _pieceManager.CurrentDownloadingPieceIndex;
-    public bool FailedConnection => _loopTask?.IsFaulted ?? false;
+    public Task WaitTask => _loopTask ?? Task.CompletedTask;
 
     public void Start(CancellationToken cancellationToken) =>
         _loopTask ??= Task.Run(
@@ -70,15 +71,20 @@ internal class PeerConnection(
                 _lastKeepAlive = DateTime.UtcNow;
                 await SendBitfieldAsync(MyBitField, cancellationToken);
                 MyBitField.OnHavePieceAsync += SendHave;
-                await TaskUtils.WhenAllOrOneThrows(
-                    WriteLoopAsync(cancellationToken),
-                    ReadLoopAsync(cancellationToken),
-                    ProcessIncomingMessagesAsync(cancellationToken),
-                    ProcessBlocksToRequestAsync(cancellationToken),
-                    ProcessReceivedBlocksAsync(cancellationToken),
-                    ProcessReceivedRequestsAsync(cancellationToken),
-                    CheckTimeout(cancellationToken)
+                var _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken
                 );
+                var faultedTask = await Task.WhenAny(
+                    WriteLoopAsync(_cancellationTokenSource.Token),
+                    ReadLoopAsync(_cancellationTokenSource.Token),
+                    ProcessIncomingMessagesAsync(_cancellationTokenSource.Token),
+                    ProcessBlocksToRequestAsync(_cancellationTokenSource.Token),
+                    ProcessReceivedBlocksAsync(_cancellationTokenSource.Token),
+                    ProcessReceivedRequestsAsync(_cancellationTokenSource.Token),
+                    CheckTimeout(_cancellationTokenSource.Token)
+                );
+                _cancellationTokenSource.Cancel();
+                await faultedTask;
             },
             cancellationToken
         );
@@ -502,6 +508,7 @@ internal class PeerConnection(
 
     public async ValueTask DisposeAsync()
     {
+        _cancellationTokenSource?.Cancel();
         MyBitField.OnHavePieceAsync -= SendHave;
         _outgoingMessages.Writer.TryComplete();
         _incomingMessages.Writer.TryComplete();
