@@ -109,6 +109,7 @@ internal class PeerConnection(
             {
                 //Try to enqueue it again and wait until UnChoke
                 await _outgoingMessages.Writer.WriteAsync(item, cancellationToken);
+                await Task.Delay(500, cancellationToken);
                 continue;
             }
 
@@ -308,15 +309,10 @@ internal class PeerConnection(
 
     private async ValueTask ProcessBlockAsync(Block block, CancellationToken cancellationToken)
     {
-        using var payload = block.Payload;
-        SpeedTracker.AddBytes(payload.Memory.Length);
-        await _fileManager.WritePieceAsync(
-            block.Index,
-            block.Begin,
-            payload.Memory,
-            cancellationToken
-        );
-
+        using var _ = block;
+        var memory = block.Payload.Memory;
+        SpeedTracker.AddBytes(memory.Length);
+        await _fileManager.WritePieceAsync(block.Index, block.Begin, memory, cancellationToken);
         _pieceManager.SetBlockWritten(block);
 
         if (_pieceManager.HasFinishedCurrentPiece)
@@ -402,7 +398,7 @@ internal class PeerConnection(
     )
     {
         using var cts = cancellationToken.WithTimeout(TimeoutInSeconds.Seconds());
-        using var messageBytes = message.ToBytes();
+        using var messageBytes = message.ToMemoryRented();
         await Stream.WriteAsync(messageBytes.Memory, cts.Token);
         await Stream.FlushAsync(cts.Token);
         _lastKeepAlive = DateTime.UtcNow;
@@ -460,7 +456,7 @@ internal class PeerConnection(
         var messageBuffer = messagePool.Memory.Slice(lengthBuffer.Length, messageLength);
         lengthBuffer.CopyTo(totalMessageBuffer);
         await Stream.ReadExactlyAsync(messageBuffer, cts.Token);
-        return Message.FromBytes(messagePool, totalMessageBuffer.Length);
+        return Message.From(messagePool, totalMessageBuffer.Length);
     }
 
     public async Task SendBitfieldAsync(Bitfield bitField, CancellationToken cancellationToken)

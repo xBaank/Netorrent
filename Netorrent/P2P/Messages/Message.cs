@@ -30,7 +30,7 @@ internal readonly record struct Message(byte Id, MemoryRented<byte>? Payload) : 
     /// <summary>
     /// Serializes this message to bytes.
     /// </summary>
-    public MemoryRented<byte> ToBytes()
+    public MemoryRented<byte> ToMemoryRented()
     {
         if (Id == 255) // keep-alive
         {
@@ -55,7 +55,7 @@ internal readonly record struct Message(byte Id, MemoryRented<byte>? Payload) : 
     /// <summary>
     /// Deserializes a message from a span.
     /// </summary>
-    public static Message FromBytes(IMemoryOwner<byte> memoryOwner, int memoryLength)
+    public static Message From(IMemoryOwner<byte> memoryOwner, int memoryLength)
     {
         var data = memoryOwner.Memory[..memoryLength];
         if (data.Length < 4)

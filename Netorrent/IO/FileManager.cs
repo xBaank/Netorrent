@@ -1,6 +1,5 @@
 ﻿using System.Buffers;
 using System.Security.Cryptography;
-using Lazy;
 using Microsoft.Win32.SafeHandles;
 using Netorrent.Other;
 using Netorrent.P2P.Managers.Request;
@@ -169,7 +168,6 @@ internal class FileManager : IDisposable
                 fileOffset,
                 ct
             );
-            RandomAccess.FlushToDisk(file.SafeHandle);
 
             globalOffset += writable;
             remaining -= writable;
@@ -196,7 +194,11 @@ internal class FileManager : IDisposable
             long fileOffset = Math.Max(0, globalOffset - file.StartOffset);
             long writable = Math.Min(remaining, file.Length - fileOffset);
 
-            Directory.CreateDirectory(Path.GetDirectoryName(file.FullPath)!);
+            if (!file.isDirectoryCreated)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(file.FullPath)!);
+                file.isDirectoryCreated = true;
+            }
 
             await RandomAccess.WriteAsync(
                 file.SafeHandle,
@@ -268,7 +270,14 @@ internal class FileManager : IDisposable
     {
         foreach (var item in _files)
         {
-            RandomAccess.FlushToDisk(item.SafeHandle);
+            try
+            {
+                RandomAccess.FlushToDisk(item.SafeHandle);
+            }
+            finally
+            {
+                item.SafeHandle.Dispose();
+            }
         }
     }
 
@@ -280,5 +289,6 @@ internal class FileManager : IDisposable
     )
     {
         public long EndOffset => StartOffset + Length;
+        public bool isDirectoryCreated { get; set; } = false;
     }
 }
