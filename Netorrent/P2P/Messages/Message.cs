@@ -55,29 +55,25 @@ internal readonly record struct Message(byte Id, MemoryRented<byte>? Payload) : 
     /// <summary>
     /// Deserializes a message from a span.
     /// </summary>
-    public static Message FromBytes(ReadOnlySpan<byte> data)
+    public static Message FromBytes(IMemoryOwner<byte> memoryOwner, int memoryLength)
     {
+        var data = memoryOwner.Memory[..memoryLength];
         if (data.Length < 4)
             throw new ArgumentException("Message too short");
 
-        int length = BinaryPrimitives.ReadInt32BigEndian(data);
+        int length = BinaryPrimitives.ReadInt32BigEndian(data.Span);
         if (length == 0)
             return KeepAlive;
 
         if (data.Length < 4 + length)
             throw new ArgumentException("Incomplete message");
 
-        byte id = data[4];
+        byte id = data.Span[4];
 
         if (length == 1)
             return new Message(id, null);
-        //TODO Don't need new memory, use the same one from receive message
-        var memoryOwner = MemoryPool<byte>.Shared.Rent(length - 1);
-        var buffer = memoryOwner.Memory[..(length - 1)];
 
-        data.Slice(5, length - 1).CopyTo(buffer.Span);
-
-        return new Message(id, new MemoryRented<byte>(memoryOwner, buffer.Length));
+        return new Message(id, new MemoryRented<byte>(memoryOwner, length - 1, 5));
     }
 
     // ---- Helpers to create specific messages ----

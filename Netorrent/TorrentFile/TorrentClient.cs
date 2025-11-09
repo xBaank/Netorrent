@@ -43,7 +43,7 @@ public class TorrentClient(HttpClient? httpClient = null, ILogger? logger = null
         return torrent;
     }
 
-    public Torrent AddTorrent(MetaInfo metaInfo, string outputDirectory)
+    public Torrent ImportTorrent(MetaInfo metaInfo, string outputDirectory)
     {
         var torrent = new Torrent(
             metaInfo,

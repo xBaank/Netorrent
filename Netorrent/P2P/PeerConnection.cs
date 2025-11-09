@@ -455,12 +455,12 @@ internal class PeerConnection(
         int messageLength = BinaryPrimitives.ReadInt32BigEndian(lengthBuffer.Span[..4]);
         if (messageLength == 0)
             return Message.CreateKeepAlive();
-        using var messagePool = MemoryPool<byte>.Shared.Rent(lengthBuffer.Length + messageLength);
+        var messagePool = MemoryPool<byte>.Shared.Rent(lengthBuffer.Length + messageLength);
         var totalMessageBuffer = messagePool.Memory[..(lengthBuffer.Length + messageLength)];
         var messageBuffer = messagePool.Memory.Slice(lengthBuffer.Length, messageLength);
         lengthBuffer.CopyTo(totalMessageBuffer);
         await Stream.ReadExactlyAsync(messageBuffer, cts.Token);
-        return Message.FromBytes(totalMessageBuffer.Span);
+        return Message.FromBytes(messagePool, totalMessageBuffer.Length);
     }
 
     public async Task SendBitfieldAsync(Bitfield bitField, CancellationToken cancellationToken)

@@ -33,7 +33,7 @@ public class TorrentTests(OpenTrackerFixture fixture, ITestOutputHelper outputHe
             cancellationToken: cts.Token
         );
 
-        var leecherTorrent = leecher.AddTorrent(seederTorrent.MetaInfo, "Output");
+        var leecherTorrent = leecher.ImportTorrent(seederTorrent.MetaInfo, "Output");
 
         seederTorrent.Start(cts.Token);
         leecherTorrent.Start(cts.Token);
