@@ -71,7 +71,7 @@ internal readonly record struct Message(byte Id, MemoryRented<byte>? Payload) : 
 
         if (length == 1)
             return new Message(id, null);
-        //TODO fix memory pool
+        //TODO Don't need new memory, use the same one from receive message
         var memoryOwner = MemoryPool<byte>.Shared.Rent(length - 1);
         var buffer = memoryOwner.Memory[..(length - 1)];
 

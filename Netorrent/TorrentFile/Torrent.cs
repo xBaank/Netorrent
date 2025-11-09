@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 using Netorrent.Bencoding;
 using Netorrent.IO;
 using Netorrent.P2P;
@@ -9,23 +10,20 @@ using Netorrent.Tracker;
 
 namespace Netorrent.TorrentFile;
 
-public class Torrent
+public class Torrent : IAsyncDisposable
 {
     public MetaInfo MetaInfo { get; init; }
     public Bitfield Bitfield => _myBitfield;
 
     private readonly HttpClient _httpClient;
     private readonly P2PClient _p2pClient;
+    private readonly List<TrackerClient> _trackerClients;
     private readonly FileManager _fileManager;
     private readonly Bitfield _myBitfield;
     private readonly string _peerId;
     private readonly ILogger _logger;
 
-    public DownloadSpeed DownloadSpeed => _p2pClient.DownloadSpeed;
-    public long DownloadedBytes => _p2pClient.DownloadedBytes;
-    public long TotalBytes => _p2pClient.TotalBytes;
-
-    public Task DownloadTask => _p2pClient.DownloadTask;
+    public DownloadInfo DownloadInfo => _p2pClient.DownloadInfo;
 
     internal Torrent(
         MetaInfo metaInfo,
@@ -49,11 +47,25 @@ public class Torrent
         _p2pClient = new P2PClient(metaInfo, peerId, _fileManager, _myBitfield, _logger);
         _httpClient = httpClient;
         _peerId = peerId;
+        _trackerClients = [];
     }
 
-    public async Task StartAsync(CancellationToken cancellationToken = default)
+    public void Start(CancellationToken cancellationToken = default)
     {
         _p2pClient.ListenForPeers(cancellationToken);
+        _p2pClient.ListenerTask?.ContinueWith(
+            task =>
+            {
+                if (task.IsFaulted)
+                {
+                    DownloadInfo.SetException(task.Exception);
+                }
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default
+        );
+        cancellationToken.Register(() => _p2pClient.DownloadInfo.SetCanceled());
 
         var trackers = MetaInfo
             .AnnounceList?.Append(MetaInfo.Announce)
@@ -72,22 +84,22 @@ public class Torrent
         if (trackers is null || trackers.Count == 0)
             throw new InvalidOperationException("No supported tracker URLs found.");
 
-        try
+        foreach (var tracker in trackers)
         {
-            foreach (var tracker in trackers)
-            {
-                tracker.Start(cancellationToken);
-            }
-
-            var tasks = trackers.Select(i => i.TrackerTask);
-            await Task.WhenAll(tasks);
-        }
-        finally
-        {
-            foreach (var tracker in trackers)
-            {
-                await tracker.DisposeAsync();
-            }
+            tracker.Start(cancellationToken);
+            tracker.TrackerTask.ContinueWith(
+                async task =>
+                {
+                    if (task.IsFaulted)
+                    {
+                        DownloadInfo.SetException(task.Exception);
+                    }
+                    await tracker.DisposeAsync();
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.RunContinuationsAsynchronously,
+                TaskScheduler.Default
+            );
         }
     }
 
@@ -101,5 +113,15 @@ public class Torrent
         var rawMetainfo = MetaInfo.ToBDictionary();
         await using var encoder = new BEncoder();
         await File.WriteAllBytesAsync(outputPath, encoder.Encode(rawMetainfo), cancellationToken);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _fileManager.Dispose();
+        await _p2pClient.DisposeAsync();
+        foreach (var item in _trackerClients)
+        {
+            await item.DisposeAsync();
+        }
     }
 }

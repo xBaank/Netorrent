@@ -1,5 +1,5 @@
-﻿using System.Runtime.InteropServices;
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
+using Lazy;
 using Microsoft.Win32.SafeHandles;
 using Netorrent.P2P.Managers.Request;
 using Netorrent.P2P.Messages;
@@ -13,14 +13,12 @@ internal class FileManager : IDisposable
     private readonly List<TorrentFileEntry> _files = [];
     private readonly int _pieceLength;
     private readonly List<byte[]> _pieceHashes;
-    private readonly Lock _lock = new();
-    private long _writtenBytes;
     public Bitfield BitField { get; private set; }
 
     public const int BlockSize = 16 * 1024;
 
-    public long TotalSize => _files.Sum(f => f.Length);
-    public int MaxBlocksByPiece => _pieceLength / BlockSize;
+    public long TotalSize { get; }
+    public int MaxBlocksByPiece { get; }
 
     public FileManager(
         string outputDirectory,
@@ -54,6 +52,9 @@ internal class FileManager : IDisposable
             _files.Add(new TorrentFileEntry(fullPath, offset, item.Length, handle));
             offset += item.Length;
         }
+
+        TotalSize = _files.Sum(f => f.Length);
+        MaxBlocksByPiece = _pieceLength / BlockSize;
     }
 
     public List<RequestBlock> GetBlocksByPieceIndex(int pieceIndex)
@@ -128,7 +129,10 @@ internal class FileManager : IDisposable
 
         // Read actual data back
         var actualData = await ReadAsync(offset, length, ct);
-        var actualHash = SHA1.HashData(actualData);
+        var actualHash =
+            actualData.Length > 1024 * 1024
+                ? await Task.Run(() => SHA1.HashData(actualData), ct)
+                : SHA1.HashData(actualData);
 
         return expectedHash.SequenceEqual(actualHash);
     }
@@ -198,23 +202,12 @@ internal class FileManager : IDisposable
                 ct
             );
 
-            _writtenBytes += writable;
-
             globalOffset += writable;
             position += (int)writable;
             remaining -= writable;
 
             if (remaining <= 0)
                 break;
-        }
-
-        if (_writtenBytes > 25 * 1024 * 1024)
-        {
-            foreach (var file in _files)
-                RandomAccess.FlushToDisk(file.SafeHandle);
-
-            lock (_lock)
-                _writtenBytes = 0;
         }
     }
 
@@ -232,6 +225,7 @@ internal class FileManager : IDisposable
 
     private async ValueTask<byte[]> ReadAsync(long globalOffset, int length, CancellationToken ct)
     {
+        //TODO use memory rent
         var buffer = new byte[length];
         int totalRead = 0;
 
@@ -243,7 +237,6 @@ internal class FileManager : IDisposable
             long fileOffset = Math.Max(0, globalOffset - file.StartOffset);
             long readable = Math.Min(length - totalRead, file.Length - fileOffset);
 
-            // Perform thread-safe, offset-based async read
             int bytesRead = await RandomAccess.ReadAsync(
                 file.SafeHandle,
                 buffer.AsMemory(totalRead, (int)readable),

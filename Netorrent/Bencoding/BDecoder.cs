@@ -2,15 +2,10 @@
 
 namespace Netorrent.Bencoding;
 
-public class BDecoder
+public class BDecoder(byte[] data)
 {
-    private readonly byte[] _data;
+    private readonly byte[] _data = data;
     private int _pos;
-
-    public BDecoder(byte[] data)
-    {
-        _data = data;
-    }
 
     public IBencodingNode Decode()
     {

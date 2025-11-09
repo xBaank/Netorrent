@@ -15,17 +15,10 @@ public struct BString : IBencodingNode
         RawData = bytes;
     }
 
-    public readonly byte[] RawData;
+    public byte[] RawData { private set; get; }
     private string? _preloadedData = null;
 
-    public string Data
-    {
-        get
-        {
-            _preloadedData ??= Encoding.UTF8.GetString(RawData);
-            return _preloadedData ?? Encoding.UTF8.GetString(RawData);
-        }
-    }
+    public string Data => _preloadedData ??= Encoding.UTF8.GetString(RawData);
 
     public static implicit operator string(BString other) => other.Data;
 

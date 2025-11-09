@@ -9,9 +9,9 @@ using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.Other;
-using Netorrent.P2P.Managers;
 using Netorrent.P2P.Managers.Piece;
 using Netorrent.P2P.Managers.Request;
+using Netorrent.P2P.Measurement;
 using Netorrent.P2P.Messages;
 using TimeSpanXt;
 
@@ -62,32 +62,31 @@ internal class PeerConnection(
     public string? PeerId { get; private set; }
     public Bitfield PeerBitField { get; private set; } = new(myBitField.Length);
     public int? CurrentPieceDownloading => _pieceManager.CurrentDownloadingPieceIndex;
-    public Task WaitTask => _loopTask ?? Task.CompletedTask;
+    public Task? WaitTask => _loopTask;
 
     public void Start(CancellationToken cancellationToken) =>
-        _loopTask ??= Task.Run(
-            async () =>
-            {
-                _lastKeepAlive = DateTime.UtcNow;
-                await SendBitfieldAsync(MyBitField, cancellationToken);
-                MyBitField.OnHavePieceAsync += SendHave;
-                var _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
-                    cancellationToken
-                );
-                var faultedTask = await Task.WhenAny(
-                    WriteLoopAsync(_cancellationTokenSource.Token),
-                    ReadLoopAsync(_cancellationTokenSource.Token),
-                    ProcessIncomingMessagesAsync(_cancellationTokenSource.Token),
-                    ProcessBlocksToRequestAsync(_cancellationTokenSource.Token),
-                    ProcessReceivedBlocksAsync(_cancellationTokenSource.Token),
-                    ProcessReceivedRequestsAsync(_cancellationTokenSource.Token),
-                    CheckTimeout(_cancellationTokenSource.Token)
-                );
-                _cancellationTokenSource.Cancel();
-                await faultedTask;
-            },
+        _loopTask ??= RunPeerLoopAsync(cancellationToken);
+
+    private async Task RunPeerLoopAsync(CancellationToken cancellationToken)
+    {
+        _lastKeepAlive = DateTime.UtcNow;
+        await SendBitfieldAsync(MyBitField, cancellationToken);
+        MyBitField.OnHavePieceAsync += SendHave;
+        var _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
+        var faultedTask = await Task.WhenAny(
+            WriteLoopAsync(_cancellationTokenSource.Token),
+            ReadLoopAsync(_cancellationTokenSource.Token),
+            ProcessIncomingMessagesAsync(_cancellationTokenSource.Token),
+            ProcessBlocksToRequestAsync(_cancellationTokenSource.Token),
+            ProcessReceivedBlocksAsync(_cancellationTokenSource.Token),
+            ProcessReceivedRequestsAsync(_cancellationTokenSource.Token),
+            CheckTimeout(_cancellationTokenSource.Token)
+        );
+        _cancellationTokenSource.Cancel();
+        await faultedTask;
+    }
 
     public async Task CheckTimeout(CancellationToken cancellationToken)
     {

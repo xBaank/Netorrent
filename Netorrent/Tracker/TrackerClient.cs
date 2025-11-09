@@ -17,28 +17,38 @@ internal class TrackerClient(
     private readonly ILogger _logger = logger;
 
     public Task TrackerTask => _trackerTask ?? Task.CompletedTask;
+    private CancellationTokenSource? _cancellationTokenSource;
 
     public void Start(CancellationToken cancellationToken = default) =>
-        _trackerTask ??= Task.Run(
-            async () =>
-            {
-                var httpTrackerResponse = await Announce(Events.Started, cancellationToken);
+        _trackerTask ??= AnnounceLoopTask(cancellationToken);
 
-                await ConnectToPeers(httpTrackerResponse, cancellationToken);
-
-                while (!cancellationToken.IsCancellationRequested)
-                {
-                    var interval = httpTrackerResponse.Interval.Seconds();
-                    _logger.LogInformation("Waiting {seconds} seconds", interval.TotalSeconds);
-
-                    await Task.Delay(interval, cancellationToken);
-
-                    var response = await Announce(cancellationToken: cancellationToken);
-                    await ConnectToPeers(response, cancellationToken);
-                }
-            },
+    private async Task AnnounceLoopTask(CancellationToken cancellationToken)
+    {
+        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
+        var httpTrackerResponse = await Announce(Events.Started, _cancellationTokenSource.Token);
+
+        if (httpTrackerResponse is null)
+            return;
+
+        await ConnectToPeers(httpTrackerResponse, _cancellationTokenSource.Token);
+
+        while (!_cancellationTokenSource.Token.IsCancellationRequested)
+        {
+            var interval = httpTrackerResponse.Interval.Seconds();
+            _logger.LogTrace("Waiting {seconds} seconds", interval.TotalSeconds);
+
+            await Task.Delay(interval, _cancellationTokenSource.Token);
+
+            var response = await Announce(cancellationToken: _cancellationTokenSource.Token);
+
+            if (response is null)
+                return;
+
+            await ConnectToPeers(response, _cancellationTokenSource.Token);
+        }
+    }
 
     private async Task ConnectToPeers(
         HttpTrackerResponse httpTrackerResponse,
@@ -52,7 +62,7 @@ internal class TrackerClient(
         await Task.WhenAll(connectTasks);
     }
 
-    private async Task<HttpTrackerResponse> Announce(
+    private async Task<HttpTrackerResponse?> Announce(
         string? @event = null,
         CancellationToken cancellationToken = default
     )
@@ -72,20 +82,32 @@ internal class TrackerClient(
             NumWant: 50
         );
 
-        var response = await client.SendAsync(
-            request.GenerateRequest(announceUrl),
-            cancellationToken
-        );
-        var httpTrackerResponse = await HttpTrackerResponse.FromHttpResponseAsync(
-            response,
-            cancellationToken
-        );
-        return httpTrackerResponse;
+        try
+        {
+            var response = await client.SendAsync(
+                request.GenerateRequest(announceUrl),
+                cancellationToken
+            );
+            var httpTrackerResponse = await HttpTrackerResponse.FromHttpResponseAsync(
+                response,
+                cancellationToken
+            );
+            return httpTrackerResponse;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Couldn't announce to {trackerUrl}", announceUrl);
+            return null;
+        }
     }
 
     public async ValueTask DisposeAsync()
     {
-        await Announce(Events.Stopped);
-        await p2PClient.DisposeAsync();
+        _cancellationTokenSource?.Cancel();
+        try
+        {
+            await Announce(Events.Stopped);
+        }
+        catch (Exception ex) { }
     }
 }

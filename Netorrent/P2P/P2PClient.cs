@@ -1,11 +1,10 @@
 ﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
-using Lazy;
+using System.Threading;
 using Microsoft.Extensions.Logging;
 using Netorrent.IO;
 using Netorrent.Other;
-using Netorrent.P2P.Managers;
 using Netorrent.P2P.Managers.Piece;
 using Netorrent.P2P.Managers.Request;
 using Netorrent.P2P.Messages;
@@ -19,20 +18,16 @@ internal class P2PClient : IAsyncDisposable
     private readonly MetaInfo _metaInfo;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _knownPeers = [];
-    private readonly string peerId;
-    private readonly Bitfield bitField;
-    private readonly TaskCompletionSource _downloadTaskCompletitionSource = new();
+    private readonly string _peerId;
+    private readonly Bitfield _bitField;
     private Task? _listenerTask;
 
     public FileManager FileManager { get; }
+    public DownloadInfo DownloadInfo { get; }
+
     public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
-    public DownloadSpeed DownloadSpeed =>
-        _knownPeers.Values.Sum(p => p.SpeedTracker.CurrentBps.Bps);
-    public long DownloadedBytes => _knownPeers.Values.Sum(p => p.SpeedTracker.TotalBytes);
-    public IReadOnlyList<string> Peers =>
-        _knownPeers.Values.Select(i => i.PeerId).Where(i => i is not null).ToList()!;
-    public long TotalBytes => FileManager.TotalSize;
-    public Task DownloadTask => _downloadTaskCompletitionSource.Task;
+
+    public Task? ListenerTask => _listenerTask;
 
     public P2PClient(
         MetaInfo metaInfo,
@@ -42,12 +37,12 @@ internal class P2PClient : IAsyncDisposable
         ILogger logger
     )
     {
-        this.peerId = peerId;
-        this.bitField = bitField;
+        _peerId = peerId;
+        _bitField = bitField;
         _metaInfo = metaInfo;
         _logger = logger;
         FileManager = fileManager;
-        bitField.OnHavePieceAsync += CheckDownload;
+        DownloadInfo = new DownloadInfo(_knownPeers, fileManager, bitField);
     }
 
     public async Task ConnectToPeerAsync(
@@ -76,21 +71,29 @@ internal class P2PClient : IAsyncDisposable
         var peerConnection = new PeerConnection(
             client,
             iPEndPoint,
-            bitField,
+            _bitField,
             FileManager,
             new RequestManager(),
             new PieceManager(FileManager.MaxBlocksByPiece),
-            new PieceSelector(_knownPeers, bitField),
+            new PieceSelector(_knownPeers, _bitField),
             _logger
         );
 
-        await peerConnection.PerformHandshakeAsync(
-            _metaInfo.Info.InfoHash,
-            peerId,
-            cancellationToken
-        );
+        try
+        {
+            await peerConnection.PerformHandshakeAsync(
+                _metaInfo.Info.InfoHash,
+                _peerId,
+                cancellationToken
+            );
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Error handshaking to {ip}", iPEndPoint);
+            return;
+        }
 
-        if (peerConnection.PeerId == peerId)
+        if (peerConnection.PeerId == _peerId)
         {
             _logger.LogInformation(
                 "Ignored self connection to {EndPoint}",
@@ -107,55 +110,63 @@ internal class P2PClient : IAsyncDisposable
     }
 
     public void ListenForPeers(CancellationToken cancellationToken = default) =>
-        _listenerTask ??= Task.Run(
-            async () =>
+        _listenerTask ??= ListenTask(cancellationToken);
+
+    private async Task ListenTask(CancellationToken cancellationToken)
+    {
+        _listener.Start();
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var tcpClient = await _listener.AcceptTcpClientAsync(cancellationToken);
+            var remoteEndPoint = (IPEndPoint)tcpClient.Client.RemoteEndPoint!;
+            var peerConnection = new PeerConnection(
+                tcpClient,
+                remoteEndPoint,
+                _bitField,
+                FileManager,
+                new RequestManager(),
+                new PieceManager(FileManager.MaxBlocksByPiece),
+                new PieceSelector(_knownPeers, _bitField),
+                _logger
+            );
+
+            try
             {
-                _listener.Start();
-                while (!cancellationToken.IsCancellationRequested)
-                {
-                    var tcpClient = await _listener.AcceptTcpClientAsync(cancellationToken);
-                    var remoteEndPoint = (IPEndPoint)tcpClient.Client.RemoteEndPoint!;
-                    var peerConnection = new PeerConnection(
-                        tcpClient,
-                        remoteEndPoint,
-                        bitField,
-                        FileManager,
-                        new RequestManager(),
-                        new PieceManager(FileManager.MaxBlocksByPiece),
-                        new PieceSelector(_knownPeers, bitField),
-                        _logger
-                    );
+                await peerConnection.ReceiveHandshakeAsync(
+                    _metaInfo.Info.InfoHash,
+                    _peerId,
+                    cancellationToken
+                );
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Error handshaking to {ip}", peerConnection.IPEndPoint);
+                await peerConnection.DisposeAsync();
+                return;
+            }
 
-                    await peerConnection.ReceiveHandshakeAsync(
-                        _metaInfo.Info.InfoHash,
-                        peerId,
-                        cancellationToken
-                    );
+            if (peerConnection.PeerId == _peerId)
+            {
+                _logger.LogInformation(
+                    "Ignored self connection from {EndPoint}",
+                    peerConnection.IPEndPoint
+                );
+                await peerConnection.DisposeAsync();
+                continue;
+            }
 
-                    if (peerConnection.PeerId == peerId)
-                    {
-                        _logger.LogInformation(
-                            "Ignored self connection from {EndPoint}",
-                            peerConnection.IPEndPoint
-                        );
-                        await peerConnection.DisposeAsync();
-                        continue;
-                    }
+            _logger.LogInformation("Connected from peer {PeerId}", peerConnection.PeerId);
 
-                    _logger.LogInformation("Connected from peer {PeerId}", peerConnection.PeerId);
-
-                    _knownPeers[remoteEndPoint] = peerConnection;
-                    HandlePeer(peerConnection, cancellationToken);
-                }
-            },
-            cancellationToken
-        );
+            _knownPeers[remoteEndPoint] = peerConnection;
+            HandlePeer(peerConnection, cancellationToken);
+        }
+    }
 
     private void HandlePeer(PeerConnection peerConnection, CancellationToken cancellationToken)
     {
         peerConnection.Start(cancellationToken);
 
-        peerConnection.WaitTask.ContinueWith(
+        peerConnection.WaitTask?.ContinueWith(
             async task =>
             {
                 if (task.IsFaulted)
@@ -175,16 +186,6 @@ internal class P2PClient : IAsyncDisposable
         );
     }
 
-    private Task CheckDownload(int pieceIndex, CancellationToken token)
-    {
-        if (bitField.IsComplete)
-        {
-            _downloadTaskCompletitionSource.SetResult();
-        }
-
-        return Task.CompletedTask;
-    }
-
     public async ValueTask DisposeAsync()
     {
         _listener.Stop();
@@ -192,5 +193,6 @@ internal class P2PClient : IAsyncDisposable
         {
             await item.Value.DisposeAsync();
         }
+        DownloadInfo.Dispose();
     }
 }

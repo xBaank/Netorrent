@@ -1,7 +1,5 @@
-﻿using MartinCostello.Logging.XUnit;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
-using Netorrent.Other;
 using Netorrent.Tests.Fixtures;
 using Netorrent.TorrentFile;
 using TimeSpanXt;
@@ -37,9 +35,9 @@ public class TorrentTests(OpenTrackerFixture fixture, ITestOutputHelper outputHe
 
         var leecherTorrent = leecher.AddTorrent(seederTorrent.MetaInfo, "Output");
 
-        var seederTask = seederTorrent.StartAsync(cts.Token);
-        var leecherTask = leecherTorrent.StartAsync(cts.Token);
+        seederTorrent.Start(cts.Token);
+        leecherTorrent.Start(cts.Token);
 
-        await leecherTorrent.DownloadTask;
+        await leecherTorrent.DownloadInfo.DownloadTask;
     }
 }
