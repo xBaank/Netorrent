@@ -98,14 +98,15 @@ internal readonly record struct Message(byte Id, MemoryRented<byte>? Payload) : 
         return new Message(Request, new MemoryRented<byte>(memoryOwner, buffer.Length));
     }
 
-    public static Message CreatePiece(int index, int begin, ReadOnlySpan<byte> block)
+    public static Message CreatePiece(int index, int begin, MemoryRented<byte> block)
     {
-        var memoryOwner = MemoryPool<byte>.Shared.Rent(8 + block.Length);
-        var buffer = memoryOwner.Memory[..(8 + block.Length)];
+        var memory = block.Memory;
+        var memoryOwner = MemoryPool<byte>.Shared.Rent(8 + memory.Length);
+        var buffer = memoryOwner.Memory[..(8 + memory.Length)];
 
         BinaryPrimitives.WriteInt32BigEndian(buffer.Span[..4], index);
         BinaryPrimitives.WriteInt32BigEndian(buffer.Span.Slice(4, 4), begin);
-        block.CopyTo(buffer.Span[8..]);
+        memory.Span.CopyTo(buffer.Span[8..]);
         return new Message(Piece, new MemoryRented<byte>(memoryOwner, buffer.Length));
     }
 

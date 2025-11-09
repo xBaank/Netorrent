@@ -1,6 +1,8 @@
-﻿using System.Security.Cryptography;
+﻿using System.Buffers;
+using System.Security.Cryptography;
 using Lazy;
 using Microsoft.Win32.SafeHandles;
+using Netorrent.Other;
 using Netorrent.P2P.Managers.Request;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
@@ -128,11 +130,12 @@ internal class FileManager : IDisposable
         int length = _pieceLength;
 
         // Read actual data back
-        var actualData = await ReadAsync(offset, length, ct);
+        using var memoryRented = await ReadAsync(offset, length, ct);
+        var actualData = memoryRented.Memory;
         var actualHash =
             actualData.Length > 1024 * 1024
-                ? await Task.Run(() => SHA1.HashData(actualData), ct)
-                : SHA1.HashData(actualData);
+                ? await Task.Run(() => SHA1.HashData(actualData.Span), ct)
+                : SHA1.HashData(actualData.Span);
 
         return expectedHash.SequenceEqual(actualHash);
     }
@@ -211,7 +214,7 @@ internal class FileManager : IDisposable
         }
     }
 
-    public async ValueTask<byte[]> ReadPieceAsync(
+    public async ValueTask<MemoryRented<byte>> ReadPieceAsync(
         int pieceIndex,
         int begin,
         int length,
@@ -223,10 +226,14 @@ internal class FileManager : IDisposable
         return await ReadAsync(offset, length, ct);
     }
 
-    private async ValueTask<byte[]> ReadAsync(long globalOffset, int length, CancellationToken ct)
+    private async ValueTask<MemoryRented<byte>> ReadAsync(
+        long globalOffset,
+        int length,
+        CancellationToken ct
+    )
     {
-        //TODO use memory rent
-        var buffer = new byte[length];
+        var memoryPool = MemoryPool<byte>.Shared.Rent(length);
+        var buffer = memoryPool.Memory[..length];
         int totalRead = 0;
 
         foreach (var file in _files)
@@ -239,7 +246,7 @@ internal class FileManager : IDisposable
 
             int bytesRead = await RandomAccess.ReadAsync(
                 file.SafeHandle,
-                buffer.AsMemory(totalRead, (int)readable),
+                buffer.Slice(totalRead, (int)readable),
                 fileOffset,
                 ct
             );
@@ -252,9 +259,9 @@ internal class FileManager : IDisposable
         }
 
         if (totalRead < length)
-            Array.Resize(ref buffer, totalRead);
+            length = totalRead;
 
-        return buffer;
+        return new MemoryRented<byte>(memoryPool, length);
     }
 
     public void Dispose()

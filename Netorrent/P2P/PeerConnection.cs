@@ -284,7 +284,7 @@ internal class PeerConnection(
         CancellationToken cancellationToken
     )
     {
-        var pieceData = await _fileManager.ReadPieceAsync(
+        using var pieceData = await _fileManager.ReadPieceAsync(
             request.Index,
             request.Begin,
             request.Length,
