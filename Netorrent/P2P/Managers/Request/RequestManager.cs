@@ -10,7 +10,7 @@ internal class RequestManager : IAsyncDisposable
     private const int MAX_BLOCK_LENGTH = 16 * 1024;
 
     private readonly Channel<RequestBlock> _pendingRequests = Channel.CreateBounded<RequestBlock>(
-        new BoundedChannelOptions(200) { SingleWriter = true, SingleReader = true }
+        new BoundedChannelOptions(PEER_REQUEST_LIMIT) { SingleWriter = true, SingleReader = true }
     );
     private readonly IList<RequestBlock> _requestList = [];
     private int _violationCount = 0;
@@ -64,11 +64,10 @@ internal class RequestManager : IAsyncDisposable
         _requestList.Remove(request);
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         _pendingRequests.Writer.TryComplete();
-        await _pendingRequests.Reader.Completion;
-        await _pendingRequests.Reader.ReadAllAsync().ToListAsync();
         _requestList.Clear();
+        return ValueTask.CompletedTask;
     }
 }

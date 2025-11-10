@@ -88,13 +88,11 @@ internal class PieceManager(int maxBlocks) : IAsyncDisposable
     {
         _blocksToWrite.Writer.TryComplete();
         _requestsToSend.Writer.TryComplete();
-        await _blocksToWrite.Reader.Completion;
-        await _requestsToSend.Reader.Completion;
         await foreach (var item in _blocksToWrite.Reader.ReadAllAsync())
         {
             item.Dispose();
         }
-        await _requestsToSend.Reader.ReadAllAsync().ToListAsync();
+        await foreach (var item in _requestsToSend.Reader.ReadAllAsync()) { }
         _sentRequests.Clear();
         _currentPieceRequests.Clear();
     }

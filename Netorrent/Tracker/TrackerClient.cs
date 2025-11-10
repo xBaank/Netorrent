@@ -57,6 +57,7 @@ internal class TrackerClient(
 
     public async ValueTask DisposeAsync()
     {
+        trackersChannel.TryComplete();
         foreach (var tracker in _trackers)
         {
             await tracker.DisposeAsync();
