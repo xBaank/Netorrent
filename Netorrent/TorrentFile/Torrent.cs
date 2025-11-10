@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Bencoding;
 using Netorrent.IO;
@@ -6,6 +7,7 @@ using Netorrent.P2P;
 using Netorrent.P2P.Managers;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
+using Netorrent.Tracker;
 using Netorrent.Tracker.Http;
 
 namespace Netorrent.TorrentFile;
@@ -15,13 +17,11 @@ public class Torrent : IAsyncDisposable
     public MetaInfo MetaInfo { get; init; }
     public Bitfield Bitfield => _myBitfield;
 
-    private readonly HttpClient _httpClient;
     private readonly P2PClient _p2pClient;
-    private readonly List<TrackerClient> _trackerClients;
+    private readonly TrackerClient _trackerClient;
     private readonly FileManager _fileManager;
     private readonly Bitfield _myBitfield;
-    private readonly string _peerId;
-    private readonly ILogger _logger;
+    private bool _disposed = false;
 
     public DownloadInfo DownloadInfo => _p2pClient.DownloadInfo;
 
@@ -43,16 +43,31 @@ public class Torrent : IAsyncDisposable
             [.. metaInfo.Info.Pieces.Chunk(20)],
             _myBitfield
         );
-        _logger = logger;
-        _p2pClient = new P2PClient(metaInfo, peerId, _fileManager, _myBitfield, _logger);
-        _httpClient = httpClient;
-        _peerId = peerId;
-        _trackerClients = [];
+        var trackersChannel = Channel.CreateBounded<HttpTrackerResponse>(
+            new BoundedChannelOptions(50) { SingleWriter = false, SingleReader = true }
+        );
+        _p2pClient = new P2PClient(
+            metaInfo,
+            peerId,
+            _fileManager,
+            _myBitfield,
+            trackersChannel.Reader,
+            logger
+        );
+        _trackerClient = new TrackerClient(
+            httpClient,
+            _p2pClient,
+            peerId,
+            trackersChannel.Writer,
+            metaInfo,
+            logger
+        );
     }
 
     public void Start(CancellationToken cancellationToken = default)
     {
         _p2pClient.ListenForPeers(cancellationToken);
+        _p2pClient.ProcessPeers(cancellationToken);
         _p2pClient.ListenerTask?.ContinueWith(
             task =>
             {
@@ -65,42 +80,21 @@ public class Torrent : IAsyncDisposable
             TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default
         );
-        cancellationToken.Register(() => _p2pClient.DownloadInfo.SetCanceled());
-
-        var trackers = MetaInfo
-            .AnnounceList?.Append(MetaInfo.Announce)
-            .Where(url => url.StartsWith("http://") || url.StartsWith("https://"))
-            .Distinct()
-            ?.Select(url => new TrackerClient(
-                _p2pClient,
-                _httpClient,
-                _peerId,
-                MetaInfo.Info.InfoHash,
-                url,
-                _logger
-            ))
-            .ToList();
-
-        if (trackers is null || trackers.Count == 0)
-            throw new InvalidOperationException("No supported tracker URLs found.");
-
-        foreach (var tracker in trackers)
-        {
-            tracker.Start(cancellationToken);
-            tracker.TrackerTask.ContinueWith(
-                async task =>
+        _p2pClient.PeersTask?.ContinueWith(
+            task =>
+            {
+                if (task.IsFaulted)
                 {
-                    if (task.IsFaulted)
-                    {
-                        DownloadInfo.SetException(task.Exception);
-                    }
-                    await tracker.DisposeAsync();
-                },
-                CancellationToken.None,
-                TaskContinuationOptions.RunContinuationsAsynchronously,
-                TaskScheduler.Default
-            );
-        }
+                    DownloadInfo.SetException(task.Exception);
+                }
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default
+        );
+
+        cancellationToken.Register(() => _p2pClient.DownloadInfo.SetCanceled());
+        _trackerClient.Start(cancellationToken);
     }
 
     public async Task ExportAsync(string outputPath, CancellationToken cancellationToken = default)
@@ -115,13 +109,36 @@ public class Torrent : IAsyncDisposable
         await File.WriteAllBytesAsync(outputPath, encoder.Encode(rawMetainfo), cancellationToken);
     }
 
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed)
+            return;
+
+        if (disposing)
+        {
+            _fileManager.Dispose();
+        }
+
+        _disposed = true;
+    }
+
     public async ValueTask DisposeAsync()
     {
-        _fileManager.Dispose();
-        await _p2pClient.DisposeAsync();
-        foreach (var item in _trackerClients)
-        {
-            await item.DisposeAsync();
-        }
+        if (_disposed)
+            return;
+
+        if (_p2pClient is not null)
+            await _p2pClient.DisposeAsync();
+
+        if (_trackerClient is not null)
+            await _trackerClient.DisposeAsync();
+
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+
+    ~Torrent()
+    {
+        Dispose(disposing: false);
     }
 }

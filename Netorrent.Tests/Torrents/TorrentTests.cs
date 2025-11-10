@@ -26,14 +26,14 @@ public class TorrentTests(OpenTrackerFixture fixture, ITestOutputHelper outputHe
 
         using var cts = TestContext.Current.CancellationToken.WithTimeout(30.Seconds());
 
-        var seederTorrent = await seeder.CreateTorrentAsync(
+        await using var seederTorrent = await seeder.CreateTorrentAsync(
             "Data/test.txt",
             _fixture.AnnounceUrl,
             [_fixture.AnnounceUrl],
             cancellationToken: cts.Token
         );
 
-        var leecherTorrent = leecher.ImportTorrent(seederTorrent.MetaInfo, "Output");
+        await using var leecherTorrent = leecher.ImportTorrent(seederTorrent.MetaInfo, "Output");
 
         seederTorrent.Start(cts.Token);
         leecherTorrent.Start(cts.Token);

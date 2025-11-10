@@ -1,7 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
-using System.Threading;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.IO;
 using Netorrent.Other;
@@ -9,12 +9,14 @@ using Netorrent.P2P.Managers.Piece;
 using Netorrent.P2P.Managers.Request;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
+using Netorrent.Tracker.Http;
 using TimeSpanXt;
 
 namespace Netorrent.P2P;
 
 internal class P2PClient : IAsyncDisposable
 {
+    private const int MAX_ACTIVE_PEER_COUNT = 100;
     private readonly TcpListener _listener = Tcp.GetFreeTcpListenerInRange(6881, 6899);
     private readonly MetaInfo _metaInfo;
     private readonly ILogger _logger;
@@ -22,7 +24,9 @@ internal class P2PClient : IAsyncDisposable
     private readonly ConcurrentQueue<IPEndPoint> _knownPeers = [];
     private readonly string _peerId;
     private readonly Bitfield _bitField;
+    private readonly ChannelReader<HttpTrackerResponse> _trackersChannel;
     private Task? _listenerTask;
+    private Task? _peersTask;
 
     public FileManager FileManager { get; }
     public DownloadInfo DownloadInfo { get; }
@@ -30,24 +34,42 @@ internal class P2PClient : IAsyncDisposable
     public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
 
     public Task? ListenerTask => _listenerTask;
+    public Task? PeersTask => _peersTask;
 
     public P2PClient(
         MetaInfo metaInfo,
         string peerId,
         FileManager fileManager,
         Bitfield bitField,
+        ChannelReader<HttpTrackerResponse> trackersChannel,
         ILogger logger
     )
     {
         _peerId = peerId;
         _bitField = bitField;
+        _trackersChannel = trackersChannel;
         _metaInfo = metaInfo;
         _logger = logger;
         FileManager = fileManager;
         DownloadInfo = new DownloadInfo(_activePeers, fileManager, bitField);
     }
 
-    public async Task ConnectToPeerAsync(
+    public void ProcessPeers(CancellationToken cancellationToken) =>
+        _peersTask ??= ProcessPeersTask(cancellationToken);
+
+    public void ListenForPeers(CancellationToken cancellationToken) =>
+        _listenerTask ??= ListenTask(cancellationToken);
+
+    private async Task ProcessPeersTask(CancellationToken cancellationToken)
+    {
+        await foreach (var response in _trackersChannel.ReadAllAsync(cancellationToken))
+        {
+            var tasks = response.Peers.Select(i => ConnectToPeerAsync(i));
+            await Task.WhenAll(tasks);
+        }
+    }
+
+    private async Task ConnectToPeerAsync(
         IPEndPoint iPEndPoint,
         CancellationToken cancellationToken = default
     )
@@ -55,7 +77,7 @@ internal class P2PClient : IAsyncDisposable
         if (_activePeers.ContainsKey(iPEndPoint))
             return;
 
-        if (_activePeers.Count >= 40)
+        if (_activePeers.Count >= MAX_ACTIVE_PEER_COUNT)
         {
             var worstPeer = GetWorstPeer();
             if (worstPeer is not null)
@@ -123,9 +145,6 @@ internal class P2PClient : IAsyncDisposable
         HandlePeer(peerConnection, cancellationToken);
     }
 
-    public void ListenForPeers(CancellationToken cancellationToken = default) =>
-        _listenerTask ??= ListenTask(cancellationToken);
-
     private async Task ListenTask(CancellationToken cancellationToken)
     {
         _listener.Start();
@@ -137,7 +156,7 @@ internal class P2PClient : IAsyncDisposable
             if (_activePeers.ContainsKey(remoteEndPoint))
                 continue;
 
-            if (_activePeers.Count >= 40)
+            if (_activePeers.Count >= MAX_ACTIVE_PEER_COUNT)
             {
                 var worstPeer = GetWorstPeer();
                 if (worstPeer is not null)

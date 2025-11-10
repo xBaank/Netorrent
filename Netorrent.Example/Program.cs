@@ -6,7 +6,7 @@ using TimeSpanXt;
 ILogger logger = LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger("TorrentCLI");
 
 var torrentClient = new TorrentClient(logger: logger);
-var torrent = await torrentClient.ImportTorrentAsync(
+await using var torrent = await torrentClient.ImportTorrentAsync(
     "C:\\Users\\elrob\\Downloads\\Clair Obscur - Expedition 33 [FitGirl Repack].torrent",
     "C:\\Users\\elrob\\Downloads\\output"
 );

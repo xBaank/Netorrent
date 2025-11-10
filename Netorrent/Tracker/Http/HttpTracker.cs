@@ -1,22 +1,24 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
 using Netorrent.P2P;
 using TimeSpanXt;
 
 namespace Netorrent.Tracker.Http;
 
-internal class TrackerClient(
+internal class HttpTracker(
     P2PClient p2PClient,
     HttpClient client,
     string peerId,
     byte[] infoHash,
     string announceUrl,
-    ILogger logger
+    ILogger logger,
+    ChannelWriter<HttpTrackerResponse> channelWriter
 ) : IAsyncDisposable
 {
     private Task? _trackerTask;
     private readonly ILogger _logger = logger;
 
-    public Task TrackerTask => _trackerTask ?? Task.CompletedTask;
+    public Task? TrackerTask => _trackerTask;
     private CancellationTokenSource? _cancellationTokenSource;
 
     public void Start(CancellationToken cancellationToken = default) =>
@@ -32,7 +34,7 @@ internal class TrackerClient(
         if (httpTrackerResponse is null)
             return;
 
-        await ConnectToPeers(httpTrackerResponse, _cancellationTokenSource.Token);
+        await channelWriter.WriteAsync(httpTrackerResponse, cancellationToken);
 
         while (!_cancellationTokenSource.Token.IsCancellationRequested)
         {
@@ -46,20 +48,8 @@ internal class TrackerClient(
             if (response is null)
                 return;
 
-            await ConnectToPeers(response, _cancellationTokenSource.Token);
+            await channelWriter.WriteAsync(httpTrackerResponse, cancellationToken);
         }
-    }
-
-    private async Task ConnectToPeers(
-        HttpTrackerResponse httpTrackerResponse,
-        CancellationToken cancellationToken
-    )
-    {
-        var connectTasks = httpTrackerResponse.Peers.Select(async item =>
-            await p2PClient.ConnectToPeerAsync(item, cancellationToken)
-        );
-
-        await Task.WhenAll(connectTasks);
     }
 
     private async Task<HttpTrackerResponse?> Announce(
@@ -108,6 +98,9 @@ internal class TrackerClient(
         {
             await Announce(Events.Stopped);
         }
-        catch (Exception ex) { }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Error stopping the tracker");
+        }
     }
 }
