@@ -50,6 +50,7 @@ internal class PeerConnection(
     private DateTime _lastKeepAlive;
     private Task? _loopTask;
     private CancellationTokenSource? _cancellationTokenSource;
+    private DateTime _startedConnectionTime;
 
     public SpeedTracker SpeedTracker { get; } = new();
     public TcpClient TcpClient { get; } = tcpClient;
@@ -63,12 +64,14 @@ internal class PeerConnection(
     public Bitfield PeerBitField { get; private set; } = new(myBitField.Length);
     public int? CurrentPieceDownloading => _pieceManager.CurrentDownloadingPieceIndex;
     public Task? WaitTask => _loopTask;
+    public TimeSpan ConnectionDuration => DateTime.UtcNow - _startedConnectionTime;
 
     public void Start(CancellationToken cancellationToken) =>
         _loopTask ??= RunPeerLoopAsync(cancellationToken);
 
     private async Task RunPeerLoopAsync(CancellationToken cancellationToken)
     {
+        _startedConnectionTime = DateTime.Now;
         _lastKeepAlive = DateTime.UtcNow;
         await SendBitfieldAsync(MyBitField, cancellationToken);
         MyBitField.OnHavePieceAsync += SendHave;

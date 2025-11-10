@@ -3,7 +3,7 @@ using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
 using Netorrent.Extensions;
 
-namespace Netorrent.Tracker;
+namespace Netorrent.Tracker.Http;
 
 internal class HttpTrackerResponse
 {
@@ -100,7 +100,7 @@ internal class HttpTrackerResponse
             var addrBytes = new byte[16];
             Array.Copy(bytes, i, addrBytes, 0, 16);
             var ip = new IPAddress(addrBytes);
-            int port = (bytes[i + 16] << 8) | bytes[i + 17];
+            int port = bytes[i + 16] << 8 | bytes[i + 17];
             peers.Add(new IPEndPoint(ip, port));
         }
 
@@ -116,7 +116,7 @@ internal class HttpTrackerResponse
         for (int i = 0; i < bytes.Length; i += 6)
         {
             var ip = new IPAddress([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]);
-            var port = (bytes[i + 4] << 8) | bytes[i + 5];
+            var port = bytes[i + 4] << 8 | bytes[i + 5];
             peers.Add(new IPEndPoint(ip, port));
         }
 

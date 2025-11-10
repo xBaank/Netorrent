@@ -2,7 +2,7 @@
 using Netorrent.P2P;
 using TimeSpanXt;
 
-namespace Netorrent.Tracker;
+namespace Netorrent.Tracker.Http;
 
 internal class TrackerClient(
     P2PClient p2PClient,

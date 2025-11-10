@@ -9,6 +9,7 @@ using Netorrent.P2P.Managers.Piece;
 using Netorrent.P2P.Managers.Request;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
+using TimeSpanXt;
 
 namespace Netorrent.P2P;
 
@@ -17,7 +18,8 @@ internal class P2PClient : IAsyncDisposable
     private readonly TcpListener _listener = Tcp.GetFreeTcpListenerInRange(6881, 6899);
     private readonly MetaInfo _metaInfo;
     private readonly ILogger _logger;
-    private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _knownPeers = [];
+    private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _activePeers = [];
+    private readonly ConcurrentQueue<IPEndPoint> _knownPeers = [];
     private readonly string _peerId;
     private readonly Bitfield _bitField;
     private Task? _listenerTask;
@@ -42,7 +44,7 @@ internal class P2PClient : IAsyncDisposable
         _metaInfo = metaInfo;
         _logger = logger;
         FileManager = fileManager;
-        DownloadInfo = new DownloadInfo(_knownPeers, fileManager, bitField);
+        DownloadInfo = new DownloadInfo(_activePeers, fileManager, bitField);
     }
 
     public async Task ConnectToPeerAsync(
@@ -50,11 +52,23 @@ internal class P2PClient : IAsyncDisposable
         CancellationToken cancellationToken = default
     )
     {
-        if (_knownPeers.Count > 60)
+        if (_activePeers.ContainsKey(iPEndPoint))
             return;
 
-        if (_knownPeers.ContainsKey(iPEndPoint))
-            return;
+        if (_activePeers.Count >= 40)
+        {
+            var worstPeer = GetWorstPeer();
+            if (worstPeer is not null)
+            {
+                _activePeers.Remove(worstPeer.IPEndPoint, out _);
+                await worstPeer.DisposeAsync();
+            }
+            else
+            {
+                _knownPeers.Enqueue(iPEndPoint);
+                return;
+            }
+        }
 
         var client = new TcpClient();
 
@@ -75,7 +89,7 @@ internal class P2PClient : IAsyncDisposable
             FileManager,
             new RequestManager(),
             new PieceManager(FileManager.MaxBlocksByPiece),
-            new PieceSelector(_knownPeers, _bitField),
+            new PieceSelector(_activePeers, _bitField),
             _logger
         );
 
@@ -105,7 +119,7 @@ internal class P2PClient : IAsyncDisposable
 
         _logger.LogInformation("Connected to peer {PeerId}", peerConnection.PeerId);
 
-        _knownPeers[iPEndPoint] = peerConnection;
+        _activePeers[iPEndPoint] = peerConnection;
         HandlePeer(peerConnection, cancellationToken);
     }
 
@@ -119,6 +133,25 @@ internal class P2PClient : IAsyncDisposable
         {
             var tcpClient = await _listener.AcceptTcpClientAsync(cancellationToken);
             var remoteEndPoint = (IPEndPoint)tcpClient.Client.RemoteEndPoint!;
+
+            if (_activePeers.ContainsKey(remoteEndPoint))
+                continue;
+
+            if (_activePeers.Count >= 40)
+            {
+                var worstPeer = GetWorstPeer();
+                if (worstPeer is not null)
+                {
+                    _activePeers.Remove(worstPeer.IPEndPoint, out _);
+                    await worstPeer.DisposeAsync();
+                }
+                else
+                {
+                    _knownPeers.Enqueue(remoteEndPoint);
+                    continue;
+                }
+            }
+
             var peerConnection = new PeerConnection(
                 tcpClient,
                 remoteEndPoint,
@@ -126,7 +159,7 @@ internal class P2PClient : IAsyncDisposable
                 FileManager,
                 new RequestManager(),
                 new PieceManager(FileManager.MaxBlocksByPiece),
-                new PieceSelector(_knownPeers, _bitField),
+                new PieceSelector(_activePeers, _bitField),
                 _logger
             );
 
@@ -142,7 +175,7 @@ internal class P2PClient : IAsyncDisposable
             {
                 _logger.LogDebug(ex, "Error handshaking to {ip}", peerConnection.IPEndPoint);
                 await peerConnection.DisposeAsync();
-                return;
+                continue;
             }
 
             if (peerConnection.PeerId == _peerId)
@@ -157,7 +190,7 @@ internal class P2PClient : IAsyncDisposable
 
             _logger.LogInformation("Connected from peer {PeerId}", peerConnection.PeerId);
 
-            _knownPeers[remoteEndPoint] = peerConnection;
+            _activePeers[remoteEndPoint] = peerConnection;
             HandlePeer(peerConnection, cancellationToken);
         }
     }
@@ -177,8 +210,14 @@ internal class P2PClient : IAsyncDisposable
                         peerConnection.PeerId
                     );
                 }
+
                 await peerConnection.DisposeAsync();
-                _knownPeers.Remove(peerConnection.IPEndPoint, out _);
+                _activePeers.Remove(peerConnection.IPEndPoint, out _);
+
+                if (_knownPeers.TryDequeue(out var iPEndPoint))
+                {
+                    await ConnectToPeerAsync(iPEndPoint);
+                }
             },
             CancellationToken.None,
             TaskContinuationOptions.RunContinuationsAsynchronously,
@@ -186,10 +225,35 @@ internal class P2PClient : IAsyncDisposable
         );
     }
 
+    private PeerConnection? GetWorstPeer()
+    {
+        var minAge = 30.Seconds();
+
+        if (_activePeers.IsEmpty)
+            return null;
+
+        var avgSpeedKbps = _activePeers
+            .Values.Select(p => p.SpeedTracker.CurrentBps.Kbps)
+            .DefaultIfEmpty(0)
+            .Average();
+
+        if (double.IsNaN(avgSpeedKbps))
+            avgSpeedKbps = 0;
+
+        var minAcceptableSpeed = Math.Max(10, avgSpeedKbps * 0.3);
+
+        return _activePeers
+            .Values.Where(p =>
+                p.ConnectionDuration > minAge && p.SpeedTracker.CurrentBps.Kbps < minAcceptableSpeed
+                || p.PeerChocking
+            )
+            .MinBy(p => p.SpeedTracker.CurrentBps.Bps);
+    }
+
     public async ValueTask DisposeAsync()
     {
         _listener.Stop();
-        foreach (var item in _knownPeers)
+        foreach (var item in _activePeers)
         {
             await item.Value.DisposeAsync();
         }

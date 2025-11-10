@@ -6,7 +6,7 @@ using Netorrent.P2P;
 using Netorrent.P2P.Managers;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
-using Netorrent.Tracker;
+using Netorrent.Tracker.Http;
 
 namespace Netorrent.TorrentFile;
 
