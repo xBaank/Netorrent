@@ -1,10 +1,9 @@
-﻿using System.Diagnostics;
+﻿using System.Net;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Bencoding;
 using Netorrent.IO;
 using Netorrent.P2P;
-using Netorrent.P2P.Managers;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker;
@@ -43,7 +42,7 @@ public class Torrent : IAsyncDisposable
             [.. metaInfo.Info.Pieces.Chunk(20)],
             _myBitfield
         );
-        var trackersChannel = Channel.CreateBounded<HttpTrackerResponse>(
+        var trackersChannel = Channel.CreateBounded<IPEndPoint>(
             new BoundedChannelOptions(50) { SingleWriter = false, SingleReader = true }
         );
         _p2pClient = new P2PClient(

@@ -11,4 +11,8 @@ internal record UdpTrackerResponse(
     IReadOnlyList<PeerEndpoint> Peers
 );
 
-internal record PeerEndpoint(IPAddress IpAddress, ushort Port);
+internal record PeerEndpoint(IPAddress IpAddress, ushort Port)
+{
+    public static implicit operator IPEndPoint(PeerEndpoint peerEndpoint) =>
+        new(peerEndpoint.IpAddress, peerEndpoint.Port);
+}

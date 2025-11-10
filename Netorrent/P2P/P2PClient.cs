@@ -24,7 +24,7 @@ internal class P2PClient : IAsyncDisposable
     private readonly ConcurrentQueue<IPEndPoint> _knownPeers = [];
     private readonly string _peerId;
     private readonly Bitfield _bitField;
-    private readonly ChannelReader<HttpTrackerResponse> _trackersChannel;
+    private readonly ChannelReader<IPEndPoint> _trackersChannel;
     private Task? _listenerTask;
     private Task? _peersTask;
 
@@ -41,7 +41,7 @@ internal class P2PClient : IAsyncDisposable
         string peerId,
         FileManager fileManager,
         Bitfield bitField,
-        ChannelReader<HttpTrackerResponse> trackersChannel,
+        ChannelReader<IPEndPoint> trackersChannel,
         ILogger logger
     )
     {
@@ -62,10 +62,18 @@ internal class P2PClient : IAsyncDisposable
 
     private async Task ProcessPeersTask(CancellationToken cancellationToken)
     {
-        await foreach (var response in _trackersChannel.ReadAllAsync(cancellationToken))
+        var connectTasks = new List<Task>();
+
+        await foreach (var iPEndPoint in _trackersChannel.ReadAllAsync(cancellationToken))
         {
-            var tasks = response.Peers.Select(i => ConnectToPeerAsync(i));
-            await Task.WhenAll(tasks);
+            var task = ConnectToPeerAsync(iPEndPoint, cancellationToken);
+            connectTasks.Add(task);
+
+            if (connectTasks.Count >= 100)
+            {
+                await Task.WhenAll(connectTasks);
+                connectTasks.Clear();
+            }
         }
     }
 

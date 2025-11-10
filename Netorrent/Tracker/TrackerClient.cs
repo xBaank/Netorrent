@@ -1,9 +1,11 @@
-﻿using System.Net.Http;
+﻿using System.Net;
+using System.Net.Sockets;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.P2P;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker.Http;
+using Netorrent.Tracker.Udp;
 
 namespace Netorrent.Tracker;
 
@@ -11,29 +13,22 @@ internal class TrackerClient(
     HttpClient httpClient,
     P2PClient p2PClient,
     string peerId,
-    ChannelWriter<HttpTrackerResponse> trackersChannel,
+    ChannelWriter<IPEndPoint> trackersChannel,
     MetaInfo metaInfo,
     ILogger logger
 ) : IAsyncDisposable
 {
-    private List<HttpTracker> _trackers = [];
+    private List<ITracker> _trackers = [];
 
     public void Start(CancellationToken cancellationToken)
     {
         _trackers =
             metaInfo
                 .AnnounceList?.Append(metaInfo.Announce)
-                .Where(url => url.StartsWith("http://") || url.StartsWith("https://"))
                 .Distinct()
-                ?.Select(url => new HttpTracker(
-                    p2PClient,
-                    httpClient,
-                    peerId,
-                    metaInfo.Info.InfoHash,
-                    url,
-                    logger,
-                    trackersChannel
-                ))
+                ?.Select(CreateTracker)
+                .Where(i => i != null)
+                .Cast<ITracker>()
                 .ToList() ?? [];
 
         foreach (var tracker in _trackers)
@@ -53,6 +48,36 @@ internal class TrackerClient(
                 TaskScheduler.Default
             );
         }
+    }
+
+    private ITracker? CreateTracker(string url) =>
+        new Uri(url).Scheme switch
+        {
+            "http" or "https" => new HttpTracker(
+                p2PClient,
+                httpClient,
+                peerId,
+                metaInfo.Info.InfoHash,
+                url,
+                logger,
+                trackersChannel
+            ),
+            "udp" => new UdpTracker(
+                new UdpClient(),
+                p2PClient,
+                peerId,
+                trackersChannel,
+                metaInfo.Info.InfoHash,
+                url,
+                logger
+            ),
+            _ => LogUnknownTracker(url),
+        };
+
+    private ITracker? LogUnknownTracker(string scheme)
+    {
+        logger.LogDebug("Unknown {scheme} tracker", scheme);
+        return null;
     }
 
     public async ValueTask DisposeAsync()

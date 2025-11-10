@@ -1,4 +1,5 @@
-﻿using System.Threading.Channels;
+﻿using System.Net;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.P2P;
 using TimeSpanXt;
@@ -12,8 +13,8 @@ internal class HttpTracker(
     byte[] infoHash,
     string announceUrl,
     ILogger logger,
-    ChannelWriter<HttpTrackerResponse> channelWriter
-) : IAsyncDisposable
+    ChannelWriter<IPEndPoint> channelWriter
+) : ITracker
 {
     private Task? _trackerTask;
     private readonly ILogger _logger = logger;
@@ -34,7 +35,10 @@ internal class HttpTracker(
         if (httpTrackerResponse is null)
             return;
 
-        await channelWriter.WriteAsync(httpTrackerResponse, cancellationToken);
+        foreach (var iPEndPoint in httpTrackerResponse.Peers)
+        {
+            await channelWriter.WriteAsync(iPEndPoint, cancellationToken);
+        }
 
         while (!_cancellationTokenSource.Token.IsCancellationRequested)
         {
@@ -48,7 +52,10 @@ internal class HttpTracker(
             if (response is null)
                 return;
 
-            await channelWriter.WriteAsync(httpTrackerResponse, cancellationToken);
+            foreach (var iPEndPoint in httpTrackerResponse.Peers)
+            {
+                await channelWriter.WriteAsync(iPEndPoint, cancellationToken);
+            }
         }
     }
 
