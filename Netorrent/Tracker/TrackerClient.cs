@@ -77,7 +77,8 @@ internal class TrackerClient(
 
     private ITracker? LogUnknownTracker(string scheme)
     {
-        logger.LogDebug("Unknown {scheme} tracker", scheme);
+        if (logger.IsEnabled(LogLevel.Debug))
+            logger.LogDebug("Unknown {scheme} tracker", scheme);
         return null;
     }
 

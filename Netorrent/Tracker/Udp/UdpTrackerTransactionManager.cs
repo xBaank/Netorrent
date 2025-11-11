@@ -12,25 +12,37 @@ using TimeSpanXt;
 namespace Netorrent.Tracker.Udp;
 
 internal record TrackerTransaction(
-    int TransactionId,
-    IPEndPoint Endpoint,
+    IUdpTrackerSendPacket Packet,
     TaskCompletionSource<IUdpTrackerReceivePacket> Response,
     DateTime CreatedAt
-);
-
-internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
+)
 {
+    public int RetryCount { get; set; }
+    public DateTime NextRetryTime { get; set; }
+};
+
+internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger) : IDisposable
+{
+    private const int MAX_RETRIES = 8;
     private readonly ConcurrentDictionary<int, TrackerTransaction> _packetsByTransaction = [];
     private readonly ConcurrentDictionary<long, DateTime> _connectionIdsByCreation = [];
     private readonly Channel<IUdpTrackerSendPacket> _sendPacketsChannel =
         Channel.CreateBounded<IUdpTrackerSendPacket>(
             new BoundedChannelOptions(100) { SingleReader = true, SingleWriter = false }
         );
+    private CancellationTokenSource _cancellationTokenSource = new();
+    public Task? TrackerManagerTask { get; private set; }
 
     public void Start(CancellationToken cancellationToken)
     {
-        SendLoopAsync(cancellationToken);
-        ReceiveLoopAsync(cancellationToken);
+        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken
+        );
+        TrackerManagerTask = Task.WhenAny(
+            ReceiveLoopAsync(_cancellationTokenSource.Token),
+            SendLoopAsync(_cancellationTokenSource.Token),
+            RetryLoopAsync(_cancellationTokenSource.Token)
+        );
     }
 
     private async Task SendLoopAsync(CancellationToken cancellationToken)
@@ -67,6 +79,9 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
                     }
                 }
             }
+            var transaction = _packetsByTransaction[packet.TransactionId];
+            var seconds = 15 * (transaction.RetryCount + 1);
+            transaction?.NextRetryTime = DateTime.UtcNow + seconds.Seconds();
             using var payload = packet.To();
             await udpClient.SendAsync(payload.Memory, packet.IPEndPoint, cancellationToken);
         }
@@ -103,14 +118,46 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
         }
     }
 
+    private async Task RetryLoopAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var now = DateTime.UtcNow;
+            foreach (var transaction in _packetsByTransaction.Values)
+            {
+                if (now > transaction.NextRetryTime)
+                {
+                    if (transaction.RetryCount >= MAX_RETRIES)
+                    {
+                        transaction.Response.TrySetException(
+                            new TimeoutException("Tracker did not respond")
+                        );
+                        _packetsByTransaction.TryRemove(transaction.Packet.TransactionId, out _);
+                        continue;
+                    }
+
+                    // Resend the packet
+                    await SendAsync<IUdpTrackerReceivePacket>(
+                        transaction.Packet,
+                        cancellationToken
+                    );
+                    transaction.RetryCount++;
+                    var seconds = 15 * (transaction.RetryCount + 1);
+                    transaction?.NextRetryTime = DateTime.UtcNow + seconds.Seconds();
+                }
+            }
+
+            await Task.Delay(1.Seconds(), cancellationToken);
+        }
+    }
+
     private TrackerTransaction RegisterOrGetTransaction(
         IUdpTrackerSendPacket packet,
         out bool isNew
     )
     {
         var transaction = new TrackerTransaction(
-            packet.TransactionId,
-            packet.IPEndPoint,
+            packet,
             new TaskCompletionSource<IUdpTrackerReceivePacket>(
                 TaskCreationOptions.RunContinuationsAsynchronously
             ),
@@ -172,7 +219,7 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
         return SendInternalAsync<T>(packet, sendOp, cancellationToken);
     }
 
-    public Task<T> SendDirectlyAsync<T>(
+    private Task<T> SendDirectlyAsync<T>(
         IUdpTrackerSendPacket packet,
         CancellationToken cancellationToken
     )
@@ -181,13 +228,15 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
         async Task sendOp(IUdpTrackerSendPacket packet, CancellationToken cancellationToken)
         {
             using var payload = packet.To();
-            await udpClient.SendAsync(payload.Memory, cancellationToken).ConfigureAwait(false);
+            await udpClient
+                .SendAsync(payload.Memory, packet.IPEndPoint, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         return SendInternalAsync<T>(packet, sendOp, cancellationToken);
     }
 
-    private async Task<UdpTrackerConnectResponse> ConnectAsync(
+    public async Task<UdpTrackerConnectResponse> ConnectAsync(
         IPEndPoint endPoint,
         CancellationToken cancellationToken
     )
@@ -203,8 +252,24 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
         }
         catch (OperationCanceledException ex)
         {
-            logger.LogDebug(ex, "Couldn't connect to {ip}", endPoint);
+            if (logger.IsEnabled(LogLevel.Debug))
+                logger.LogDebug(ex, "Couldn't connect to {ip}", endPoint);
+
             throw;
         }
+        catch (Exception ex)
+        {
+            if (logger.IsEnabled(LogLevel.Debug))
+                logger.LogDebug(ex, "Couldn't connect to {ip}", endPoint);
+            throw;
+        }
+    }
+
+    public void Dispose()
+    {
+        _sendPacketsChannel.Writer.TryComplete();
+        _packetsByTransaction.Clear();
+        _connectionIdsByCreation.Clear();
+        _cancellationTokenSource.Cancel();
     }
 }

@@ -7,6 +7,7 @@ public class OpenTrackerFixture : IAsyncLifetime
 {
     private IContainer? _container;
     public string AnnounceUrl { get; private set; } = "";
+    public string UdpAnnounceUrl { get; private set; } = "";
 
     public async ValueTask InitializeAsync()
     {
@@ -19,6 +20,7 @@ public class OpenTrackerFixture : IAsyncLifetime
         await _container.StartAsync();
 
         AnnounceUrl = $"http://127.0.0.1:6969/announce";
+        UdpAnnounceUrl = $"udp://127.0.0.1:6969/announce";
     }
 
     public async ValueTask DisposeAsync()

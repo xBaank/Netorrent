@@ -1,9 +1,7 @@
 ﻿using System.Net;
-using System.Net.Sockets;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.P2P;
-using Netorrent.Tracker.Http;
 
 namespace Netorrent.Tracker.Udp;
 
@@ -17,24 +15,21 @@ internal class UdpTracker(
     ILogger logger
 ) : ITracker
 {
-    public Task? TrackerTask => throw new NotImplementedException();
+    public Task? TrackerTask { get; private set; }
 
-    public void Start(CancellationToken cancellationToken)
-    {
-        throw new NotImplementedException();
-    }
+    public void Start(CancellationToken cancellationToken) =>
+        TrackerTask ??= ProcessLoop(cancellationToken);
 
     public async Task ProcessLoop(CancellationToken cancellationToken)
     {
         var uri = new Uri(announceUrl);
-        string hostname = uri.Host;
-        int port = uri.Port;
-        var result = await transactionManager.SendAsync(
-            new Memory<byte>(),
-            hostname,
-            port,
-            cancellationToken
-        );
+        var ips = await Dns.GetHostAddressesAsync(uri.Host, cancellationToken);
+
+        if (ips.Length == 0)
+            throw new Exception();
+        var ipEndpoint = new IPEndPoint(ips[0], uri.Port);
+        await transactionManager.ConnectAsync(ipEndpoint, cancellationToken);
+        logger.LogDebug("Connected");
     }
 
     public ValueTask DisposeAsync()

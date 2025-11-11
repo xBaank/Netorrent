@@ -108,7 +108,8 @@ internal class P2PClient : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Error conecting to {ip}", iPEndPoint);
+            if (_logger.IsEnabled(LogLevel.Debug))
+                _logger.LogDebug(ex, "Error conecting to {ip}", iPEndPoint);
             return;
         }
 
@@ -133,21 +134,24 @@ internal class P2PClient : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Error handshaking to {ip}", iPEndPoint);
+            if (_logger.IsEnabled(LogLevel.Debug))
+                _logger.LogDebug(ex, "Error handshaking to {ip}", iPEndPoint);
             return;
         }
 
         if (peerConnection.PeerId == _peerId)
         {
-            _logger.LogInformation(
-                "Ignored self connection to {EndPoint}",
-                peerConnection.IPEndPoint
-            );
+            if (_logger.IsEnabled(LogLevel.Information))
+                _logger.LogInformation(
+                    "Ignored self connection to {EndPoint}",
+                    peerConnection.IPEndPoint
+                );
             await peerConnection.DisposeAsync();
             return;
         }
 
-        _logger.LogInformation("Connected to peer {PeerId}", peerConnection.PeerId);
+        if (_logger.IsEnabled(LogLevel.Information))
+            _logger.LogInformation("Connected to peer {PeerId}", peerConnection.PeerId);
 
         _activePeers[iPEndPoint] = peerConnection;
         HandlePeer(peerConnection, cancellationToken);
@@ -200,22 +204,25 @@ internal class P2PClient : IAsyncDisposable
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "Error handshaking to {ip}", peerConnection.IPEndPoint);
+                if (_logger.IsEnabled(LogLevel.Debug))
+                    _logger.LogDebug(ex, "Error handshaking to {ip}", peerConnection.IPEndPoint);
                 await peerConnection.DisposeAsync();
                 continue;
             }
 
             if (peerConnection.PeerId == _peerId)
             {
-                _logger.LogInformation(
-                    "Ignored self connection from {EndPoint}",
-                    peerConnection.IPEndPoint
-                );
+                if (_logger.IsEnabled(LogLevel.Information))
+                    _logger.LogInformation(
+                        "Ignored self connection from {EndPoint}",
+                        peerConnection.IPEndPoint
+                    );
                 await peerConnection.DisposeAsync();
                 continue;
             }
 
-            _logger.LogInformation("Connected from peer {PeerId}", peerConnection.PeerId);
+            if (_logger.IsEnabled(LogLevel.Information))
+                _logger.LogInformation("Connected from peer {PeerId}", peerConnection.PeerId);
 
             _activePeers[remoteEndPoint] = peerConnection;
             HandlePeer(peerConnection, cancellationToken);

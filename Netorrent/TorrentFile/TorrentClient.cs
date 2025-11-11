@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
@@ -12,19 +13,24 @@ using Netorrent.Tracker.Udp;
 
 namespace Netorrent.TorrentFile;
 
-public class TorrentClient
+public class TorrentClient : IAsyncDisposable
 {
     private readonly PeerIdService _peerIdService = new();
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
     private readonly List<Torrent> torrents = [];
     private readonly UdpTrackerTransactionManager _trackerTransactionManager;
+    private readonly CancellationTokenSource _cancellationTokenSource = new();
 
     public TorrentClient(HttpClient? httpClient = null, ILogger? logger = null)
     {
         _httpClient = httpClient ?? new HttpClient();
         _logger = logger ?? NullLogger.Instance;
-        _trackerTransactionManager = new(new UdpClient(), _logger);
+        var udpClient = new UdpClient(AddressFamily.InterNetworkV6);
+        udpClient.Client.DualMode = true;
+        udpClient.Client.Bind(new IPEndPoint(IPAddress.IPv6Any, 0));
+        _trackerTransactionManager = new(udpClient, _logger);
+        _trackerTransactionManager.Start(_cancellationTokenSource.Token);
     }
 
     public async ValueTask<Torrent> ImportTorrentAsync(
@@ -397,5 +403,15 @@ public class TorrentClient
         var md5sum = dic.Elements.GetValueOrDefault("md5sum")?.As<BString>();
 
         return new InfoFile(length, path, md5sum);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var item in torrents)
+        {
+            await item.DisposeAsync();
+        }
+        _trackerTransactionManager.Dispose();
+        _cancellationTokenSource.Cancel();
     }
 }

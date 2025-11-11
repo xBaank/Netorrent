@@ -21,7 +21,6 @@ public class Torrent : IAsyncDisposable
     private readonly TrackerClient _trackerClient;
     private readonly FileManager _fileManager;
     private readonly Bitfield _myBitfield;
-    private bool _disposed = false;
 
     public DownloadInfo DownloadInfo => _p2pClient.DownloadInfo;
 
@@ -111,36 +110,10 @@ public class Torrent : IAsyncDisposable
         await File.WriteAllBytesAsync(outputPath, encoder.Encode(rawMetainfo), cancellationToken);
     }
 
-    protected virtual void Dispose(bool disposing)
-    {
-        if (_disposed)
-            return;
-
-        if (disposing)
-        {
-            _fileManager.Dispose();
-        }
-
-        _disposed = true;
-    }
-
     public async ValueTask DisposeAsync()
     {
-        if (_disposed)
-            return;
-
-        if (_p2pClient is not null)
-            await _p2pClient.DisposeAsync();
-
-        if (_trackerClient is not null)
-            await _trackerClient.DisposeAsync();
-
-        Dispose(disposing: true);
-        GC.SuppressFinalize(this);
-    }
-
-    ~Torrent()
-    {
-        Dispose(disposing: false);
+        _fileManager.Dispose();
+        await _p2pClient.DisposeAsync();
+        await _trackerClient.DisposeAsync();
     }
 }

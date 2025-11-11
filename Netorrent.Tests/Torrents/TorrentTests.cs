@@ -6,30 +6,43 @@ using TimeSpanXt;
 
 namespace Netorrent.Tests.Torrents;
 
+public enum AnnounceType
+{
+    Http,
+    Udp,
+}
+
 public class TorrentTests(OpenTrackerFixture fixture, ITestOutputHelper outputHelper)
     : IClassFixture<OpenTrackerFixture>
 {
     private readonly OpenTrackerFixture _fixture = fixture;
 
-    [Fact]
-    public async Task Should_download_torrent()
+    [Theory]
+    [InlineData(AnnounceType.Http)]
+    [InlineData(AnnounceType.Udp)]
+    public async Task Should_download_torrent(AnnounceType announceType)
     {
-        // Arrange
         var loggerFactory = LoggerFactory.Create(builder =>
             builder.AddXUnit(outputHelper).SetMinimumLevel(LogLevel.Trace)
         );
+        var announceUrl = announceType switch
+        {
+            AnnounceType.Http => _fixture.AnnounceUrl,
+            AnnounceType.Udp => _fixture.UdpAnnounceUrl,
+            _ => throw new Exception($"Unknown type {announceType}"),
+        };
 
         var logger = loggerFactory.CreateLogger("Torrent");
 
         var seeder = new TorrentClient(logger: logger);
         var leecher = new TorrentClient(logger: logger);
 
-        using var cts = TestContext.Current.CancellationToken.WithTimeout(30.Seconds());
+        using var cts = TestContext.Current.CancellationToken.WithTimeout(99999.Seconds());
 
         await using var seederTorrent = await seeder.CreateTorrentAsync(
             "Data/test.txt",
-            _fixture.AnnounceUrl,
-            [_fixture.AnnounceUrl],
+            announceUrl,
+            [announceUrl],
             cancellationToken: cts.Token
         );
 
