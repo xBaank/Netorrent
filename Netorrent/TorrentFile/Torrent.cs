@@ -8,6 +8,7 @@ using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker;
 using Netorrent.Tracker.Http;
+using Netorrent.Tracker.Udp;
 
 namespace Netorrent.TorrentFile;
 
@@ -27,6 +28,7 @@ public class Torrent : IAsyncDisposable
     internal Torrent(
         MetaInfo metaInfo,
         HttpClient httpClient,
+        UdpTrackerTransactionManager trackerTransaction,
         string peerId,
         string outputDirectory,
         ILogger logger,
@@ -55,6 +57,7 @@ public class Torrent : IAsyncDisposable
         );
         _trackerClient = new TrackerClient(
             httpClient,
+            trackerTransaction,
             _p2pClient,
             peerId,
             trackersChannel.Writer,

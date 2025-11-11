@@ -8,7 +8,7 @@ using Netorrent.Tracker.Http;
 namespace Netorrent.Tracker.Udp;
 
 internal class UdpTracker(
-    UdpClient udpClient,
+    UdpTrackerTransactionManager transactionManager,
     P2PClient p2PClient,
     string peerId,
     ChannelWriter<IPEndPoint> trackersChannel,
@@ -29,8 +29,12 @@ internal class UdpTracker(
         var uri = new Uri(announceUrl);
         string hostname = uri.Host;
         int port = uri.Port;
-        await udpClient.SendAsync(new Memory<byte>(), hostname, port, cancellationToken);
-        await udpClient.ReceiveAsync(cancellationToken);
+        var result = await transactionManager.SendAsync(
+            new Memory<byte>(),
+            hostname,
+            port,
+            cancellationToken
+        );
     }
 
     public ValueTask DisposeAsync()

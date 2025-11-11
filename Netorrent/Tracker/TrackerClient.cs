@@ -11,6 +11,7 @@ namespace Netorrent.Tracker;
 
 internal class TrackerClient(
     HttpClient httpClient,
+    UdpTrackerTransactionManager trackerTransaction,
     P2PClient p2PClient,
     string peerId,
     ChannelWriter<IPEndPoint> trackersChannel,
@@ -63,7 +64,7 @@ internal class TrackerClient(
                 trackersChannel
             ),
             "udp" => new UdpTracker(
-                new UdpClient(),
+                trackerTransaction,
                 p2PClient,
                 peerId,
                 trackersChannel,

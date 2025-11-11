@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -7,15 +8,24 @@ using Netorrent.Bencoding.Structs;
 using Netorrent.Extensions;
 using Netorrent.P2P;
 using Netorrent.TorrentFile.FileStructure;
+using Netorrent.Tracker.Udp;
 
 namespace Netorrent.TorrentFile;
 
-public class TorrentClient(HttpClient? httpClient = null, ILogger? logger = null)
+public class TorrentClient
 {
     private readonly PeerIdService _peerIdService = new();
-    private readonly HttpClient _httpClient = httpClient ?? new HttpClient();
-    private readonly ILogger _logger = logger ?? NullLogger.Instance;
+    private readonly HttpClient _httpClient;
+    private readonly ILogger _logger;
     private readonly List<Torrent> torrents = [];
+    private readonly UdpTrackerTransactionManager _trackerTransactionManager;
+
+    public TorrentClient(HttpClient? httpClient = null, ILogger? logger = null)
+    {
+        _httpClient = httpClient ?? new HttpClient();
+        _logger = logger ?? NullLogger.Instance;
+        _trackerTransactionManager = new(new UdpClient(), _logger);
+    }
 
     public async ValueTask<Torrent> ImportTorrentAsync(
         string path,
@@ -35,6 +45,7 @@ public class TorrentClient(HttpClient? httpClient = null, ILogger? logger = null
         var torrent = new Torrent(
             metaInfo,
             _httpClient,
+            _trackerTransactionManager,
             _peerIdService.PeerId,
             Path.GetFullPath(outputDirectory),
             _logger
@@ -48,6 +59,7 @@ public class TorrentClient(HttpClient? httpClient = null, ILogger? logger = null
         var torrent = new Torrent(
             metaInfo,
             _httpClient,
+            _trackerTransactionManager,
             _peerIdService.PeerId,
             Path.GetFullPath(outputDirectory),
             _logger
@@ -75,6 +87,7 @@ public class TorrentClient(HttpClient? httpClient = null, ILogger? logger = null
                 cancellationToken
             ),
             _httpClient,
+            _trackerTransactionManager,
             _peerIdService.PeerId,
             Path.GetFullPath(Path.GetDirectoryName(path) ?? ""),
             _logger,
