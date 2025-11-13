@@ -31,23 +31,25 @@ public class DownloadInfo
         _fileManager = fileManager;
         _bitfield = bitfield;
         _bitfield.OnHavePieceAsync += CheckDownload;
+        if (_bitfield.IsComplete)
+            _downloadTaskCompletitionSource.TrySetResult();
     }
 
     internal void SetException(Exception exception)
     {
-        _downloadTaskCompletitionSource.SetException(exception);
+        _downloadTaskCompletitionSource.TrySetException(exception);
     }
 
     internal void SetCanceled()
     {
-        _downloadTaskCompletitionSource.SetCanceled();
+        _downloadTaskCompletitionSource.TrySetCanceled();
     }
 
     private Task CheckDownload(int pieceIndex, CancellationToken token)
     {
         if (_bitfield.IsComplete)
         {
-            _downloadTaskCompletitionSource.SetResult();
+            _downloadTaskCompletitionSource.TrySetResult();
         }
 
         return Task.CompletedTask;

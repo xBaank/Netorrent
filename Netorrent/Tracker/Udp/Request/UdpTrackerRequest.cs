@@ -25,7 +25,7 @@ internal record UdpTrackerRequest(
 {
     private const int SIZE = 98;
 
-    public MemoryRented<byte> To()
+    public MemoryRented<byte> ToMemoryRented()
     {
         var pool = MemoryPool<byte>.Shared.Rent(SIZE);
         var memory = pool.Memory[..SIZE];

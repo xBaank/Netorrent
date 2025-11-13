@@ -76,7 +76,8 @@ internal class HttpTracker(
             true,
             false,
             @event,
-            NumWant: 50
+            IPAddress.Loopback.ToString(),
+            50
         );
 
         try

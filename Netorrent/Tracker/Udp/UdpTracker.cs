@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using System.Net.Sockets;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.P2P;
@@ -27,8 +28,16 @@ internal class UdpTracker(
 
         if (ips.Length == 0)
             throw new Exception();
+
         var ipEndpoint = new IPEndPoint(ips[0], uri.Port);
-        await transactionManager.ConnectAsync(ipEndpoint, cancellationToken);
+        try
+        {
+            await transactionManager.ConnectAsync(ipEndpoint, cancellationToken);
+        }
+        catch
+        {
+            logger.LogDebug("Not connected");
+        }
         logger.LogDebug("Connected");
     }
 

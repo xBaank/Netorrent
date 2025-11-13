@@ -2,6 +2,7 @@
 using Netorrent.Extensions;
 using Netorrent.Tests.Fixtures;
 using Netorrent.TorrentFile;
+using Shouldly;
 using TimeSpanXt;
 
 namespace Netorrent.Tests.Torrents;
@@ -37,7 +38,7 @@ public class TorrentTests(OpenTrackerFixture fixture, ITestOutputHelper outputHe
         var seeder = new TorrentClient(logger: logger);
         var leecher = new TorrentClient(logger: logger);
 
-        using var cts = TestContext.Current.CancellationToken.WithTimeout(99999.Seconds());
+        using var cts = TestContext.Current.CancellationToken.WithTimeout(1.Minutes());
 
         await using var seederTorrent = await seeder.CreateTorrentAsync(
             "Data/test.txt",
@@ -51,6 +52,6 @@ public class TorrentTests(OpenTrackerFixture fixture, ITestOutputHelper outputHe
         seederTorrent.Start(cts.Token);
         leecherTorrent.Start(cts.Token);
 
-        await leecherTorrent.DownloadInfo.DownloadTask;
+        await leecherTorrent.DownloadInfo.DownloadTask.ShouldNotThrowAsync();
     }
 }

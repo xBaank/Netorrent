@@ -1,4 +1,6 @@
-﻿using DotNet.Testcontainers.Builders;
+﻿using System.ComponentModel;
+using Docker.DotNet.Models;
+using DotNet.Testcontainers.Builders;
 using IContainer = DotNet.Testcontainers.Containers.IContainer;
 
 namespace Netorrent.Tests.Fixtures;
@@ -14,13 +16,17 @@ public class OpenTrackerFixture : IAsyncLifetime
         _container = new ContainerBuilder()
             .WithImage("xbaank/opentracker")
             .WithName("opentracker-test")
-            .WithCreateParameterModifier(p => p.HostConfig.NetworkMode = "host")
+            .WithPortBinding("6969/tcp", true)
+            .WithPortBinding("6969/udp", true)
             .Build();
 
         await _container.StartAsync();
 
-        AnnounceUrl = $"http://127.0.0.1:6969/announce";
-        UdpAnnounceUrl = $"udp://127.0.0.1:6969/announce";
+        var tcpPort = _container.GetMappedPublicPort("6969");
+        var udpPort = _container.GetMappedPublicPort("6969/udp");
+
+        AnnounceUrl = $"http://127.0.0.1:{tcpPort}/announce";
+        UdpAnnounceUrl = $"udp://127.0.0.1:{udpPort}/announce";
     }
 
     public async ValueTask DisposeAsync()

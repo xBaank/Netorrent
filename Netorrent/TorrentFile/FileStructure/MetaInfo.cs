@@ -23,17 +23,17 @@ public record MetaInfo(
 
         if (AnnounceList != null && AnnounceList.Count != 0)
         {
-            var innerTier = new BList(
-                [.. AnnounceList.Select(u => (IBencodingNode)new BString(u))]
-            );
+            var innerTier = new BList([
+                .. AnnounceList.Select(u => (IBencodingNode)new BString(u)),
+            ]);
             var outer = new BList([innerTier]);
             root.Elements["announce-list"] = outer;
         }
 
         if (UrlList != null && UrlList.Count != 0)
-            root.Elements["url-list"] = new BList(
-                [.. UrlList.Select(u => (IBencodingNode)new BString(u))]
-            );
+            root.Elements["url-list"] = new BList([
+                .. UrlList.Select(u => (IBencodingNode)new BString(u)),
+            ]);
 
         if (CreationDate.HasValue)
             root.Elements["creation date"] = new BInt(CreationDate.Value);

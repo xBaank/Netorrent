@@ -90,23 +90,21 @@ public static class TorrentMetaInfoFactory
             [new BString("name")] = new BString("test-folder"),
             [new BString("piece length")] = new BInt(pieceLength),
             [new BString("pieces")] = new BString(Encoding.ASCII.GetString(piecesBytes.ToArray())),
-            [new BString("files")] = new BList(
-                [
-                    .. infoFiles
-                        .ConvertAll(f => new BDictionary(
-                            new Dictionary<BString, IBencodingNode>
-                            {
-                                [new BString("length")] = new BInt(f.Length),
-                                [new BString("path")] = new BList(
-                                    f.Path.ConvertAll(p => new BString(p))
-                                        .Cast<IBencodingNode>()
-                                        .ToList()
-                                ),
-                            }
-                        ))
-                        .Cast<IBencodingNode>(),
-                ]
-            ),
+            [new BString("files")] = new BList([
+                .. infoFiles
+                    .ConvertAll(f => new BDictionary(
+                        new Dictionary<BString, IBencodingNode>
+                        {
+                            [new BString("length")] = new BInt(f.Length),
+                            [new BString("path")] = new BList(
+                                f.Path.ConvertAll(p => new BString(p))
+                                    .Cast<IBencodingNode>()
+                                    .ToList()
+                            ),
+                        }
+                    ))
+                    .Cast<IBencodingNode>(),
+            ]),
         };
 
         var rawInfo = new BDictionary(infoDict);

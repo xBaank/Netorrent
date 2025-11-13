@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Channels;
+using System.Transactions;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.Tracker.Udp.Request;
@@ -18,7 +19,7 @@ internal record TrackerTransaction(
 )
 {
     public int RetryCount { get; set; }
-    public DateTime NextRetryTime { get; set; }
+    public DateTime? NextRetryTime { get; set; }
 };
 
 internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger) : IDisposable
@@ -26,10 +27,7 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
     private const int MAX_RETRIES = 8;
     private readonly ConcurrentDictionary<int, TrackerTransaction> _packetsByTransaction = [];
     private readonly ConcurrentDictionary<long, DateTime> _connectionIdsByCreation = [];
-    private readonly Channel<IUdpTrackerSendPacket> _sendPacketsChannel =
-        Channel.CreateBounded<IUdpTrackerSendPacket>(
-            new BoundedChannelOptions(100) { SingleReader = true, SingleWriter = false }
-        );
+
     private CancellationTokenSource _cancellationTokenSource = new();
     public Task? TrackerManagerTask { get; private set; }
 
@@ -38,82 +36,53 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
-        TrackerManagerTask = Task.WhenAny(
+        TrackerManagerTask = Task.WhenAll(
             ReceiveLoopAsync(_cancellationTokenSource.Token),
-            SendLoopAsync(_cancellationTokenSource.Token),
             RetryLoopAsync(_cancellationTokenSource.Token)
         );
-    }
-
-    private async Task SendLoopAsync(CancellationToken cancellationToken)
-    {
-        await foreach (var packet in _sendPacketsChannel.Reader.ReadAllAsync(cancellationToken))
-        {
-            if (packet is UdpTrackerRequest udpTrackerRequest)
-            {
-                var connectionIdCreatedAt = _connectionIdsByCreation[
-                    udpTrackerRequest.ConnectionId
-                ];
-                var passedTime = DateTime.UtcNow - connectionIdCreatedAt;
-                if (passedTime > 1.Minutes())
-                {
-                    try
-                    {
-                        var response = await ConnectAsync(packet.IPEndPoint, cancellationToken);
-                        var newPacket = udpTrackerRequest with
-                        {
-                            ConnectionId = response.ConnectionId,
-                        };
-                        await _sendPacketsChannel.Writer.WriteAsync(newPacket, cancellationToken);
-                        continue;
-                    }
-                    catch (OperationCanceledException ex)
-                    {
-                        if (
-                            _packetsByTransaction.TryGetValue(
-                                packet.TransactionId,
-                                out var trackerTransaction
-                            )
-                        )
-                            trackerTransaction.Response.SetException(ex);
-                    }
-                }
-            }
-            var transaction = _packetsByTransaction[packet.TransactionId];
-            var seconds = 15 * (transaction.RetryCount + 1);
-            transaction?.NextRetryTime = DateTime.UtcNow + seconds.Seconds();
-            using var payload = packet.To();
-            await udpClient.SendAsync(payload.Memory, packet.IPEndPoint, cancellationToken);
-        }
     }
 
     private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            var result = await udpClient.ReceiveAsync(cancellationToken);
-            var actionId = BinaryPrimitives.ReadInt32BigEndian(result.Buffer);
-
-            IUdpTrackerReceivePacket? receivedPacket = actionId switch
+            try
             {
-                0 => UdpTrackerConnectResponse.From(result.Buffer),
-                1 => UdpTrackerResponse.From(result.Buffer, result.RemoteEndPoint.AddressFamily),
-                3 => UdpTrackerErrorResponse.From(result.Buffer),
-                _ => null,
-            };
+                var result = await udpClient.ReceiveAsync(cancellationToken);
 
-            if (receivedPacket is null)
-                continue;
+                if (result.Buffer.Length < 4)
+                    continue;
+                var actionId = BinaryPrimitives.ReadInt32BigEndian(result.Buffer);
 
-            if (receivedPacket is UdpTrackerConnectResponse udpTrackerConnectResponse)
-            {
-                _connectionIdsByCreation[udpTrackerConnectResponse.ConnectionId] = DateTime.UtcNow;
+                IUdpTrackerReceivePacket? receivedPacket = actionId switch
+                {
+                    0 => UdpTrackerConnectResponse.From(result.Buffer),
+                    1 => UdpTrackerResponse.From(
+                        result.Buffer,
+                        result.RemoteEndPoint.AddressFamily
+                    ),
+                    3 => UdpTrackerErrorResponse.From(result.Buffer),
+                    _ => null,
+                };
+
+                if (receivedPacket is null)
+                    continue;
+
+                if (receivedPacket is UdpTrackerConnectResponse udpTrackerConnectResponse)
+                {
+                    _connectionIdsByCreation[udpTrackerConnectResponse.ConnectionId] =
+                        DateTime.UtcNow;
+                }
+
+                if (_packetsByTransaction.TryGetValue(receivedPacket.TransactionId, out var packet))
+                {
+                    packet.Response.TrySetResult(receivedPacket);
+                    _packetsByTransaction.TryRemove(receivedPacket.TransactionId, out _);
+                }
             }
-
-            if (_packetsByTransaction.TryGetValue(receivedPacket.TransactionId, out var packet))
+            catch (Exception ex)
             {
-                packet.Response.SetResult(receivedPacket);
-                _packetsByTransaction.TryRemove(receivedPacket.TransactionId, out _);
+                logger.LogInformation("ASD");
             }
         }
     }
@@ -136,14 +105,15 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
                         continue;
                     }
 
-                    // Resend the packet
-                    await SendAsync<IUdpTrackerReceivePacket>(
-                        transaction.Packet,
+                    using var payload = transaction.Packet.ToMemoryRented();
+                    await udpClient.SendAsync(
+                        payload.Memory,
+                        transaction.Packet.IPEndPoint,
                         cancellationToken
                     );
                     transaction.RetryCount++;
                     var seconds = 15 * (transaction.RetryCount + 1);
-                    transaction?.NextRetryTime = DateTime.UtcNow + seconds.Seconds();
+                    transaction.NextRetryTime = DateTime.UtcNow + seconds.Seconds();
                 }
             }
 
@@ -175,65 +145,44 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
         return existing!;
     }
 
-    private async Task<T> SendInternalAsync<T>(
+    public async Task<T> SendAsync<T>(
         IUdpTrackerSendPacket packet,
-        Func<IUdpTrackerSendPacket, CancellationToken, Task> sendOperation,
         CancellationToken cancellationToken
     )
         where T : IUdpTrackerReceivePacket
     {
-        if (_packetsByTransaction.TryGetValue(packet.TransactionId, out var existingTxn))
-        {
-            var existingResult = await existingTxn.Response.Task.ConfigureAwait(false);
-            return (T)existingResult;
-        }
-
-        var txn = RegisterOrGetTransaction(packet, out bool isNew);
-
-        if (!isNew)
-        {
-            var racedResult = await txn.Response.Task.ConfigureAwait(false);
-            return (T)racedResult;
-        }
-
         try
         {
-            await sendOperation(packet, cancellationToken).ConfigureAwait(false);
+            var transaction = RegisterOrGetTransaction(packet, out var isNew);
 
-            var response = await txn.Response.Task.ConfigureAwait(false);
-            return (T)response;
+            if (!isNew)
+            {
+                return (T)await transaction.Response.Task;
+            }
+
+            using var payload = packet.ToMemoryRented();
+            var seconds = 15 * (transaction.RetryCount + 1);
+            transaction.NextRetryTime = DateTime.UtcNow + seconds.Seconds();
+
+            await udpClient.SendAsync(payload.Memory, packet.IPEndPoint, cancellationToken);
+
+            return (T)await transaction.Response.Task;
         }
-        catch
+        catch (Exception ex)
         {
-            _packetsByTransaction.TryRemove(packet.TransactionId, out _);
+            logger.LogDebug(ex, "asd");
             throw;
         }
     }
 
-    public Task<T> SendAsync<T>(IUdpTrackerSendPacket packet, CancellationToken cancellationToken)
-        where T : IUdpTrackerReceivePacket
+    private int MakeTransactionId()
     {
-        Task sendOp(IUdpTrackerSendPacket packet, CancellationToken cancellationToken) =>
-            _sendPacketsChannel.Writer.WriteAsync(packet, cancellationToken).AsTask();
-
-        return SendInternalAsync<T>(packet, sendOp, cancellationToken);
-    }
-
-    private Task<T> SendDirectlyAsync<T>(
-        IUdpTrackerSendPacket packet,
-        CancellationToken cancellationToken
-    )
-        where T : IUdpTrackerReceivePacket
-    {
-        async Task sendOp(IUdpTrackerSendPacket packet, CancellationToken cancellationToken)
+        int id;
+        do
         {
-            using var payload = packet.To();
-            await udpClient
-                .SendAsync(payload.Memory, packet.IPEndPoint, cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        return SendInternalAsync<T>(packet, sendOp, cancellationToken);
+            id = Random.Shared.Next();
+        } while (_packetsByTransaction.ContainsKey(id));
+        return id;
     }
 
     public async Task<UdpTrackerConnectResponse> ConnectAsync(
@@ -241,33 +190,15 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
         CancellationToken cancellationToken
     )
     {
-        try
-        {
-            using var cts = cancellationToken.WithTimeout(1.Minutes());
-            var transactionId = Random.Shared.Next();
-            return await SendDirectlyAsync<UdpTrackerConnectResponse>(
-                new UdpTrackerConnectRequest(endPoint, transactionId),
-                cts.Token
-            );
-        }
-        catch (OperationCanceledException ex)
-        {
-            if (logger.IsEnabled(LogLevel.Debug))
-                logger.LogDebug(ex, "Couldn't connect to {ip}", endPoint);
-
-            throw;
-        }
-        catch (Exception ex)
-        {
-            if (logger.IsEnabled(LogLevel.Debug))
-                logger.LogDebug(ex, "Couldn't connect to {ip}", endPoint);
-            throw;
-        }
+        var transactionId = MakeTransactionId();
+        return await SendAsync<UdpTrackerConnectResponse>(
+            new UdpTrackerConnectRequest(endPoint, transactionId),
+            cancellationToken
+        );
     }
 
     public void Dispose()
     {
-        _sendPacketsChannel.Writer.TryComplete();
         _packetsByTransaction.Clear();
         _connectionIdsByCreation.Clear();
         _cancellationTokenSource.Cancel();

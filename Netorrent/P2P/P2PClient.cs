@@ -9,7 +9,6 @@ using Netorrent.P2P.Managers.Piece;
 using Netorrent.P2P.Managers.Request;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
-using Netorrent.Tracker.Http;
 using TimeSpanXt;
 
 namespace Netorrent.P2P;
@@ -238,11 +237,12 @@ internal class P2PClient : IAsyncDisposable
             {
                 if (task.IsFaulted)
                 {
-                    _logger.LogDebug(
-                        task.Exception,
-                        "Exception on peer {peerId}",
-                        peerConnection.PeerId
-                    );
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                        _logger.LogDebug(
+                            task.Exception,
+                            "Exception on peer {peerId}",
+                            peerConnection.PeerId
+                        );
                 }
 
                 await peerConnection.DisposeAsync();

@@ -11,7 +11,7 @@ internal interface IUdpTrackerPacket
 internal interface IUdpTrackerSendPacket : IUdpTrackerPacket
 {
     public IPEndPoint IPEndPoint { get; }
-    public MemoryRented<byte> To();
+    public MemoryRented<byte> ToMemoryRented();
 }
 
 internal interface IUdpTrackerReceivePacket : IUdpTrackerPacket;
