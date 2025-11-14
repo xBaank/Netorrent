@@ -1,6 +1,4 @@
-﻿using System.ComponentModel;
-using Docker.DotNet.Models;
-using DotNet.Testcontainers.Builders;
+﻿using DotNet.Testcontainers.Builders;
 using IContainer = DotNet.Testcontainers.Containers.IContainer;
 
 namespace Netorrent.Tests.Fixtures;

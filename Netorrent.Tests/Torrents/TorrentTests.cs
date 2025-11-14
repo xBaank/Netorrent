@@ -1,5 +1,4 @@
-﻿using System.IO;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.Tests.Fixtures;
 using Netorrent.TorrentFile;
