@@ -1,13 +1,12 @@
 ﻿using Netorrent.Bencoding.Structs;
 
-namespace Netorrent.Tests.Data;
+namespace Netorrent.Tests.Bencoding.Data;
 
 public class BDictionaryData : TheoryData<string, BDictionary>
 {
     public BDictionaryData()
     {
         Add("de", new BDictionary([]));
-        // Empty dictionary
 
         Add(
             "d3:cow3:mooe",
@@ -18,7 +17,6 @@ public class BDictionaryData : TheoryData<string, BDictionary>
                 }
             )
         );
-        // Single key-value
 
         Add(
             "d3:foo3:bare",
@@ -29,7 +27,6 @@ public class BDictionaryData : TheoryData<string, BDictionary>
                 }
             )
         );
-        // Simple pair
 
         Add(
             "d3:bar4:spam3:fooi42ee",
@@ -41,7 +38,6 @@ public class BDictionaryData : TheoryData<string, BDictionary>
                 }
             )
         );
-        // Multiple entries (keys sorted: "bar" < "foo")
 
         Add(
             "d4:spaml1:a1:bee",
@@ -52,7 +48,6 @@ public class BDictionaryData : TheoryData<string, BDictionary>
                 }
             )
         );
-        // Dictionary with list value
 
         Add(
             "d4:name5:alice3:numli1ei2ei3eee",
@@ -64,7 +59,6 @@ public class BDictionaryData : TheoryData<string, BDictionary>
                 }
             )
         );
-        // Mixed list and string values
 
         Add(
             "d4:datai123e4:text5:helloe",
@@ -76,7 +70,6 @@ public class BDictionaryData : TheoryData<string, BDictionary>
                 }
             )
         );
-        // Integer + string pair
 
         Add(
             "d4:metad3:fooi1ee4:testi2ee",
@@ -93,7 +86,6 @@ public class BDictionaryData : TheoryData<string, BDictionary>
                 }
             )
         );
-        // Nested dictionary
 
         Add(
             "d3:outd3:inn4:deepee",
@@ -109,7 +101,6 @@ public class BDictionaryData : TheoryData<string, BDictionary>
                 }
             )
         );
-        // Deep nested dictionary
 
         Add(
             "d5:emptyle4:type4:liste",
@@ -121,6 +112,5 @@ public class BDictionaryData : TheoryData<string, BDictionary>
                 }
             )
         );
-        // Contains empty list
     }
 }

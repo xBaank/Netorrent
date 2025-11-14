@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using System.Net;
+using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.Tests.Fixtures;
 using Netorrent.TorrentFile;
@@ -36,8 +37,20 @@ public class TorrentTests(OpenTrackerFixture fixture, ITestOutputHelper outputHe
 
         var logger = loggerFactory.CreateLogger("Torrent");
 
-        var seeder = new TorrentClient(logger: logger);
-        var leecher = new TorrentClient(logger: logger);
+        var seeder = new TorrentClient(o =>
+            o with
+            {
+                Logger = logger,
+                ForcedIp = IPAddress.Loopback,
+            }
+        );
+        var leecher = new TorrentClient(o =>
+            o with
+            {
+                Logger = logger,
+                ForcedIp = IPAddress.Loopback,
+            }
+        );
 
         await using var seederTorrent = await seeder.CreateTorrentAsync(
             "Data/test.txt",
@@ -59,12 +72,12 @@ public class TorrentTests(OpenTrackerFixture fixture, ITestOutputHelper outputHe
         seederTorrent.Stop();
         leecherTorrent.Stop();
 
-        var originalFile = await ReadAllBytesSharedAsync(
+        var originalFile = await ReadAllBytesAsync(
             "Data/test.txt",
             TestContext.Current.CancellationToken
         );
 
-        var downloadedFile = await ReadAllBytesSharedAsync(
+        var downloadedFile = await ReadAllBytesAsync(
             "Output/test.txt",
             TestContext.Current.CancellationToken
         );
@@ -89,8 +102,20 @@ public class TorrentTests(OpenTrackerFixture fixture, ITestOutputHelper outputHe
 
         var logger = loggerFactory.CreateLogger("Torrent");
 
-        var seeder = new TorrentClient(logger: logger);
-        var leecher = new TorrentClient(logger: logger);
+        var seeder = new TorrentClient(o =>
+            o with
+            {
+                Logger = logger,
+                ForcedIp = IPAddress.Loopback,
+            }
+        );
+        var leecher = new TorrentClient(o =>
+            o with
+            {
+                Logger = logger,
+                ForcedIp = IPAddress.Loopback,
+            }
+        );
 
         await using var seederTorrent = await seeder.CreateTorrentAsync(
             "Data/test.txt",
@@ -108,17 +133,16 @@ public class TorrentTests(OpenTrackerFixture fixture, ITestOutputHelper outputHe
         await leecherTorrent.DownloadInfo.DownloadTask.ShouldThrowAsync<TaskCanceledException>();
     }
 
-    private static async Task<byte[]> ReadAllBytesSharedAsync(
+    private static async Task<byte[]> ReadAllBytesAsync(
         string path,
         CancellationToken cancellationToken = default
     )
     {
-        // Open the file with Read + ReadWrite sharing
         using var stream = new FileStream(
             path,
             FileMode.Open,
             FileAccess.Read,
-            FileShare.ReadWrite, // <— allows reading while someone else writes
+            FileShare.ReadWrite,
             bufferSize: 4096,
             options: FileOptions.Asynchronous | FileOptions.SequentialScan
         );
@@ -131,7 +155,7 @@ public class TorrentTests(OpenTrackerFixture fixture, ITestOutputHelper outputHe
             int read = await stream.ReadAsync(buffer.AsMemory(totalRead), cancellationToken);
 
             if (read == 0)
-                break; // end of file
+                break;
 
             totalRead += read;
         }

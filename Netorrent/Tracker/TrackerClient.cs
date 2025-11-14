@@ -15,7 +15,8 @@ internal class TrackerClient(
     string peerId,
     ChannelWriter<IPEndPoint> trackersChannel,
     MetaInfo metaInfo,
-    ILogger logger
+    ILogger logger,
+    IPAddress? forcedIp
 ) : IAsyncDisposable
 {
     private List<ITracker> _trackers = [];
@@ -64,7 +65,8 @@ internal class TrackerClient(
                 metaInfo.Info.InfoHash,
                 url,
                 logger,
-                trackersChannel
+                trackersChannel,
+                forcedIp
             ),
             "udp" => new UdpTracker(
                 trackerTransaction,

@@ -1,28 +1,23 @@
 using Netorrent.Bencoding.Structs;
 
-namespace Netorrent.Tests.Data;
+namespace Netorrent.Tests.Bencoding.Data;
 
 public class BlistData : TheoryData<string, BList>
 {
     public BlistData()
     {
         Add("le", new List<IBencodingNode>() { });
-        // Empty list
 
         Add("l4:spame", new List<IBencodingNode>() { new BString("spam") });
-        // Single string
 
         Add("li42ee", new List<IBencodingNode>() { new BInt(42) });
-        // Single integer
 
         Add(
             "l4:spam4:eggse",
             new List<IBencodingNode>() { new BString("spam"), new BString("eggs") }
         );
-        // Two strings
 
         Add("li1ei2ei3ee", new List<IBencodingNode>() { new BInt(1), new BInt(2), new BInt(3) });
-        // Multiple integers
 
         Add(
             "l4:spamli1ei2ee4:eggse",
@@ -33,19 +28,15 @@ public class BlistData : TheoryData<string, BList>
                 new BString("eggs"),
             }
         );
-        // Nested list
 
         Add("ll4:spamee", new List<IBencodingNode>() { new BList([new BString("spam")]) });
-        // List inside list
 
         Add("l0:4:datae", new List<IBencodingNode>() { new BString(""), new BString("data") });
-        // Includes empty string
 
         Add(
             "li-42e7:negintle",
             new List<IBencodingNode>() { new BInt(-42), new BString("negintl") }
         );
-        // Mix of integer and string
 
         Add(
             "l5:hello5:worldi123e3:abce",
@@ -57,13 +48,12 @@ public class BlistData : TheoryData<string, BList>
                 new BString("abc"),
             }
         );
-        // Mixed types
 
         Add(
             "ll4:innee3:oute",
             new List<IBencodingNode>() { new BList([new BString("inne")]), new BString("out") }
         );
-        // Deeply nested
+
         Add(
             "ld3:key5:valuee4:testi123ee",
             new List<IBencodingNode>()
@@ -78,6 +68,5 @@ public class BlistData : TheoryData<string, BList>
                 new BInt(123),
             }
         );
-        // Dictionary inside list
     }
 }

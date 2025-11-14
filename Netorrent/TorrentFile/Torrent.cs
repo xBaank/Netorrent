@@ -32,6 +32,7 @@ public class Torrent : IAsyncDisposable
         string peerId,
         string outputDirectory,
         ILogger logger,
+        IPAddress? forcedIp = null,
         bool bitfieldInitialized = false
     )
     {
@@ -62,7 +63,8 @@ public class Torrent : IAsyncDisposable
             peerId,
             trackersChannel.Writer,
             metaInfo,
-            logger
+            logger,
+            forcedIp
         );
     }
 

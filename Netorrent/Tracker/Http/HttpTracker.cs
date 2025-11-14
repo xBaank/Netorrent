@@ -13,7 +13,8 @@ internal class HttpTracker(
     byte[] infoHash,
     string announceUrl,
     ILogger logger,
-    ChannelWriter<IPEndPoint> channelWriter
+    ChannelWriter<IPEndPoint> channelWriter,
+    IPAddress? forcedIp
 ) : ITracker
 {
     private Task? _trackerTask;
@@ -79,7 +80,7 @@ internal class HttpTracker(
                 true,
                 false,
                 @event,
-                IPAddress.Loopback.ToString(),
+                forcedIp?.ToString(),
                 50
             );
 

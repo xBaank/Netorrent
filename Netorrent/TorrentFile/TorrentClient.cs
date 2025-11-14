@@ -15,21 +15,21 @@ namespace Netorrent.TorrentFile;
 
 public class TorrentClient : IAsyncDisposable
 {
-    private readonly PeerIdService _peerIdService = new();
-    private readonly HttpClient _httpClient;
-    private readonly ILogger _logger;
+    //TODO Move all this to TorrentClientOptions and pass it down
+    private readonly PeerId _peerId = new();
+    private readonly TorrentClientOptions _options;
     private readonly List<Torrent> torrents = [];
     private readonly UdpTrackerTransactionManager _trackerTransactionManager;
     private readonly CancellationTokenSource _cancellationTokenSource = new();
 
-    public TorrentClient(HttpClient? httpClient = null, ILogger? logger = null)
+    public TorrentClient(Func<TorrentClientOptions, TorrentClientOptions>? action = null)
     {
-        _httpClient = httpClient ?? new HttpClient();
-        _logger = logger ?? NullLogger.Instance;
+        var options = new TorrentClientOptions(new(), NullLogger.Instance, null);
+        _options = action?.Invoke(options) ?? options;
         var udpClient = new UdpClient(AddressFamily.InterNetworkV6);
         udpClient.Client.DualMode = true;
         udpClient.Client.Bind(new IPEndPoint(IPAddress.IPv6Any, 0));
-        _trackerTransactionManager = new(udpClient, _logger);
+        _trackerTransactionManager = new(udpClient, _options.Logger);
         _trackerTransactionManager.Start(_cancellationTokenSource.Token);
     }
 
@@ -50,11 +50,11 @@ public class TorrentClient : IAsyncDisposable
 
         var torrent = new Torrent(
             metaInfo,
-            _httpClient,
+            _options.HttpClient,
             _trackerTransactionManager,
-            _peerIdService.PeerId,
+            _peerId.Value,
             Path.GetFullPath(outputDirectory),
-            _logger
+            _options.Logger
         );
         torrents.Add(torrent);
         return torrent;
@@ -64,11 +64,12 @@ public class TorrentClient : IAsyncDisposable
     {
         var torrent = new Torrent(
             metaInfo,
-            _httpClient,
+            _options.HttpClient,
             _trackerTransactionManager,
-            _peerIdService.PeerId,
+            _peerId.Value,
             Path.GetFullPath(outputDirectory),
-            _logger
+            _options.Logger,
+            _options.ForcedIp
         );
         torrents.Add(torrent);
         return torrent;
@@ -92,11 +93,12 @@ public class TorrentClient : IAsyncDisposable
                 pieceLength,
                 cancellationToken
             ),
-            _httpClient,
+            _options.HttpClient,
             _trackerTransactionManager,
-            _peerIdService.PeerId,
+            _peerId.Value,
             Path.GetFullPath(Path.GetDirectoryName(path) ?? ""),
-            _logger,
+            _options.Logger,
+            _options.ForcedIp,
             true
         );
         torrents.Add(torrent);

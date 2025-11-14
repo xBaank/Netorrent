@@ -40,5 +40,7 @@ internal class UdpTracker(
         logger.LogDebug("Connected");
     }
 
+    public async Task Announce() { }
+
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

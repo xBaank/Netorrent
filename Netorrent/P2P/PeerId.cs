@@ -2,14 +2,13 @@
 
 namespace Netorrent.P2P;
 
-public class PeerIdService
+public readonly struct PeerId
 {
-    private readonly string _peerId;
-    public string PeerId => _peerId;
+    public string Value { get; }
 
-    public PeerIdService()
+    public PeerId()
     {
-        _peerId = GeneratePeerId("NT", "1001");
+        Value = GeneratePeerId("NT", "1001");
     }
 
     private static string GeneratePeerId(string clientCode, string version)
