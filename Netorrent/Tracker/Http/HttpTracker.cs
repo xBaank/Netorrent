@@ -30,7 +30,7 @@ internal class HttpTracker(
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
-        var httpTrackerResponse = await Announce(Events.Started, _cancellationTokenSource.Token);
+        var httpTrackerResponse = await TryAnnounce(Events.Started, _cancellationTokenSource.Token);
 
         if (httpTrackerResponse is null)
             return;
@@ -47,7 +47,7 @@ internal class HttpTracker(
 
             await Task.Delay(interval, _cancellationTokenSource.Token);
 
-            var response = await Announce(cancellationToken: _cancellationTokenSource.Token);
+            var response = await TryAnnounce(cancellationToken: _cancellationTokenSource.Token);
 
             if (response is null)
                 return;
@@ -59,29 +59,30 @@ internal class HttpTracker(
         }
     }
 
-    private async Task<HttpTrackerResponse?> Announce(
+    private async Task<HttpTrackerResponse?> TryAnnounce(
         string? @event = null,
         CancellationToken cancellationToken = default
     )
     {
-        _logger.LogInformation("Announcing to {url}", announceUrl);
-
-        var request = new HttpTrackerRequest(
-            infoHash,
-            peerId,
-            p2PClient.EndPoint.Port,
-            p2PClient.FileManager.GetWrittenBytes(),
-            0, //TODO Implement this in p2pclient
-            p2PClient.FileManager.GetMissingBytes(),
-            true,
-            false,
-            @event,
-            IPAddress.Loopback.ToString(),
-            50
-        );
+        if (_logger.IsEnabled(LogLevel.Information))
+            _logger.LogInformation("Announcing to {url}", announceUrl);
 
         try
         {
+            var request = new HttpTrackerRequest(
+                infoHash,
+                peerId,
+                p2PClient.EndPoint.Port,
+                p2PClient.FileManager.GetWrittenBytes(),
+                0, //TODO Implement this in p2pclient
+                p2PClient.FileManager.GetMissingBytes(),
+                true,
+                false,
+                @event,
+                IPAddress.Loopback.ToString(),
+                50
+            );
+
             var response = await client.SendAsync(
                 request.GenerateRequest(announceUrl),
                 cancellationToken
@@ -94,7 +95,8 @@ internal class HttpTracker(
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Couldn't announce to {trackerUrl}", announceUrl);
+            if (_logger.IsEnabled(LogLevel.Debug))
+                _logger.LogDebug(ex, "Couldn't announce to {trackerUrl}", announceUrl);
             return null;
         }
     }
@@ -102,13 +104,6 @@ internal class HttpTracker(
     public async ValueTask DisposeAsync()
     {
         _cancellationTokenSource?.Cancel();
-        try
-        {
-            await Announce(Events.Stopped);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "Error stopping the tracker");
-        }
+        await TryAnnounce(Events.Stopped);
     }
 }

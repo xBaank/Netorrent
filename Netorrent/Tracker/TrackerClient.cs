@@ -38,7 +38,11 @@ internal class TrackerClient(
             tracker.TrackerTask?.ContinueWith(
                 async task =>
                 {
-                    if (task.IsFaulted)
+                    if (task.IsCanceled)
+                    {
+                        p2PClient.DownloadInfo.SetCanceled();
+                    }
+                    else if (task.IsFaulted)
                     {
                         p2PClient.DownloadInfo.SetException(task.Exception);
                     }

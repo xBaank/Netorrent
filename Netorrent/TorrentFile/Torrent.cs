@@ -7,7 +7,6 @@ using Netorrent.P2P;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker;
-using Netorrent.Tracker.Http;
 using Netorrent.Tracker.Udp;
 
 namespace Netorrent.TorrentFile;
@@ -16,13 +15,15 @@ public class Torrent : IAsyncDisposable
 {
     public MetaInfo MetaInfo { get; init; }
     public Bitfield Bitfield => _myBitfield;
+    public DownloadInfo DownloadInfo => _p2pClient.DownloadInfo;
+
+    public State State { get; private set; } = State.None;
 
     private readonly P2PClient _p2pClient;
     private readonly TrackerClient _trackerClient;
     private readonly FileManager _fileManager;
     private readonly Bitfield _myBitfield;
-
-    public DownloadInfo DownloadInfo => _p2pClient.DownloadInfo;
+    private CancellationTokenSource? _cancellationTokenSource;
 
     internal Torrent(
         MetaInfo metaInfo,
@@ -65,14 +66,25 @@ public class Torrent : IAsyncDisposable
         );
     }
 
-    public void Start(CancellationToken cancellationToken = default)
+    public void Start()
     {
+        if (State == State.Started)
+            return;
+
+        DownloadInfo.Reset();
+        _cancellationTokenSource = new();
+        var cancellationToken = _cancellationTokenSource.Token;
+
         _p2pClient.ListenForPeers(cancellationToken);
         _p2pClient.ProcessPeers(cancellationToken);
         _p2pClient.ListenerTask?.ContinueWith(
             task =>
             {
-                if (task.IsFaulted)
+                if (task.IsCanceled)
+                {
+                    DownloadInfo.SetCanceled();
+                }
+                else if (task.IsFaulted)
                 {
                     DownloadInfo.SetException(task.Exception);
                 }
@@ -84,7 +96,11 @@ public class Torrent : IAsyncDisposable
         _p2pClient.PeersTask?.ContinueWith(
             task =>
             {
-                if (task.IsFaulted)
+                if (task.IsCanceled)
+                {
+                    DownloadInfo.SetCanceled();
+                }
+                else if (task.IsFaulted)
                 {
                     DownloadInfo.SetException(task.Exception);
                 }
@@ -94,8 +110,19 @@ public class Torrent : IAsyncDisposable
             TaskScheduler.Default
         );
 
-        cancellationToken.Register(() => _p2pClient.DownloadInfo.SetCanceled());
+        cancellationToken.Register(_p2pClient.DownloadInfo.SetCanceled);
         _trackerClient.Start(cancellationToken);
+
+        State = State.Started;
+    }
+
+    public void Stop()
+    {
+        if (State != State.Started)
+            return;
+
+        _cancellationTokenSource?.Cancel();
+        State = State.Stopped;
     }
 
     public async Task ExportAsync(string outputPath, CancellationToken cancellationToken = default)

@@ -10,7 +10,7 @@ public class DownloadInfo
     private readonly IReadOnlyDictionary<IPEndPoint, PeerConnection> _peers;
     private readonly FileManager _fileManager;
     private readonly Bitfield _bitfield;
-    private readonly TaskCompletionSource _downloadTaskCompletitionSource = new();
+    private TaskCompletionSource _downloadTaskCompletitionSource = new();
 
     private IEnumerable<PeerConnection> PeersNotChocking =>
         _peers.Values.Where(i => !i.PeerChocking && i.AmInterested);
@@ -31,6 +31,13 @@ public class DownloadInfo
         _fileManager = fileManager;
         _bitfield = bitfield;
         _bitfield.OnHavePieceAsync += CheckDownload;
+    }
+
+    internal void Reset()
+    {
+        _downloadTaskCompletitionSource.TrySetCanceled();
+
+        _downloadTaskCompletitionSource = new();
         if (_bitfield.IsComplete)
             _downloadTaskCompletitionSource.TrySetResult();
     }

@@ -41,8 +41,5 @@ internal class UdpTracker(
         logger.LogDebug("Connected");
     }
 
-    public ValueTask DisposeAsync()
-    {
-        throw new NotImplementedException();
-    }
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
