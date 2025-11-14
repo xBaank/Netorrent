@@ -12,7 +12,7 @@ public class OpenTrackerFixture : IAsyncLifetime
     public async ValueTask InitializeAsync()
     {
         _container = new ContainerBuilder()
-            .WithImage("xbaank/opentracker")
+            .WithImage("xbank/opentracker-docker")
             .WithName("opentracker-test")
             .WithPortBinding("6969/tcp", true)
             .WithPortBinding("6969/udp", true)
