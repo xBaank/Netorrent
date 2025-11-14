@@ -2,6 +2,7 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.P2P;
+using Netorrent.Tracker.Udp.Request;
 
 namespace Netorrent.Tracker.Udp;
 
@@ -12,7 +13,8 @@ internal class UdpTracker(
     ChannelWriter<IPEndPoint> trackersChannel,
     byte[] infoHash,
     string announceUrl,
-    ILogger logger
+    ILogger logger,
+    IPAddress? forcedIp
 ) : ITracker
 {
     public Task? TrackerTask { get; private set; }
@@ -40,7 +42,25 @@ internal class UdpTracker(
         logger.LogDebug("Connected");
     }
 
-    public async Task Announce() { }
+    public async Task Announce(IPEndPoint iPEndPoint, int @event, long connectionId)
+    {
+        var updRequest = new UdpTrackerRequest(
+            iPEndPoint,
+            connectionId,
+            1,
+            transactionManager.MakeTransactionId(),
+            infoHash,
+            peerId,
+            0,
+            0,
+            0,
+            1,
+            forcedIp,
+            1,
+            1,
+            1
+        );
+    }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

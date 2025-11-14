@@ -150,6 +150,21 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
     {
         try
         {
+            if (
+                packet is UdpTrackerRequest trackerRequest
+                && _connectionIdsByCreation.TryGetValue(
+                    trackerRequest.ConnectionId,
+                    out var creationTime
+                )
+            )
+            {
+                var diff = DateTime.UtcNow - creationTime;
+                if (diff > 1.Minutes())
+                {
+                    await ConnectAsync(packet.IPEndPoint, cancellationToken);
+                }
+            }
+
             var transaction = RegisterOrGetTransaction(packet, out var isNew);
 
             if (!isNew)
@@ -172,7 +187,7 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
         }
     }
 
-    private int MakeTransactionId()
+    public int MakeTransactionId()
     {
         int id;
         do

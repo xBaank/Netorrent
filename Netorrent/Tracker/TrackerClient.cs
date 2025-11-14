@@ -75,7 +75,8 @@ internal class TrackerClient(
                 trackersChannel,
                 metaInfo.Info.InfoHash,
                 url,
-                logger
+                logger,
+                forcedIp
             ),
             _ => LogUnknownTracker(url),
         };

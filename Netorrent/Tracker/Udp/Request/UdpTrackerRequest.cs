@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Net;
 using Netorrent.Other;
 
+//TODO Use more friendly types and transform them in ToMemoryRented()
 internal record UdpTrackerRequest(
     IPEndPoint IPEndPoint,
     long ConnectionId,

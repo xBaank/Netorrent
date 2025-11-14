@@ -2,7 +2,6 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
@@ -15,7 +14,6 @@ namespace Netorrent.TorrentFile;
 
 public class TorrentClient : IAsyncDisposable
 {
-    //TODO Move all this to TorrentClientOptions and pass it down
     private readonly PeerId _peerId = new();
     private readonly TorrentClientOptions _options;
     private readonly List<Torrent> torrents = [];
