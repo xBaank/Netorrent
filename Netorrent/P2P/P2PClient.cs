@@ -21,7 +21,7 @@ internal class P2PClient : IAsyncDisposable
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _activePeers = [];
     private readonly ConcurrentQueue<IPEndPoint> _knownPeers = [];
-    private readonly string _peerId;
+    private readonly PeerId _peerId;
     private readonly Bitfield _bitField;
     private readonly ChannelReader<IPEndPoint> _trackersChannel;
     private Task? _listenerTask;
@@ -37,7 +37,7 @@ internal class P2PClient : IAsyncDisposable
 
     public P2PClient(
         MetaInfo metaInfo,
-        string peerId,
+        PeerId peerId,
         FileManager fileManager,
         Bitfield bitField,
         ChannelReader<IPEndPoint> trackersChannel,
@@ -65,7 +65,18 @@ internal class P2PClient : IAsyncDisposable
 
         await foreach (var iPEndPoint in _trackersChannel.ReadAllAsync(cancellationToken))
         {
-            var task = ConnectToPeerAsync(iPEndPoint, cancellationToken);
+            // Map Docker NATed IPs to 127.0.0.1 for local testing
+            IPEndPoint targetEndPoint;
+            if (iPEndPoint.Address.ToString().StartsWith("172."))
+            {
+                targetEndPoint = new IPEndPoint(IPAddress.Loopback, iPEndPoint.Port);
+            }
+            else
+            {
+                targetEndPoint = iPEndPoint;
+            }
+
+            var task = ConnectToPeerAsync(targetEndPoint, cancellationToken);
             connectTasks.Add(task);
 
             if (connectTasks.Count >= 100)

@@ -9,7 +9,7 @@ namespace Netorrent.Tracker.Http;
 internal class HttpTracker(
     P2PClient p2PClient,
     HttpClient client,
-    string peerId,
+    PeerId peerId,
     byte[] infoHash,
     string announceUrl,
     ILogger logger,
@@ -18,7 +18,6 @@ internal class HttpTracker(
 ) : ITracker
 {
     private Task? _trackerTask;
-    private readonly ILogger _logger = logger;
 
     public Task? TrackerTask => _trackerTask;
     private CancellationTokenSource? _cancellationTokenSource;
@@ -31,29 +30,34 @@ internal class HttpTracker(
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
-        var httpTrackerResponse = await TryAnnounce(Events.Started, _cancellationTokenSource.Token);
 
-        if (httpTrackerResponse is null)
+        var response = await TryAnnounce(Events.Started, _cancellationTokenSource.Token);
+
+        if (response is null)
             return;
 
-        foreach (var iPEndPoint in httpTrackerResponse.Peers)
+        foreach (var iPEndPoint in response.Peers)
         {
             await channelWriter.WriteAsync(iPEndPoint, cancellationToken);
         }
 
         while (!_cancellationTokenSource.Token.IsCancellationRequested)
         {
-            var interval = httpTrackerResponse.Interval.Seconds();
-            _logger.LogTrace("Waiting {seconds} seconds", interval.TotalSeconds);
+            var interval = response.Interval.Seconds();
+
+            if (logger.IsEnabled(LogLevel.Trace))
+                logger.LogTrace("Waiting {seconds} seconds", interval.TotalSeconds);
 
             await Task.Delay(interval, _cancellationTokenSource.Token);
 
-            var response = await TryAnnounce(cancellationToken: _cancellationTokenSource.Token);
+            var newResponse = await TryAnnounce(cancellationToken: _cancellationTokenSource.Token);
 
-            if (response is null)
-                return;
+            if (newResponse is null)
+                continue;
 
-            foreach (var iPEndPoint in httpTrackerResponse.Peers)
+            response = newResponse;
+
+            foreach (var iPEndPoint in response.Peers)
             {
                 await channelWriter.WriteAsync(iPEndPoint, cancellationToken);
             }
@@ -65,8 +69,8 @@ internal class HttpTracker(
         CancellationToken cancellationToken = default
     )
     {
-        if (_logger.IsEnabled(LogLevel.Information))
-            _logger.LogInformation("Announcing to {url}", announceUrl);
+        if (logger.IsEnabled(LogLevel.Information))
+            logger.LogInformation("Announcing to {url}", announceUrl);
 
         try
         {
@@ -96,8 +100,8 @@ internal class HttpTracker(
         }
         catch (Exception ex)
         {
-            if (_logger.IsEnabled(LogLevel.Debug))
-                _logger.LogDebug(ex, "Couldn't announce to {trackerUrl}", announceUrl);
+            if (logger.IsEnabled(LogLevel.Debug))
+                logger.LogDebug(ex, "Couldn't announce to {trackerUrl}", announceUrl);
             return null;
         }
     }

@@ -1,4 +1,4 @@
-﻿namespace Netorrent.Tracker.Http;
+﻿namespace Netorrent.Tracker;
 
 public static class Events
 {

@@ -4,24 +4,25 @@ using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Net;
+using System.Net.Sockets;
 using Netorrent.Other;
+using Netorrent.P2P;
 
 //TODO Use more friendly types and transform them in ToMemoryRented()
 internal record UdpTrackerRequest(
     IPEndPoint IPEndPoint,
-    long ConnectionId,
-    int Action,
-    int TransactionId,
     ReadOnlyMemory<byte> InfoHash,
-    ReadOnlyMemory<byte> PeerId,
+    PeerId PeerId,
     long Downloaded,
     long Left,
     long Uploaded,
-    int Event,
-    int IpAddress,
-    int Key,
-    int NumWant,
-    ushort Port
+    string? Event,
+    ushort Port,
+    long ConnectionId = 0,
+    int TransactionId = 0,
+    int NumWant = -1,
+    IPAddress? IpAddress = null,
+    int Key = 0
 ) : IUdpTrackerSendPacket
 {
     private const int SIZE = 98;
@@ -37,7 +38,7 @@ internal record UdpTrackerRequest(
         BinaryPrimitives.WriteInt64BigEndian(span[offset..], ConnectionId);
         offset += 8;
 
-        BinaryPrimitives.WriteInt32BigEndian(span[offset..], Action);
+        BinaryPrimitives.WriteInt32BigEndian(span[offset..], 1);
         offset += 4;
 
         BinaryPrimitives.WriteInt32BigEndian(span[offset..], TransactionId);
@@ -49,10 +50,11 @@ internal record UdpTrackerRequest(
         InfoHash.Span.CopyTo(span[offset..]);
         offset += 20;
 
-        if (PeerId.Length != 20)
+        var peerBytes = PeerId.ToBytes();
+        if (peerBytes.Length != 20)
             throw new ArgumentException("PeerId must be 20 bytes", nameof(PeerId));
 
-        PeerId.Span.CopyTo(span[offset..]);
+        peerBytes.CopyTo(span[offset..]);
         offset += 20;
 
         BinaryPrimitives.WriteInt64BigEndian(span[offset..], Downloaded);
@@ -64,10 +66,33 @@ internal record UdpTrackerRequest(
         BinaryPrimitives.WriteInt64BigEndian(span[offset..], Uploaded);
         offset += 8;
 
-        BinaryPrimitives.WriteInt32BigEndian(span[offset..], Event);
+        BinaryPrimitives.WriteInt32BigEndian(
+            span[offset..],
+            Event switch
+            {
+                Events.Completed => 1,
+                Events.Started => 2,
+                Events.Stopped => 3,
+                _ => 0,
+            }
+        );
         offset += 4;
 
-        BinaryPrimitives.WriteInt32BigEndian(span[offset..], IpAddress);
+        if (
+            IpAddress is not null
+            && (
+                IpAddress.IsIPv4MappedToIPv6 == true
+                || IpAddress.AddressFamily == AddressFamily.InterNetwork
+            )
+        )
+        {
+            var ipv4Bytes = IpAddress.MapToIPv4().GetAddressBytes();
+            ipv4Bytes.CopyTo(span[offset..]);
+        }
+        else
+        {
+            BinaryPrimitives.WriteInt32BigEndian(span[offset..], 0);
+        }
         offset += 4;
 
         BinaryPrimitives.WriteInt32BigEndian(span[offset..], Key);

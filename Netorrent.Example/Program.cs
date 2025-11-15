@@ -5,7 +5,7 @@ using TimeSpanXt;
 
 ILogger logger = LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger("TorrentCLI");
 
-var torrentClient = new TorrentClient(logger: logger);
+var torrentClient = new TorrentClient(o => o with { Logger = logger });
 await using var torrent = await torrentClient.ImportTorrentAsync(
     "C:\\Users\\elrob\\Downloads\\cdrom-megadoom-2_archive.torrent",
     "C:\\Users\\elrob\\Downloads\\output"

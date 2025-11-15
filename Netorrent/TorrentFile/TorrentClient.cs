@@ -27,7 +27,7 @@ public class TorrentClient : IAsyncDisposable
         var udpClient = new UdpClient(AddressFamily.InterNetworkV6);
         udpClient.Client.DualMode = true;
         udpClient.Client.Bind(new IPEndPoint(IPAddress.IPv6Any, 0));
-        _trackerTransactionManager = new(udpClient, _options.Logger);
+        _trackerTransactionManager = new(udpClient, _options.Logger, _options.ForcedIp);
         _trackerTransactionManager.Start(_cancellationTokenSource.Token);
     }
 
@@ -50,7 +50,7 @@ public class TorrentClient : IAsyncDisposable
             metaInfo,
             _options.HttpClient,
             _trackerTransactionManager,
-            _peerId.Value,
+            _peerId,
             Path.GetFullPath(outputDirectory),
             _options.Logger
         );
@@ -64,7 +64,7 @@ public class TorrentClient : IAsyncDisposable
             metaInfo,
             _options.HttpClient,
             _trackerTransactionManager,
-            _peerId.Value,
+            _peerId,
             Path.GetFullPath(outputDirectory),
             _options.Logger,
             _options.ForcedIp
@@ -93,7 +93,7 @@ public class TorrentClient : IAsyncDisposable
             ),
             _options.HttpClient,
             _trackerTransactionManager,
-            _peerId.Value,
+            _peerId,
             Path.GetFullPath(Path.GetDirectoryName(path) ?? ""),
             _options.Logger,
             _options.ForcedIp,

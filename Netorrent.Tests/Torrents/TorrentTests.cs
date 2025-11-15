@@ -37,20 +37,8 @@ public class TorrentTests(OpenTrackerFixture fixture, ITestOutputHelper outputHe
 
         var logger = loggerFactory.CreateLogger("Torrent");
 
-        var seeder = new TorrentClient(o =>
-            o with
-            {
-                Logger = logger,
-                ForcedIp = IPAddress.Loopback,
-            }
-        );
-        var leecher = new TorrentClient(o =>
-            o with
-            {
-                Logger = logger,
-                ForcedIp = IPAddress.Loopback,
-            }
-        );
+        var seeder = new TorrentClient(o => o with { Logger = logger });
+        var leecher = new TorrentClient(o => o with { Logger = logger });
 
         await using var seederTorrent = await seeder.CreateTorrentAsync(
             "Data/test.txt",

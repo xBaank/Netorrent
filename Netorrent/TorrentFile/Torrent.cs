@@ -29,7 +29,7 @@ public class Torrent : IAsyncDisposable
         MetaInfo metaInfo,
         HttpClient httpClient,
         UdpTrackerTransactionManager trackerTransaction,
-        string peerId,
+        PeerId peerId,
         string outputDirectory,
         ILogger logger,
         IPAddress? forcedIp = null,

@@ -1,4 +1,5 @@
 ﻿using System.Security.Cryptography;
+using System.Text;
 
 namespace Netorrent.P2P;
 
@@ -10,6 +11,13 @@ public readonly struct PeerId
     {
         Value = GeneratePeerId("NT", "1001");
     }
+
+    public PeerId(string value)
+    {
+        Value = value;
+    }
+
+    public byte[] ToBytes() => Encoding.ASCII.GetBytes(Value);
 
     private static string GeneratePeerId(string clientCode, string version)
     {
@@ -27,5 +35,19 @@ public readonly struct PeerId
             .Substring(0, 12);
 
         return prefix + randomPart;
+    }
+
+    public static bool operator ==(PeerId? obj1, PeerId? obj2) => obj1.Equals(obj2);
+
+    public static bool operator !=(PeerId? obj1, PeerId? obj2) => !(obj1 == obj2);
+
+    public override bool Equals(object? obj)
+    {
+        return obj is PeerId id && Value == id.Value;
+    }
+
+    public override int GetHashCode()
+    {
+        return HashCode.Combine(Value);
     }
 }

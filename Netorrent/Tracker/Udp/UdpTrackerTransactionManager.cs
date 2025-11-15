@@ -19,7 +19,11 @@ internal record TrackerTransaction(
     public DateTime? NextRetryTime { get; set; }
 };
 
-internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger) : IDisposable
+internal class UdpTrackerTransactionManager(
+    UdpClient udpClient,
+    ILogger logger,
+    IPAddress? ForcedIp
+) : IDisposable
 {
     private const int MAX_RETRIES = 8;
     private readonly ConcurrentDictionary<int, TrackerTransaction> _packetsByTransaction = [];
@@ -49,6 +53,7 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
 
                 if (result.Buffer.Length < 4)
                     continue;
+
                 var actionId = BinaryPrimitives.ReadInt32BigEndian(result.Buffer);
 
                 IUdpTrackerReceivePacket? receivedPacket = actionId switch
@@ -56,7 +61,7 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
                     0 => UdpTrackerConnectResponse.From(result.Buffer),
                     1 => UdpTrackerResponse.From(
                         result.Buffer,
-                        result.RemoteEndPoint.AddressFamily
+                        ForcedIp?.AddressFamily ?? result.RemoteEndPoint.AddressFamily
                     ),
                     3 => UdpTrackerErrorResponse.From(result.Buffer),
                     _ => null,
@@ -79,7 +84,8 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
             }
             catch (Exception ex)
             {
-                logger.LogInformation("ASD");
+                if (logger.IsEnabled(LogLevel.Debug))
+                    logger.LogInformation(ex, "Error receiving data");
             }
         }
     }
@@ -148,11 +154,15 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
     )
         where T : IUdpTrackerReceivePacket
     {
-        try
+        if (packet is UdpTrackerRequest trackerRequest)
         {
-            if (
-                packet is UdpTrackerRequest trackerRequest
-                && _connectionIdsByCreation.TryGetValue(
+            if (!_connectionIdsByCreation.ContainsKey(packet.TransactionId))
+            {
+                var response = await ConnectAsync(packet.IPEndPoint, cancellationToken);
+                trackerRequest = trackerRequest with { ConnectionId = response.ConnectionId };
+            }
+            else if (
+                _connectionIdsByCreation.TryGetValue(
                     trackerRequest.ConnectionId,
                     out var creationTime
                 )
@@ -161,30 +171,28 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
                 var diff = DateTime.UtcNow - creationTime;
                 if (diff > 1.Minutes())
                 {
-                    await ConnectAsync(packet.IPEndPoint, cancellationToken);
+                    var response = await ConnectAsync(packet.IPEndPoint, cancellationToken);
+                    trackerRequest = trackerRequest with { ConnectionId = response.ConnectionId };
                 }
             }
 
-            var transaction = RegisterOrGetTransaction(packet, out var isNew);
+            packet = trackerRequest with { TransactionId = MakeTransactionId() };
+        }
 
-            if (!isNew)
-            {
-                return (T)await transaction.Response.Task;
-            }
+        var transaction = RegisterOrGetTransaction(packet, out var isNew);
 
-            using var payload = packet.ToMemoryRented();
-            var seconds = 15 * (transaction.RetryCount + 1);
-            transaction.NextRetryTime = DateTime.UtcNow + seconds.Seconds();
-
-            await udpClient.SendAsync(payload.Memory, packet.IPEndPoint, cancellationToken);
-
+        if (!isNew)
+        {
             return (T)await transaction.Response.Task;
         }
-        catch (Exception ex)
-        {
-            logger.LogDebug(ex, "asd");
-            throw;
-        }
+
+        using var payload = packet.ToMemoryRented();
+        var seconds = 15 * (transaction.RetryCount + 1);
+        transaction.NextRetryTime = DateTime.UtcNow + seconds.Seconds();
+
+        await udpClient.SendAsync(payload.Memory, packet.IPEndPoint, cancellationToken);
+
+        return (T)await transaction.Response.Task;
     }
 
     public int MakeTransactionId()

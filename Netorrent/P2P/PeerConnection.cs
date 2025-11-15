@@ -2,7 +2,6 @@
 using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
 using System.Threading.Channels;
 using Lazy;
 using Microsoft.Extensions.Logging;
@@ -60,7 +59,7 @@ internal class PeerConnection(
     public bool AmInterested { get; private set; } = amInterested;
     public bool PeerChocking { get; private set; } = peerChocking;
     public bool PeerInterested { get; private set; } = peerInterested;
-    public string? PeerId { get; private set; }
+    public PeerId? PeerId { get; private set; }
     public Bitfield PeerBitField { get; private set; } = new(myBitField.Length);
     public int? CurrentPieceDownloading => _pieceManager.CurrentDownloadingPieceIndex;
     public Task? WaitTask => _loopTask;
@@ -356,7 +355,7 @@ internal class PeerConnection(
 
     public async ValueTask PerformHandshakeAsync(
         ReadOnlyMemory<byte> infoHash,
-        string peerId,
+        PeerId peerId,
         CancellationToken cancellationToken = default
     )
     {
@@ -376,7 +375,7 @@ internal class PeerConnection(
 
     public async Task ReceiveHandshakeAsync(
         ReadOnlyMemory<byte> infoHash,
-        string peerId,
+        PeerId peerId,
         CancellationToken cancellationToken = default
     )
     {
@@ -474,7 +473,7 @@ internal class PeerConnection(
         if (receivedHandshake.InfoHash.AsSpan().SequenceEqual(infoHash.Span) is false)
             throw new InvalidDataException("InfoHash mismatch in handshake.");
 
-        PeerId = receivedHandshake.PeerId;
+        PeerId = new PeerId(receivedHandshake.PeerId);
     }
 
     private async ValueTask<(
@@ -492,12 +491,12 @@ internal class PeerConnection(
 
     private async ValueTask<MemoryRented<byte>> SendHandHandshake(
         ReadOnlyMemory<byte> infoHash,
-        string peerId,
+        PeerId peerId,
         CancellationToken cancellationToken
     )
     {
         using var cts = cancellationToken.WithTimeout(TimeoutInSeconds.Seconds());
-        var handshake = Handshake.Create(infoHash.ToArray(), Encoding.ASCII.GetBytes(peerId));
+        var handshake = Handshake.Create(infoHash.ToArray(), peerId.ToBytes());
         var bytesRented = handshake.ToBytes();
         await Stream.WriteAsync(bytesRented.Memory, cts.Token);
         await Stream.FlushAsync(cts.Token);

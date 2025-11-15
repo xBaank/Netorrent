@@ -12,7 +12,7 @@ internal class TrackerClient(
     HttpClient httpClient,
     UdpTrackerTransactionManager trackerTransaction,
     P2PClient p2PClient,
-    string peerId,
+    PeerId peerId,
     ChannelWriter<IPEndPoint> trackersChannel,
     MetaInfo metaInfo,
     ILogger logger,
