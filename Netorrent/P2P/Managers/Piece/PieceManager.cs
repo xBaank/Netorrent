@@ -46,11 +46,11 @@ internal class PieceManager(int maxBlocks) : IAsyncDisposable
             .Any(r => r.Index == block.Index && r.Begin == block.Begin);
 
         if (!isToRemove)
-            throw new InvalidOperationException("Received unexpected block.");
+            return;
 
         var toRemove = _currentPieceRequests
             .AsValueEnumerable()
-            .First(r => r.Index == block.Index && r.Begin == block.Begin);
+            .FirstOrDefault(r => r.Index == block.Index && r.Begin == block.Begin);
 
         _sentRequests.Remove(toRemove);
         await _blocksToWrite.Writer.WriteAsync(block, cancellationToken);
