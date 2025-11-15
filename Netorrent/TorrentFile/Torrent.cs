@@ -23,6 +23,7 @@ public class Torrent : IAsyncDisposable
     private readonly TrackerClient _trackerClient;
     private readonly FileManager _fileManager;
     private readonly Bitfield _myBitfield;
+    private readonly Func<IPAddress, IPAddress>? PeerIpProxy;
     private CancellationTokenSource? _cancellationTokenSource;
 
     internal Torrent(
@@ -33,7 +34,8 @@ public class Torrent : IAsyncDisposable
         string outputDirectory,
         ILogger logger,
         IPAddress? forcedIp = null,
-        bool bitfieldInitialized = false
+        bool bitfieldInitialized = false,
+        Func<IPAddress, IPAddress>? peerIpProxy = null
     )
     {
         MetaInfo = metaInfo;
@@ -54,7 +56,8 @@ public class Torrent : IAsyncDisposable
             _fileManager,
             _myBitfield,
             trackersChannel.Reader,
-            logger
+            logger,
+            peerIpProxy
         );
         _trackerClient = new TrackerClient(
             httpClient,
@@ -66,6 +69,7 @@ public class Torrent : IAsyncDisposable
             logger,
             forcedIp
         );
+        PeerIpProxy = peerIpProxy;
     }
 
     public void Start()

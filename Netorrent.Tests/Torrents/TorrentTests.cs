@@ -41,8 +41,20 @@ public class TorrentTests(OpenTrackerFixture fixture, ITestOutputHelper outputHe
 
         var logger = loggerFactory.CreateLogger("Torrent");
 
-        var seeder = new TorrentClient(o => o with { Logger = logger });
-        var leecher = new TorrentClient(o => o with { Logger = logger });
+        var seeder = new TorrentClient(o =>
+            o with
+            {
+                Logger = logger,
+                PeerIpProxy = FixDockerAdress,
+            }
+        );
+        var leecher = new TorrentClient(o =>
+            o with
+            {
+                Logger = logger,
+                PeerIpProxy = FixDockerAdress,
+            }
+        );
 
         await using var seederTorrent = await seeder.CreateTorrentAsync(
             "Data/test.txt",
@@ -98,14 +110,14 @@ public class TorrentTests(OpenTrackerFixture fixture, ITestOutputHelper outputHe
             o with
             {
                 Logger = logger,
-                ForcedIp = IPAddress.Loopback,
+                PeerIpProxy = FixDockerAdress,
             }
         );
         var leecher = new TorrentClient(o =>
             o with
             {
                 Logger = logger,
-                ForcedIp = IPAddress.Loopback,
+                PeerIpProxy = FixDockerAdress,
             }
         );
 
@@ -124,6 +136,9 @@ public class TorrentTests(OpenTrackerFixture fixture, ITestOutputHelper outputHe
 
         await leecherTorrent.DownloadInfo.DownloadTask.ShouldThrowAsync<TaskCanceledException>();
     }
+
+    private static IPAddress FixDockerAdress(IPAddress iPAddress) =>
+        iPAddress.ToString().StartsWith("172.") ? IPAddress.Loopback : iPAddress;
 
     private static async Task<byte[]> ReadAllBytesAsync(
         string path,

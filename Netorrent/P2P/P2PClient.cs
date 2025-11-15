@@ -26,6 +26,7 @@ internal class P2PClient : IAsyncDisposable
     private readonly ChannelReader<IPEndPoint> _trackersChannel;
     private Task? _listenerTask;
     private Task? _peersTask;
+    private Func<IPAddress, IPAddress>? _peerIpProxy;
 
     public FileManager FileManager { get; }
     public DownloadInfo DownloadInfo { get; }
@@ -41,7 +42,8 @@ internal class P2PClient : IAsyncDisposable
         FileManager fileManager,
         Bitfield bitField,
         ChannelReader<IPEndPoint> trackersChannel,
-        ILogger logger
+        ILogger logger,
+        Func<IPAddress, IPAddress>? peerIpProxy
     )
     {
         _peerId = peerId;
@@ -51,6 +53,7 @@ internal class P2PClient : IAsyncDisposable
         _logger = logger;
         FileManager = fileManager;
         DownloadInfo = new DownloadInfo(_activePeers, fileManager, bitField);
+        _peerIpProxy = peerIpProxy;
     }
 
     public void ProcessPeers(CancellationToken cancellationToken) =>
@@ -65,16 +68,10 @@ internal class P2PClient : IAsyncDisposable
 
         await foreach (var iPEndPoint in _trackersChannel.ReadAllAsync(cancellationToken))
         {
-            // Map Docker NATed IPs to 127.0.0.1 for local testing
-            IPEndPoint targetEndPoint;
-            if (iPEndPoint.Address.ToString().StartsWith("172."))
-            {
-                targetEndPoint = new IPEndPoint(IPAddress.Loopback, iPEndPoint.Port);
-            }
-            else
-            {
-                targetEndPoint = iPEndPoint;
-            }
+            var targetEndPoint = new IPEndPoint(
+                _peerIpProxy?.Invoke(iPEndPoint.Address) ?? iPEndPoint.Address,
+                iPEndPoint.Port
+            );
 
             var task = ConnectToPeerAsync(targetEndPoint, cancellationToken);
             connectTasks.Add(task);

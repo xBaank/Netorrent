@@ -52,7 +52,8 @@ public class TorrentClient : IAsyncDisposable
             _trackerTransactionManager,
             _peerId,
             Path.GetFullPath(outputDirectory),
-            _options.Logger
+            _options.Logger,
+            peerIpProxy: _options.PeerIpProxy
         );
         torrents.Add(torrent);
         return torrent;
@@ -67,7 +68,8 @@ public class TorrentClient : IAsyncDisposable
             _peerId,
             Path.GetFullPath(outputDirectory),
             _options.Logger,
-            _options.ForcedIp
+            _options.ForcedIp,
+            peerIpProxy: _options.PeerIpProxy
         );
         torrents.Add(torrent);
         return torrent;
@@ -97,7 +99,8 @@ public class TorrentClient : IAsyncDisposable
             Path.GetFullPath(Path.GetDirectoryName(path) ?? ""),
             _options.Logger,
             _options.ForcedIp,
-            true
+            true,
+            peerIpProxy: _options.PeerIpProxy
         );
         torrents.Add(torrent);
         return torrent;
