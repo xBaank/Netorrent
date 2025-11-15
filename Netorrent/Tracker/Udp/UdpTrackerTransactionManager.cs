@@ -19,11 +19,7 @@ internal record TrackerTransaction(
     public DateTime? NextRetryTime { get; set; }
 };
 
-internal class UdpTrackerTransactionManager(
-    UdpClient udpClient,
-    ILogger logger,
-    IPAddress? ForcedIp
-) : IDisposable
+internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger) : IDisposable
 {
     private const int MAX_RETRIES = 8;
     private readonly ConcurrentDictionary<int, TrackerTransaction> _packetsByTransaction = [];
@@ -61,7 +57,9 @@ internal class UdpTrackerTransactionManager(
                     0 => UdpTrackerConnectResponse.From(result.Buffer),
                     1 => UdpTrackerResponse.From(
                         result.Buffer,
-                        ForcedIp?.AddressFamily ?? result.RemoteEndPoint.AddressFamily
+                        result.RemoteEndPoint.Address.IsIPv4MappedToIPv6
+                            ? AddressFamily.InterNetwork
+                            : AddressFamily.InterNetworkV6
                     ),
                     3 => UdpTrackerErrorResponse.From(result.Buffer),
                     _ => null,
@@ -205,6 +203,7 @@ internal class UdpTrackerTransactionManager(
         return id;
     }
 
+    //TODO delegate connect to the tracker
     public async Task<UdpTrackerConnectResponse> ConnectAsync(
         IPEndPoint endPoint,
         CancellationToken cancellationToken

@@ -23,8 +23,8 @@ public class OpenTrackerFixture : IAsyncLifetime
         var tcpPort = _container.GetMappedPublicPort("6969");
         var udpPort = _container.GetMappedPublicPort("6969/udp");
 
-        AnnounceUrl = $"http://127.0.0.1:{tcpPort}/announce";
-        UdpAnnounceUrl = $"udp://127.0.0.1:{udpPort}/announce";
+        AnnounceUrl = $"http://localhost:{tcpPort}/announce";
+        UdpAnnounceUrl = $"udp://localhost:{udpPort}/announce";
     }
 
     public async ValueTask DisposeAsync()

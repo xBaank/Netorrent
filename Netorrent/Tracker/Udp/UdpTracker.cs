@@ -1,7 +1,7 @@
 ﻿using System.Net;
+using System.Net.Sockets;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
-using Netorrent.IO;
 using Netorrent.P2P;
 using Netorrent.Tracker.Udp.Request;
 using Netorrent.Tracker.Udp.Response;
@@ -23,6 +23,7 @@ internal class UdpTracker(
     public Task? TrackerTask { get; private set; }
     private CancellationTokenSource? _cancellationTokenSource;
     private IPEndPoint? _ipEndPoint;
+    private UdpTrackerResponse? _lastResponse;
 
     public void Start(CancellationToken cancellationToken) =>
         TrackerTask ??= ProcessLoop(cancellationToken);
@@ -39,39 +40,50 @@ internal class UdpTracker(
         if (ips.Length == 0)
             throw new Exception();
 
-        _ipEndPoint = new IPEndPoint(ips[0], uri.Port);
+        var ipv4 = ips.FirstOrDefault(i => i.AddressFamily == AddressFamily.InterNetwork)
+            ?.MapToIPv6();
 
-        var response = await TryAnnounce(
-            _ipEndPoint,
-            Events.Started,
-            _cancellationTokenSource.Token
-        );
-
-        if (response is null)
+        if (ipv4 is null)
             return;
 
-        foreach (var peer in response.Peers)
+        _ipEndPoint = new IPEndPoint(ipv4, uri.Port);
+
+        _lastResponse = await TryAnnounce(
+            _ipEndPoint,
+            @event: Events.Started,
+            cancellationToken: _cancellationTokenSource.Token
+        );
+
+        if (_lastResponse is null)
+            return;
+
+        foreach (var peer in _lastResponse.Peers)
         {
             await channelWriter.WriteAsync(peer, cancellationToken);
         }
 
         while (!_cancellationTokenSource.Token.IsCancellationRequested)
         {
-            await Task.Delay(response.Interval.Seconds(), _cancellationTokenSource.Token);
+            await Task.Delay(_lastResponse.Interval.Seconds(), _cancellationTokenSource.Token);
 
-            var interval = response.Interval.Seconds();
+            var interval = _lastResponse.Interval.Seconds();
 
             if (logger.IsEnabled(LogLevel.Trace))
                 logger.LogTrace("Waiting {seconds} seconds", interval.TotalSeconds);
 
-            var newResponse = await TryAnnounce(_ipEndPoint, null, _cancellationTokenSource.Token);
+            var newResponse = await TryAnnounce(
+                _ipEndPoint,
+                _lastResponse.ConnectionId ?? 0,
+                null,
+                _cancellationTokenSource.Token
+            );
 
             if (newResponse is null)
                 continue;
 
-            response = newResponse;
+            _lastResponse = newResponse;
 
-            foreach (var peer in response.Peers)
+            foreach (var peer in _lastResponse.Peers)
             {
                 await channelWriter.WriteAsync(peer, cancellationToken);
             }
@@ -80,6 +92,7 @@ internal class UdpTracker(
 
     public async Task<UdpTrackerResponse?> TryAnnounce(
         IPEndPoint iPEndPoint,
+        long connectionId = 0,
         string? @event = null,
         CancellationToken cancellationToken = default
     )
@@ -98,6 +111,7 @@ internal class UdpTracker(
                 0, //TODO implement
                 @event,
                 (ushort)p2PClient.EndPoint.Port,
+                ConnectionId: connectionId,
                 NumWant: 50,
                 IpAddress: forcedIp
             );
@@ -119,7 +133,7 @@ internal class UdpTracker(
     public async ValueTask DisposeAsync()
     {
         _cancellationTokenSource?.Cancel();
-        if (_ipEndPoint is not null)
-            await TryAnnounce(_ipEndPoint, Events.Stopped);
+        if (_ipEndPoint is not null && _lastResponse is not null)
+            await TryAnnounce(_ipEndPoint, _lastResponse.ConnectionId ?? 0, @event: Events.Stopped);
     }
 }

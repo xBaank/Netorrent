@@ -22,6 +22,8 @@ internal record UdpTrackerResponse(
     IReadOnlyList<PeerEndpoint> Peers
 ) : IUdpTrackerReceivePacket
 {
+    public long? ConnectionId { get; set; }
+
     public static UdpTrackerResponse From(ReadOnlySpan<byte> data, AddressFamily addressFamily)
     {
         if (data.Length < 20)
