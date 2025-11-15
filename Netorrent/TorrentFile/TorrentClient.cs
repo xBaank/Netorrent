@@ -24,9 +24,9 @@ public class TorrentClient : IAsyncDisposable
     {
         var options = new TorrentClientOptions(new(), NullLogger.Instance, null);
         _options = action?.Invoke(options) ?? options;
-        var udpClient = new UdpClient(AddressFamily.InterNetworkV6);
-        udpClient.Client.DualMode = true;
-        udpClient.Client.Bind(new IPEndPoint(IPAddress.IPv6Any, 0));
+        var udpClient = new UdpClient(AddressFamily.InterNetwork);
+        //udpClient.Client.DualMode = true;
+        udpClient.Client.Bind(new IPEndPoint(IPAddress.Any, 0));
         _trackerTransactionManager = new(udpClient, _options.Logger, _options.ForcedIp);
         _trackerTransactionManager.Start(_cancellationTokenSource.Token);
     }

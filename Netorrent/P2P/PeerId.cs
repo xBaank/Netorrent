@@ -50,4 +50,6 @@ public readonly struct PeerId
     {
         return HashCode.Combine(Value);
     }
+
+    public override string ToString() => Value;
 }
