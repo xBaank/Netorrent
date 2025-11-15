@@ -1,6 +1,7 @@
 ﻿using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Netorrent.P2P.Managers.Request;
+using ZLinq;
 
 namespace Netorrent.P2P.Managers.Piece;
 
@@ -40,11 +41,16 @@ internal class PieceManager(int maxBlocks) : IAsyncDisposable
 
     public async ValueTask AddBlockAsync(Block block, CancellationToken cancellationToken)
     {
-        var toRemove = _currentPieceRequests.FirstOrDefault(r =>
-            r.Index == block.Index && r.Begin == block.Begin
-        );
-        if (toRemove.Equals(default(RequestBlock)))
+        var isToRemove = _currentPieceRequests
+            .AsValueEnumerable()
+            .Any(r => r.Index == block.Index && r.Begin == block.Begin);
+
+        if (!isToRemove)
             throw new InvalidOperationException("Received unexpected block.");
+
+        var toRemove = _currentPieceRequests
+            .AsValueEnumerable()
+            .First(r => r.Index == block.Index && r.Begin == block.Begin);
 
         _sentRequests.Remove(toRemove);
         await _blocksToWrite.Writer.WriteAsync(block, cancellationToken);
@@ -52,9 +58,9 @@ internal class PieceManager(int maxBlocks) : IAsyncDisposable
 
     public void SetBlockWritten(Block block)
     {
-        var toRemove = _currentPieceRequests.FirstOrDefault(r =>
-            r.Index == block.Index && r.Begin == block.Begin
-        );
+        var toRemove = _currentPieceRequests
+            .AsValueEnumerable()
+            .FirstOrDefault(r => r.Index == block.Index && r.Begin == block.Begin);
         _currentPieceRequests.Remove(toRemove);
     }
 
