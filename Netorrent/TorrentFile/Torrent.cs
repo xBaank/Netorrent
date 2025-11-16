@@ -48,7 +48,7 @@ public class Torrent : IAsyncDisposable
             _myBitfield
         );
         var trackersChannel = Channel.CreateBounded<IPEndPoint>(
-            new BoundedChannelOptions(50) { SingleWriter = false, SingleReader = true }
+            new BoundedChannelOptions(100) { SingleWriter = false, SingleReader = true }
         );
         _p2pClient = new P2PClient(
             metaInfo,

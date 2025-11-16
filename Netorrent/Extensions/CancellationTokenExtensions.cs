@@ -2,13 +2,13 @@
 
 internal static class CancellationTokenExtensions
 {
-    public static CancellationTokenSource WithTimeout(
-        this CancellationToken cancellationToken,
-        TimeSpan timeout
-    )
+    extension(CancellationToken cancellationToken)
     {
-        var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.CancelAfter(timeout);
-        return cts;
+        public CancellationTokenSource WithTimeout(TimeSpan timeout)
+        {
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(timeout);
+            return cts;
+        }
     }
 }

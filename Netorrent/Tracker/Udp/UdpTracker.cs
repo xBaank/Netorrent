@@ -1,6 +1,7 @@
 ﻿using System.Net;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
+using Netorrent.Extensions;
 using Netorrent.P2P;
 using Netorrent.Tracker.Udp.Request;
 using Netorrent.Tracker.Udp.Response;
@@ -15,13 +16,13 @@ internal class UdpTracker(
     ChannelWriter<IPEndPoint> channelWriter,
     byte[] infoHash,
     string announceUrl,
+    IPEndPoint iPEndPoint,
     ILogger logger,
     IPAddress? forcedIp
 ) : ITracker
 {
     public Task? TrackerTask { get; private set; }
     private CancellationTokenSource? _cancellationTokenSource;
-    private IPEndPoint? _ipEndPoint;
     private UdpTrackerResponse? _lastResponse;
     private readonly Guid _trackerId = Guid.CreateVersion7();
 
@@ -34,24 +35,11 @@ internal class UdpTracker(
             cancellationToken
         );
 
-        var uri = new Uri(announceUrl);
-        //TODO extract this and create one tracker for ipv4 and ipv6 so we get peers6 and peers from udp
-        var ips = await Dns.GetHostAddressesAsync(uri.Host, _cancellationTokenSource.Token);
-
-        if (ips.Length == 0)
-        {
-            if (logger.IsEnabled(LogLevel.Debug))
-                logger.LogDebug("Couldn't get ip from {trackerUrl}", announceUrl);
-
+        if (await TryConnectAsync(iPEndPoint, _cancellationTokenSource.Token) is null)
             return;
-        }
-
-        _ipEndPoint = new IPEndPoint(ips[0].MapToIPv6(), uri.Port);
-
-        await TryConnectAsync(_ipEndPoint, _cancellationTokenSource.Token);
 
         _lastResponse = await TryAnnounceAsync(
-            _ipEndPoint,
+            iPEndPoint,
             @event: Events.Started,
             cancellationToken: _cancellationTokenSource.Token
         );
@@ -74,7 +62,7 @@ internal class UdpTracker(
                 logger.LogTrace("Waiting {seconds} seconds", interval.TotalSeconds);
 
             var newResponse = await TryAnnounceAsync(
-                _ipEndPoint,
+                iPEndPoint,
                 null,
                 _cancellationTokenSource.Token
             );
@@ -166,7 +154,7 @@ internal class UdpTracker(
     public async ValueTask DisposeAsync()
     {
         _cancellationTokenSource?.Cancel();
-        if (_ipEndPoint is not null && _lastResponse is not null)
-            await TryAnnounceAsync(_ipEndPoint, Events.Stopped, default);
+        if (iPEndPoint is not null && _lastResponse is not null)
+            await TryAnnounceAsync(iPEndPoint, Events.Stopped, default);
     }
 }
