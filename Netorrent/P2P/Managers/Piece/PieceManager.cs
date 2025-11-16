@@ -1,7 +1,7 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Netorrent.P2P.Managers.Request;
-using ZLinq;
 
 namespace Netorrent.P2P.Managers.Piece;
 
@@ -13,13 +13,19 @@ internal class PieceManager(int maxBlocks) : IAsyncDisposable
     private readonly Channel<RequestBlock> _requestsToSend = Channel.CreateBounded<RequestBlock>(
         new BoundedChannelOptions(maxBlocks) { SingleWriter = false, SingleReader = true }
     );
-    private readonly List<RequestBlock> _sentRequests = [];
+    private readonly ConcurrentDictionary<
+        (int Index, int Begin, int Length),
+        RequestBlock
+    > _sentRequestsByIBL = [];
 
-    private List<RequestBlock> _currentPieceRequests = [];
+    private ConcurrentDictionary<
+        (int Index, int Begin, int Length),
+        RequestBlock
+    > _currentPieceRequestsByIBL = [];
 
     public int? CurrentDownloadingPieceIndex { get; set; } = null;
     public bool HasFinishedCurrentPiece =>
-        CurrentDownloadingPieceIndex is not null && _currentPieceRequests.Count == 0;
+        CurrentDownloadingPieceIndex is not null && _currentPieceRequestsByIBL.IsEmpty;
     public IAsyncEnumerable<Block> BlocksToWrite => _blocksToWrite.Reader.ReadAllAsync();
     public IAsyncEnumerable<RequestBlock> BlocksToRequest => GetBlocksToRequest();
 
@@ -32,36 +38,35 @@ internal class PieceManager(int maxBlocks) : IAsyncDisposable
         ArgumentOutOfRangeException.ThrowIfLessThan(maxBlocks, requests.Count);
 
         CurrentDownloadingPieceIndex = index;
-        _currentPieceRequests = requests;
-        foreach (var request in _currentPieceRequests)
+        foreach (var request in requests)
         {
+            _currentPieceRequestsByIBL.TryAdd(
+                (request.Index, request.Begin, request.Length),
+                request
+            );
             await _requestsToSend.Writer.WriteAsync(request, cancellationToken);
         }
     }
 
     public async ValueTask AddBlockAsync(Block block, CancellationToken cancellationToken)
     {
-        var isToRemove = _currentPieceRequests
-            .AsValueEnumerable()
-            .Any(r => r.Index == block.Index && r.Begin == block.Begin);
+        var key = (block.Index, block.Begin, block.Payload.Memory.Length);
 
-        if (!isToRemove)
+        if (!_currentPieceRequestsByIBL.ContainsKey(key))
             return;
 
-        var toRemove = _currentPieceRequests
-            .AsValueEnumerable()
-            .FirstOrDefault(r => r.Index == block.Index && r.Begin == block.Begin);
-
-        _sentRequests.Remove(toRemove);
+        _sentRequestsByIBL.TryRemove(key, out _);
         await _blocksToWrite.Writer.WriteAsync(block, cancellationToken);
     }
 
     public void SetBlockWritten(Block block)
     {
-        var toRemove = _currentPieceRequests
-            .AsValueEnumerable()
-            .FirstOrDefault(r => r.Index == block.Index && r.Begin == block.Begin);
-        _currentPieceRequests.Remove(toRemove);
+        var key = (block.Index, block.Begin, block.Payload.Memory.Length);
+
+        if (!_currentPieceRequestsByIBL.ContainsKey(key))
+            return;
+
+        _currentPieceRequestsByIBL.TryRemove(key, out _);
     }
 
     public async ValueTask DiscardSentRequests(CancellationToken cancellationToken)
@@ -69,9 +74,9 @@ internal class PieceManager(int maxBlocks) : IAsyncDisposable
         if (_requestsToSend is null)
             return;
 
-        foreach (var item in _sentRequests)
+        foreach (var item in _sentRequestsByIBL)
         {
-            await _requestsToSend.Writer.WriteAsync(item, cancellationToken);
+            await _requestsToSend.Writer.WriteAsync(item.Value, cancellationToken);
         }
     }
 
@@ -81,11 +86,12 @@ internal class PieceManager(int maxBlocks) : IAsyncDisposable
     {
         await foreach (var request in _requestsToSend.Reader.ReadAllAsync(cancellationToken))
         {
-            while (!cancellationToken.IsCancellationRequested && _sentRequests.Count > 8)
+            while (!cancellationToken.IsCancellationRequested && _sentRequestsByIBL.Count > 8)
             {
                 await Task.Delay(50, cancellationToken);
             }
-            _sentRequests.Add(request);
+            var key = (request.Index, request.Begin, request.Length);
+            _sentRequestsByIBL.TryAdd(key, request);
             yield return request;
         }
     }
@@ -99,7 +105,7 @@ internal class PieceManager(int maxBlocks) : IAsyncDisposable
             item.Dispose();
         }
         await foreach (var item in _requestsToSend.Reader.ReadAllAsync()) { }
-        _sentRequests.Clear();
-        _currentPieceRequests.Clear();
+        _sentRequestsByIBL.Clear();
+        _currentPieceRequestsByIBL.Clear();
     }
 }

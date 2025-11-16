@@ -1,5 +1,4 @@
 ﻿using System.Net;
-using System.Net.Sockets;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.P2P;
@@ -36,26 +35,22 @@ internal class UdpTracker(
         );
 
         var uri = new Uri(announceUrl);
+        //TODO extract this and create one tracker for ipv4 and ipv6 so we get peers6 and peers from udp
         var ips = await Dns.GetHostAddressesAsync(uri.Host, _cancellationTokenSource.Token);
 
         if (ips.Length == 0)
-            throw new Exception();
+        {
+            if (logger.IsEnabled(LogLevel.Debug))
+                logger.LogDebug("Couldn't get ip from {trackerUrl}", announceUrl);
 
-        var ipv4 = ips.FirstOrDefault(i => i.AddressFamily == AddressFamily.InterNetwork)
-            ?.MapToIPv6();
-
-        if (ipv4 is null)
             return;
+        }
 
-        _ipEndPoint = new IPEndPoint(ipv4, uri.Port);
+        _ipEndPoint = new IPEndPoint(ips[0].MapToIPv6(), uri.Port);
 
-        await transactionManager.ConnectAsync(
-            _ipEndPoint,
-            _trackerId,
-            _cancellationTokenSource.Token
-        );
+        await TryConnectAsync(_ipEndPoint, _cancellationTokenSource.Token);
 
-        _lastResponse = await TryAnnounce(
+        _lastResponse = await TryAnnounceAsync(
             _ipEndPoint,
             @event: Events.Started,
             cancellationToken: _cancellationTokenSource.Token
@@ -78,7 +73,11 @@ internal class UdpTracker(
             if (logger.IsEnabled(LogLevel.Trace))
                 logger.LogTrace("Waiting {seconds} seconds", interval.TotalSeconds);
 
-            var newResponse = await TryAnnounce(_ipEndPoint, null, _cancellationTokenSource.Token);
+            var newResponse = await TryAnnounceAsync(
+                _ipEndPoint,
+                null,
+                _cancellationTokenSource.Token
+            );
 
             if (newResponse is null)
                 continue;
@@ -92,10 +91,28 @@ internal class UdpTracker(
         }
     }
 
-    public async Task<UdpTrackerResponse?> TryAnnounce(
+    public async Task<UdpTrackerConnectResponse?> TryConnectAsync(
         IPEndPoint iPEndPoint,
-        string? @event = null,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken
+    )
+    {
+        try
+        {
+            return await transactionManager.ConnectAsync(iPEndPoint, _trackerId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            if (logger.IsEnabled(LogLevel.Debug))
+                logger.LogDebug(ex, "Couldn't connect to {trackerUrl}", announceUrl);
+
+            return null;
+        }
+    }
+
+    public async Task<UdpTrackerResponse?> TryAnnounceAsync(
+        IPEndPoint iPEndPoint,
+        string? @event,
+        CancellationToken cancellationToken
     )
     {
         try
@@ -150,6 +167,6 @@ internal class UdpTracker(
     {
         _cancellationTokenSource?.Cancel();
         if (_ipEndPoint is not null && _lastResponse is not null)
-            await TryAnnounce(_ipEndPoint, @event: Events.Stopped);
+            await TryAnnounceAsync(_ipEndPoint, Events.Stopped, default);
     }
 }

@@ -31,7 +31,7 @@ internal class HttpTracker(
             cancellationToken
         );
 
-        var response = await TryAnnounce(Events.Started, _cancellationTokenSource.Token);
+        var response = await TryAnnounceAsync(Events.Started, _cancellationTokenSource.Token);
 
         if (response is null)
             return;
@@ -50,7 +50,9 @@ internal class HttpTracker(
 
             await Task.Delay(interval, _cancellationTokenSource.Token);
 
-            var newResponse = await TryAnnounce(cancellationToken: _cancellationTokenSource.Token);
+            var newResponse = await TryAnnounceAsync(
+                cancellationToken: _cancellationTokenSource.Token
+            );
 
             if (newResponse is null)
                 continue;
@@ -64,7 +66,7 @@ internal class HttpTracker(
         }
     }
 
-    private async Task<HttpTrackerResponse?> TryAnnounce(
+    private async Task<HttpTrackerResponse?> TryAnnounceAsync(
         string? @event = null,
         CancellationToken cancellationToken = default
     )
@@ -109,6 +111,6 @@ internal class HttpTracker(
     public async ValueTask DisposeAsync()
     {
         _cancellationTokenSource?.Cancel();
-        await TryAnnounce(Events.Stopped);
+        await TryAnnounceAsync(Events.Stopped);
     }
 }

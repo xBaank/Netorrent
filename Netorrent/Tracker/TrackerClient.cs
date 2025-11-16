@@ -27,8 +27,9 @@ internal class TrackerClient(
             metaInfo
                 .AnnounceList?.Append(metaInfo.Announce)
                 .Distinct()
+                .Where(i => !i.StartsWith("udp"))
                 ?.Select(CreateTracker)
-                .Where(i => i != null)
+                .Where(i => i is not null)
                 .Cast<ITracker>()
                 .ToList() ?? [];
 

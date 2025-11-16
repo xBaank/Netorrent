@@ -1,4 +1,5 @@
-﻿using System.Threading.Channels;
+﻿using System.Collections.Concurrent;
+using System.Threading.Channels;
 
 namespace Netorrent.P2P.Managers.Request;
 
@@ -12,7 +13,10 @@ internal class RequestManager : IAsyncDisposable
     private readonly Channel<RequestBlock> _pendingRequests = Channel.CreateBounded<RequestBlock>(
         new BoundedChannelOptions(PEER_REQUEST_LIMIT) { SingleWriter = true, SingleReader = true }
     );
-    private readonly IList<RequestBlock> _requestList = [];
+    private readonly ConcurrentDictionary<
+        (int Index, int Begin, int Length),
+        RequestBlock
+    > _requestByIBL = [];
     private int _violationCount = 0;
     private int _ignoredRequests = 0;
 
@@ -50,24 +54,26 @@ internal class RequestManager : IAsyncDisposable
         _violationCount = 0;
 
         await _pendingRequests.Writer.WriteAsync(request, cancellationToken);
-        _requestList.Add(request);
+        var key = (request.Index, request.Begin, request.Length);
+        _requestByIBL.TryAdd(key, request);
 
         return RequestResponseType.Ok;
     }
 
     public void CancelRequest(RequestBlock request)
     {
-        var toCancel = _requestList.FirstOrDefault(i => i == request);
-        if (toCancel == default)
+        var key = (request.Index, request.Begin, request.Length);
+        if (!_requestByIBL.TryGetValue(key, out var requestBlock))
             return;
-        toCancel.IsCancelled = true;
-        _requestList.Remove(request);
+
+        requestBlock.IsCancelled = true;
+        _requestByIBL.TryRemove(key, out _);
     }
 
     public ValueTask DisposeAsync()
     {
         _pendingRequests.Writer.TryComplete();
-        _requestList.Clear();
+        _requestByIBL.Clear();
         return ValueTask.CompletedTask;
     }
 }
