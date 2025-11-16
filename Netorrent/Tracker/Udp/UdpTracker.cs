@@ -24,6 +24,7 @@ internal class UdpTracker(
     private CancellationTokenSource? _cancellationTokenSource;
     private IPEndPoint? _ipEndPoint;
     private UdpTrackerResponse? _lastResponse;
+    private readonly Guid _trackerId = Guid.CreateVersion7();
 
     public void Start(CancellationToken cancellationToken) =>
         TrackerTask ??= ProcessLoop(cancellationToken);
@@ -48,6 +49,12 @@ internal class UdpTracker(
 
         _ipEndPoint = new IPEndPoint(ipv4, uri.Port);
 
+        await transactionManager.ConnectAsync(
+            _ipEndPoint,
+            _trackerId,
+            _cancellationTokenSource.Token
+        );
+
         _lastResponse = await TryAnnounce(
             _ipEndPoint,
             @event: Events.Started,
@@ -71,12 +78,7 @@ internal class UdpTracker(
             if (logger.IsEnabled(LogLevel.Trace))
                 logger.LogTrace("Waiting {seconds} seconds", interval.TotalSeconds);
 
-            var newResponse = await TryAnnounce(
-                _ipEndPoint,
-                _lastResponse.ConnectionId ?? 0,
-                null,
-                _cancellationTokenSource.Token
-            );
+            var newResponse = await TryAnnounce(_ipEndPoint, null, _cancellationTokenSource.Token);
 
             if (newResponse is null)
                 continue;
@@ -92,7 +94,6 @@ internal class UdpTracker(
 
     public async Task<UdpTrackerResponse?> TryAnnounce(
         IPEndPoint iPEndPoint,
-        long connectionId = 0,
         string? @event = null,
         CancellationToken cancellationToken = default
     )
@@ -101,6 +102,19 @@ internal class UdpTracker(
         {
             if (logger.IsEnabled(LogLevel.Information))
                 logger.LogInformation("Announcing to {url}", announceUrl);
+
+            var connectionId = transactionManager.GetConnectionIdOrNull(_trackerId);
+
+            if (connectionId is null || transactionManager.IsOutdated(connectionId.Value))
+            {
+                var response = await transactionManager.ConnectAsync(
+                    iPEndPoint,
+                    _trackerId,
+                    cancellationToken
+                );
+
+                connectionId = response.ConnectionId;
+            }
 
             var updRequest = new UdpTrackerRequest(
                 iPEndPoint,
@@ -111,13 +125,15 @@ internal class UdpTracker(
                 0, //TODO implement
                 @event,
                 (ushort)p2PClient.EndPoint.Port,
-                ConnectionId: connectionId,
+                ConnectionId: connectionId.Value,
+                TransactionId: transactionManager.MakeTransactionId(),
                 NumWant: 50,
                 IpAddress: forcedIp
             );
 
             return await transactionManager.SendAsync<UdpTrackerResponse>(
                 updRequest,
+                _trackerId,
                 cancellationToken
             );
         }
@@ -134,6 +150,6 @@ internal class UdpTracker(
     {
         _cancellationTokenSource?.Cancel();
         if (_ipEndPoint is not null && _lastResponse is not null)
-            await TryAnnounce(_ipEndPoint, _lastResponse.ConnectionId ?? 0, @event: Events.Stopped);
+            await TryAnnounce(_ipEndPoint, @event: Events.Stopped);
     }
 }

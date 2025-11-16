@@ -8,7 +8,6 @@ using System.Net.Sockets;
 using Netorrent.Other;
 using Netorrent.P2P;
 
-//TODO Use more friendly types and transform them in ToMemoryRented()
 internal record UdpTrackerRequest(
     IPEndPoint IPEndPoint,
     ReadOnlyMemory<byte> InfoHash,
@@ -18,8 +17,8 @@ internal record UdpTrackerRequest(
     long Uploaded,
     string? Event,
     ushort Port,
-    long ConnectionId = 0,
-    int TransactionId = 0,
+    long ConnectionId,
+    int TransactionId,
     int NumWant = -1,
     IPAddress? IpAddress = null,
     int Key = 0

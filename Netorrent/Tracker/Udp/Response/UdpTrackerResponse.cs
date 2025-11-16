@@ -7,23 +7,15 @@ using System.Net;
 using System.Net.Sockets;
 using Netorrent.Tracker.Udp;
 
-internal record PeerEndpoint(IPAddress IpAddress, ushort Port)
-{
-    public static implicit operator IPEndPoint(PeerEndpoint peerEndpoint) =>
-        new(peerEndpoint.IpAddress, peerEndpoint.Port);
-}
-
 internal record UdpTrackerResponse(
     int Action,
     int TransactionId,
     int Interval,
     int Leechers,
     int Seeders,
-    IReadOnlyList<PeerEndpoint> Peers
+    IReadOnlyList<IPEndPoint> Peers
 ) : IUdpTrackerReceivePacket
 {
-    public long? ConnectionId { get; set; }
-
     public static UdpTrackerResponse From(ReadOnlySpan<byte> data, AddressFamily addressFamily)
     {
         if (data.Length < 20)
@@ -35,7 +27,7 @@ internal record UdpTrackerResponse(
         int leechers = BinaryPrimitives.ReadInt32BigEndian(data.Slice(12, 4));
         int seeders = BinaryPrimitives.ReadInt32BigEndian(data.Slice(16, 4));
 
-        var peers = new List<PeerEndpoint>();
+        var peers = new List<IPEndPoint>();
         var offset = 20;
 
         if (addressFamily == AddressFamily.InterNetwork)
@@ -45,7 +37,7 @@ internal record UdpTrackerResponse(
                 var ipBytes = data.Slice(offset, 4).ToArray();
                 var ip = new IPAddress(ipBytes);
                 var port = BinaryPrimitives.ReadUInt16BigEndian(data.Slice(offset + 4, 2));
-                peers.Add(new PeerEndpoint(ip, port));
+                peers.Add(new IPEndPoint(ip, port));
                 offset += 6;
             }
         }
@@ -56,7 +48,7 @@ internal record UdpTrackerResponse(
                 var ipBytes = data.Slice(offset, 16).ToArray();
                 var ip = new IPAddress(ipBytes);
                 var port = BinaryPrimitives.ReadUInt16BigEndian(data.Slice(offset + 16, 2));
-                peers.Add(new PeerEndpoint(ip, port));
+                peers.Add(new IPEndPoint(ip, port));
                 offset += 18;
             }
         }
