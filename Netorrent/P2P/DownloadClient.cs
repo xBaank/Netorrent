@@ -12,6 +12,7 @@ public class DownloadInfo
     private readonly Bitfield _bitfield;
     private TaskCompletionSource _downloadTaskCompletitionSource = new();
 
+    //TODO Fix this, if peers are removed then downloaded bytes can be reduced?
     private IEnumerable<PeerConnection> PeersNotChocking =>
         _peers.Values.Where(i => !i.PeerChocking && i.AmInterested);
     public int ActivePeers => PeersNotChocking.Count();
