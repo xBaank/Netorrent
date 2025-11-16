@@ -1,5 +1,6 @@
 ﻿using System.Buffers;
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Channels;
@@ -13,6 +14,7 @@ using Netorrent.P2P.Managers.Request;
 using Netorrent.P2P.Measurement;
 using Netorrent.P2P.Messages;
 using TimeSpanXt;
+using ZLinq;
 
 namespace Netorrent.P2P;
 
@@ -46,6 +48,7 @@ internal class PeerConnection(
     private readonly Channel<Message> _outgoingMessages = Channel.CreateBounded<Message>(
         new BoundedChannelOptions(50) { SingleWriter = false, SingleReader = true }
     );
+    private readonly ConcurrentQueue<Block> _currentPieceBlocks = new();
     private DateTime _lastKeepAlive;
     private Task? _loopTask;
     private CancellationTokenSource? _cancellationTokenSource;
@@ -311,16 +314,38 @@ internal class PeerConnection(
 
     private async ValueTask ProcessBlockAsync(Block block, CancellationToken cancellationToken)
     {
-        using var _ = block;
+        _currentPieceBlocks.Enqueue(block);
         var memory = block.Payload.Memory;
-        SpeedTracker.AddBytes(memory.Length);
-        await _fileManager.WritePieceAsync(block.Index, block.Begin, memory, cancellationToken);
         _pieceManager.SetBlockWritten(block);
+        SpeedTracker.AddBytes(memory.Length);
 
         if (_pieceManager.HasFinishedCurrentPiece)
         {
+            var blocksList = _currentPieceBlocks.AsValueEnumerable().OrderBy(i => i.Begin).ToList();
+
+            if (blocksList.Count == 0)
+                return;
+
+            using var combined = blocksList.Select(i => i.Payload.Memory).ToList().Combine();
+
+            var start = blocksList[0];
+            var pieceIndex = start.Index;
+
+            while (_currentPieceBlocks.TryDequeue(out var dequeued))
+            {
+                dequeued.Dispose();
+            }
+
+            await _fileManager.WritePieceAsync(
+                pieceIndex,
+                start.Begin,
+                combined.Memory,
+                cancellationToken
+            );
+
             var isOk = await _fileManager.VerifyPieceAsync(
                 _pieceManager.CurrentDownloadingPieceIndex!.Value,
+                combined.Memory,
                 cancellationToken
             );
 
@@ -514,6 +539,10 @@ internal class PeerConnection(
             item.Dispose();
         }
         await foreach (var item in _incomingMessages.Reader.ReadAllAsync())
+        {
+            item.Dispose();
+        }
+        while (_currentPieceBlocks.TryDequeue(out var item))
         {
             item.Dispose();
         }

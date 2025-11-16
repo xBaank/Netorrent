@@ -122,19 +122,20 @@ internal class FileManager : IDisposable
         await WriteAsync(globalOffset, pieceData, ct);
     }
 
-    public async ValueTask<bool> VerifyPieceAsync(int pieceIndex, CancellationToken ct = default)
+    public async ValueTask<bool> VerifyPieceAsync(
+        int pieceIndex,
+        Memory<byte> pieceData,
+        CancellationToken ct = default
+    )
     {
         var expectedHash = _pieceHashes[pieceIndex];
         long offset = (long)pieceIndex * _pieceLength;
         int length = _pieceLength;
 
-        // Read actual data back
-        using var memoryRented = await ReadAsync(offset, length, ct);
-        var actualData = memoryRented.Memory;
         var actualHash =
-            actualData.Length > 1024 * 1024
-                ? await Task.Run(() => SHA1.HashData(actualData.Span), ct)
-                : SHA1.HashData(actualData.Span);
+            pieceData.Length > 1024 * 1024
+                ? await Task.Run(() => SHA1.HashData(pieceData.Span), ct)
+                : SHA1.HashData(pieceData.Span);
 
         return expectedHash.SequenceEqual(actualHash);
     }
