@@ -29,6 +29,8 @@ internal class PieceManager(int maxBlocks) : IAsyncDisposable
     public IAsyncEnumerable<Block> BlocksToWrite => _blocksToWrite.Reader.ReadAllAsync();
     public IAsyncEnumerable<RequestBlock> BlocksToRequest => GetBlocksToRequest();
 
+    public void SetCurrentPieceAsCompleted() => CurrentDownloadingPieceIndex = null;
+
     public async ValueTask SetCurrentPieceAsync(
         int index,
         List<RequestBlock> requests,

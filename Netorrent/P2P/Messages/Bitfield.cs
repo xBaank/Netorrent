@@ -1,6 +1,7 @@
 ﻿using System.Buffers;
 using System.Collections;
 using Netorrent.Other;
+using ZLinq;
 
 namespace Netorrent.P2P.Messages;
 
@@ -41,8 +42,10 @@ public class Bitfield
     }
 
     public bool IsComplete => _bits.HasAllSet();
+    public IReadOnlySet<int> PiecesIndexes =>
+        Enumerable.Range(0, _bits.Length).AsValueEnumerable().Where(i => _bits[i]).ToHashSet();
 
-    internal async Task HavePiece(int index, CancellationToken cancellationToken)
+    internal async Task AddPiece(int index, CancellationToken cancellationToken)
     {
         if (index >= _bits.Length)
             return;
@@ -52,6 +55,8 @@ public class Bitfield
         if (OnHavePieceAsync is not null)
             await OnHavePieceAsync(index, cancellationToken);
     }
+
+    internal bool HasPiece(int index) => _bits[index];
 
     internal bool HasAnyMissingPiece(Bitfield other)
     {

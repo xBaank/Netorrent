@@ -10,6 +10,7 @@ using Netorrent.P2P.Managers.Request;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
 using TimeSpanXt;
+using ZLinq;
 
 namespace Netorrent.P2P;
 
@@ -23,6 +24,7 @@ internal class P2PClient : IAsyncDisposable
     private readonly ConcurrentQueue<IPEndPoint> _knownPeers = [];
     private readonly PeerId _peerId;
     private readonly Bitfield _bitField;
+    private readonly PieceSelector _pieceSelector;
     private readonly ChannelReader<IPEndPoint> _trackersChannel;
     private Task? _listenerTask;
     private Task? _peersTask;
@@ -30,9 +32,7 @@ internal class P2PClient : IAsyncDisposable
 
     public FileManager FileManager { get; }
     public DownloadInfo DownloadInfo { get; }
-
     public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
-
     public Task? ListenerTask => _listenerTask;
     public Task? PeersTask => _peersTask;
 
@@ -54,6 +54,7 @@ internal class P2PClient : IAsyncDisposable
         FileManager = fileManager;
         DownloadInfo = new DownloadInfo(_activePeers, fileManager, bitField);
         _peerIpProxy = peerIpProxy;
+        _pieceSelector = new PieceSelector(_activePeers, _bitField);
     }
 
     public void ProcessPeers(CancellationToken cancellationToken) =>
@@ -127,7 +128,7 @@ internal class P2PClient : IAsyncDisposable
             FileManager,
             new RequestManager(),
             new PieceManager(FileManager.MaxBlocksByPiece),
-            new PieceSelector(_activePeers, _bitField),
+            _pieceSelector,
             _logger
         );
 
@@ -161,7 +162,7 @@ internal class P2PClient : IAsyncDisposable
             _logger.LogInformation("Connected to peer {PeerId}", peerConnection.PeerId);
 
         _activePeers[iPEndPoint] = peerConnection;
-        HandlePeer(peerConnection, cancellationToken);
+        await HandlePeer(peerConnection, cancellationToken);
     }
 
     private async Task ListenTask(CancellationToken cancellationToken)
@@ -197,7 +198,7 @@ internal class P2PClient : IAsyncDisposable
                 FileManager,
                 new RequestManager(),
                 new PieceManager(FileManager.MaxBlocksByPiece),
-                new PieceSelector(_activePeers, _bitField),
+                _pieceSelector,
                 _logger
             );
 
@@ -232,14 +233,16 @@ internal class P2PClient : IAsyncDisposable
                 _logger.LogInformation("Connected from peer {PeerId}", peerConnection.PeerId);
 
             _activePeers[remoteEndPoint] = peerConnection;
-            HandlePeer(peerConnection, cancellationToken);
+            await HandlePeer(peerConnection, cancellationToken);
         }
     }
 
-    private void HandlePeer(PeerConnection peerConnection, CancellationToken cancellationToken)
+    private async Task HandlePeer(
+        PeerConnection peerConnection,
+        CancellationToken cancellationToken
+    )
     {
         peerConnection.Start(cancellationToken);
-
         peerConnection.WaitTask?.ContinueWith(
             async task =>
             {
@@ -253,8 +256,9 @@ internal class P2PClient : IAsyncDisposable
                         );
                 }
 
-                await peerConnection.DisposeAsync();
                 _activePeers.Remove(peerConnection.IPEndPoint, out _);
+                await _pieceSelector.OnPeerDisconnected(cancellationToken);
+                await peerConnection.DisposeAsync();
 
                 if (_knownPeers.TryDequeue(out var iPEndPoint))
                 {
@@ -276,20 +280,26 @@ internal class P2PClient : IAsyncDisposable
 
         var avgSpeedKbps = _activePeers
             .Values.Select(p => p.SpeedTracker.CurrentBps.Kbps)
-            .DefaultIfEmpty(0)
+            .DefaultIfEmpty(0.0)
             .Average();
 
         if (double.IsNaN(avgSpeedKbps))
-            avgSpeedKbps = 0;
+            avgSpeedKbps = 0.0;
 
-        var minAcceptableSpeed = Math.Max(10, avgSpeedKbps * 0.3);
+        var minAcceptableSpeed = Math.Max(10.0, avgSpeedKbps * 0.3);
 
-        return _activePeers
-            .Values.Where(p =>
-                p.ConnectionDuration > minAge && p.SpeedTracker.CurrentBps.Kbps < minAcceptableSpeed
-                || p.PeerChocking
+        var candidates = _activePeers
+            .Values.AsValueEnumerable()
+            .Where(p =>
+                p.ConnectionDuration > minAge
+                && (p.SpeedTracker.CurrentBps.Kbps < minAcceptableSpeed || p.PeerChocking)
             )
-            .MinBy(p => p.SpeedTracker.CurrentBps.Bps);
+            .ToList();
+
+        if (candidates.Count == 0)
+            return null;
+
+        return candidates.MinBy(p => p.SpeedTracker.CurrentBps.Bps);
     }
 
     public async ValueTask DisposeAsync()

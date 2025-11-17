@@ -9,7 +9,7 @@ public class SpeedTracker
     private long _bytesSinceLast;
     private TimeSpan _lastTime;
 
-    public DownloadSpeed CurrentBps { get; private set; }
+    public DownloadSpeed CurrentBps => GetCurrentBps();
     public ByteSize TotalBytes { get; private set; }
 
     public void AddBytes(int count)
@@ -18,16 +18,16 @@ public class SpeedTracker
         {
             TotalBytes += count;
             _bytesSinceLast += count;
-
-            var now = _stopwatch.Elapsed;
-            var delta = now - _lastTime;
-
-            if (delta.TotalSeconds >= 1)
-            {
-                CurrentBps = _bytesSinceLast / delta.TotalSeconds;
-                _bytesSinceLast = 0;
-                _lastTime = now;
-            }
         }
+    }
+
+    private DownloadSpeed GetCurrentBps()
+    {
+        var now = _stopwatch.Elapsed;
+        var delta = now - _lastTime;
+        var toReturn = _bytesSinceLast / delta.TotalSeconds;
+        _bytesSinceLast = 0;
+        _lastTime = now;
+        return toReturn;
     }
 }

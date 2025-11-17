@@ -64,7 +64,7 @@ internal class PeerConnection(
     public bool PeerInterested { get; private set; } = peerInterested;
     public PeerId? PeerId { get; private set; }
     public Bitfield PeerBitField { get; private set; } = new(myBitField.Length);
-    public int? CurrentPieceDownloading => _pieceManager.CurrentDownloadingPieceIndex;
+    public int? CurrentPieceIndex => _pieceManager.CurrentDownloadingPieceIndex;
     public Task? WaitTask => _loopTask;
     public TimeSpan ConnectionDuration => DateTime.UtcNow - _startedConnectionTime;
 
@@ -181,7 +181,7 @@ internal class PeerConnection(
                 int pieceIndex = BinaryPrimitives.ReadInt32BigEndian(
                     message.Payload!.Value.Memory.Span
                 );
-                await PeerBitField.HavePiece(pieceIndex, cancellationToken);
+                await PeerBitField.AddPiece(pieceIndex, cancellationToken);
                 await SendInterest(cancellationToken);
                 continue;
             }
@@ -244,15 +244,10 @@ internal class PeerConnection(
         }
     }
 
-    private async ValueTask SetPieceToDownloadAsync(CancellationToken cancellationToken)
+    public async ValueTask SetPieceToDownloadAsync(int index, CancellationToken cancellationToken)
     {
-        var index = _pieceSelector.GetNextRarestPiece();
-
-        if (index is null)
-            return;
-
-        var blocks = index.HasValue ? _fileManager.GetBlocksByPieceIndex(index.Value).ToList() : [];
-        await _pieceManager.SetCurrentPieceAsync(index.Value, blocks, cancellationToken);
+        var blocks = _fileManager.GetBlocksByPieceIndex(index);
+        await _pieceManager.SetCurrentPieceAsync(index, blocks, cancellationToken);
     }
 
     private async ValueTask ReceiveRequestAsync(
@@ -358,12 +353,13 @@ internal class PeerConnection(
                 return;
             }
 
-            await MyBitField.HavePiece(
+            await MyBitField.AddPiece(
                 _pieceManager.CurrentDownloadingPieceIndex!.Value,
                 cancellationToken
             );
 
-            await SetPieceToDownloadAsync(cancellationToken);
+            _pieceManager.SetCurrentPieceAsCompleted();
+            await _pieceSelector.OnPeerRequestPiece(this, cancellationToken);
         }
     }
 
@@ -445,7 +441,7 @@ internal class PeerConnection(
             var message = Message.CreateInterested();
             await _outgoingMessages.Writer.WriteAsync(message, cancellationToken);
             AmInterested = interest;
-            await SetPieceToDownloadAsync(cancellationToken);
+            await _pieceSelector.OnPeerRequestPiece(this, cancellationToken);
         }
     }
 

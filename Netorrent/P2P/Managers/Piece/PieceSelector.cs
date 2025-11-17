@@ -1,5 +1,7 @@
 ﻿using System.Net;
 using Netorrent.P2P.Messages;
+using ZLinq;
+using ZLinq.Linq;
 
 namespace Netorrent.P2P.Managers.Piece;
 
@@ -11,15 +13,61 @@ internal class PieceSelector(
     private readonly IReadOnlyDictionary<IPEndPoint, PeerConnection> _peers = peers;
     private readonly Bitfield _myBitfield = myBitfield;
     private readonly Random _rng = new();
-    private IEnumerable<Bitfield> Bitfields => _peers.Values.Select(i => i.PeerBitField);
+    private readonly Lock _lock = new();
+    private ValueEnumerable<
+        Select<FromEnumerable<PeerConnection>, PeerConnection, Bitfield>,
+        Bitfield
+    > Bitfields => _peers.Values.AsValueEnumerable().Select(i => i.PeerBitField);
 
-    public int? GetNextRarestPiece(int rarestSampleSize = 5)
+    public async Task OnPeerDisconnected(CancellationToken cancellationToken)
+    {
+        int? index;
+        lock (_lock)
+        {
+            index = GetNextRarestPiece();
+            if (index is null)
+                return;
+        }
+
+        var peerWithoutPiece = _peers
+            .Values.AsValueEnumerable()
+            .Where(i => i.CurrentPieceIndex is null)
+            .Where(i => i.PeerBitField.HasPiece(index.Value))
+            .FirstOrDefault();
+
+        if (peerWithoutPiece is null)
+            return;
+
+        await peerWithoutPiece.SetPieceToDownloadAsync(index.Value, cancellationToken);
+    }
+
+    public async Task OnPeerRequestPiece(
+        PeerConnection peerConnection,
+        CancellationToken cancellationToken
+    )
+    {
+        int? index;
+        lock (_lock)
+        {
+            index = GetNextRarestPiece();
+            if (index is null)
+                return;
+        }
+
+        await peerConnection.SetPieceToDownloadAsync(index.Value, cancellationToken);
+    }
+
+    public int? GetNextRarestPiece(
+        IReadOnlySet<int>? limitedPieceSet = null,
+        int rarestSampleSize = 5
+    )
     {
         var availability = GetPieceAvailability();
 
         var excluded = _peers
-            .Values.Where(i => i.MyBitField != _myBitfield)
-            .Select(pc => pc.CurrentPieceDownloading)
+            .Values.AsValueEnumerable()
+            .Where(i => i.MyBitField != _myBitfield)
+            .Select(pc => pc.CurrentPieceIndex)
             .Where(piece => piece.HasValue)
             .Select(piece => piece!.Value)
             .ToHashSet();
@@ -33,8 +81,12 @@ internal class PieceSelector(
         if (availability.Count == 0)
             return null;
 
-        var sorted = availability.OrderBy(kv => kv.Value).ToList();
-        var subset = sorted.Take(rarestSampleSize).ToList();
+        var sorted = availability.AsValueEnumerable().OrderBy(kv => kv.Value).ToList();
+        var subset = sorted
+            .AsValueEnumerable()
+            .Where(i => limitedPieceSet?.Contains(i.Key) ?? true)
+            .Take(rarestSampleSize)
+            .ToList();
         int choiceIndex = _rng.Next(subset.Count);
         return subset[choiceIndex].Key;
     }

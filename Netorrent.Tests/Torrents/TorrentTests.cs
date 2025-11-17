@@ -14,10 +14,6 @@ public enum AnnounceType
     Udp,
 }
 
-[CollectionDefinition("SequentialTests", DisableParallelization = true)]
-public class SequentialTestsCollection;
-
-[Collection("SequentialTests")]
 public class TorrentTests(OpenTrackerFixture fixture, ITestOutputHelper outputHelper)
     : IClassFixture<OpenTrackerFixture>,
         IAsyncDisposable

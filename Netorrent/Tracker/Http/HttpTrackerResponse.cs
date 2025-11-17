@@ -36,20 +36,16 @@ internal class HttpTrackerResponse
         if (dict.Elements.TryGetValue("interval", out var interval))
             trackerResponse.Interval = (int)((BInt)interval).Data;
         else
-            throw new Exception();
+            trackerResponse.Interval = 900;
 
         if (dict.Elements.TryGetValue("min interval", out var minInt))
             trackerResponse.MinInterval = (int)((BInt)minInt).Data;
 
         if (dict.Elements.TryGetValue("complete", out var comp))
             trackerResponse.Complete = (int)((BInt)comp).Data;
-        else
-            throw new Exception();
 
         if (dict.Elements.TryGetValue("incomplete", out var incomp))
             trackerResponse.Incomplete = (int)((BInt)incomp).Data;
-        else
-            throw new Exception();
 
         if (dict.Elements.TryGetValue(new BString("peers"), out var peersVal))
         {

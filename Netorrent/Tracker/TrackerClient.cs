@@ -28,11 +28,12 @@ internal class TrackerClient(
 
     public async Task Start(CancellationToken cancellationToken)
     {
+        List<string> announceList = [metaInfo.Announce, .. metaInfo.AnnounceList ?? []];
         var urls =
-            metaInfo
-                .AnnounceList?.Append(metaInfo.Announce)
+            announceList
                 .Where(url => !string.IsNullOrWhiteSpace(url))
-                .Distinct(StringComparer.OrdinalIgnoreCase) ?? [];
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+            ?? [];
 
         await foreach (var tracker in CreateTrackers(urls, cancellationToken))
         {
