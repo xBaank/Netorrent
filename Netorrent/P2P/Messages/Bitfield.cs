@@ -73,14 +73,14 @@ public class Bitfield
         return false;
     }
 
-    internal MemoryRented<byte> ToMemoryRented()
+    internal RentedArray<byte> ToMemoryRented()
     {
         int byteCount = (_bits.Length + 7) / 8;
-        var owner = MemoryPool<byte>.Shared.Rent(byteCount);
-        var memory = owner.Memory[..byteCount];
+        var array = ArrayPool<byte>.Shared.Rent(byteCount);
+        var memory = array.AsMemory()[..byteCount];
         PackBitsBigEndian(memory.Span);
 
-        return new MemoryRented<byte>(owner, byteCount);
+        return new RentedArray<byte>(array, byteCount);
     }
 
     internal void PackBitsBigEndian(Span<byte> dest)

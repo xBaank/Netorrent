@@ -26,10 +26,10 @@ internal record UdpTrackerRequest(
 {
     private const int SIZE = 98;
 
-    public MemoryRented<byte> ToMemoryRented()
+    public RentedArray<byte> ToMemoryRented()
     {
-        var pool = MemoryPool<byte>.Shared.Rent(SIZE);
-        var memory = pool.Memory[..SIZE];
+        var array = ArrayPool<byte>.Shared.Rent(SIZE);
+        var memory = array.AsMemory()[..SIZE];
         var span = memory.Span;
 
         int offset = 0;
@@ -102,6 +102,6 @@ internal record UdpTrackerRequest(
 
         BinaryPrimitives.WriteUInt16BigEndian(span[offset..], Port);
 
-        return new MemoryRented<byte>(pool, SIZE);
+        return new RentedArray<byte>(array, SIZE);
     }
 }

@@ -77,7 +77,7 @@ internal class PeerConnection(
         _lastKeepAlive = DateTime.UtcNow;
         await SendBitfieldAsync(MyBitField, cancellationToken);
         MyBitField.OnHavePieceAsync += SendHave;
-        var _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
+        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
         var faultedTask = await Task.WhenAny(
@@ -301,9 +301,9 @@ internal class PeerConnection(
         var span = message.Payload!.Value.Memory.Span;
         var index = BinaryPrimitives.ReadInt32BigEndian(span[..4]);
         var begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
-        var memoryPool = MemoryPool<byte>.Shared.Rent(span.Length - 8);
-        span[8..].CopyTo(memoryPool.Memory.Span);
-        var block = new Block(index, begin, new MemoryRented<byte>(memoryPool, span.Length - 8));
+        var array = ArrayPool<byte>.Shared.Rent(span.Length - 8);
+        span[8..].CopyTo(array.AsSpan());
+        var block = new Block(index, begin, new RentedArray<byte>(array, span.Length - 8));
         await _pieceManager.AddBlockAsync(block, cancellationToken);
     }
 
@@ -474,12 +474,12 @@ internal class PeerConnection(
         int messageLength = BinaryPrimitives.ReadInt32BigEndian(lengthBuffer.Span[..4]);
         if (messageLength == 0)
             return Message.CreateKeepAlive();
-        var messagePool = MemoryPool<byte>.Shared.Rent(lengthBuffer.Length + messageLength);
-        var totalMessageBuffer = messagePool.Memory[..(lengthBuffer.Length + messageLength)];
-        var messageBuffer = messagePool.Memory.Slice(lengthBuffer.Length, messageLength);
+        var array = ArrayPool<byte>.Shared.Rent(lengthBuffer.Length + messageLength);
+        var totalMessageBuffer = array.AsMemory()[..(lengthBuffer.Length + messageLength)];
+        var messageBuffer = array.AsMemory().Slice(lengthBuffer.Length, messageLength);
         lengthBuffer.CopyTo(totalMessageBuffer);
         await Stream.ReadExactlyAsync(messageBuffer, cts.Token);
-        return Message.From(messagePool, totalMessageBuffer.Length);
+        return Message.From(array, totalMessageBuffer.Length);
     }
 
     public async Task SendBitfieldAsync(Bitfield bitField, CancellationToken cancellationToken)
@@ -510,7 +510,7 @@ internal class PeerConnection(
         return (pool, receivedHandshake);
     }
 
-    private async ValueTask<MemoryRented<byte>> SendHandHandshake(
+    private async ValueTask<RentedArray<byte>> SendHandHandshake(
         ReadOnlyMemory<byte> infoHash,
         PeerId peerId,
         CancellationToken cancellationToken

@@ -14,10 +14,10 @@ internal record UdpTrackerConnectRequest(
 {
     private const int SIZE = 16;
 
-    public MemoryRented<byte> ToMemoryRented()
+    public RentedArray<byte> ToMemoryRented()
     {
-        var pool = MemoryPool<byte>.Shared.Rent(SIZE);
-        var memory = pool.Memory[..SIZE];
+        var array = ArrayPool<byte>.Shared.Rent(SIZE);
+        var memory = array.AsMemory()[..SIZE];
         int offset = 0;
 
         BinaryPrimitives.WriteInt64BigEndian(memory.Span[offset..], ProtocolId);
@@ -28,6 +28,6 @@ internal record UdpTrackerConnectRequest(
 
         BinaryPrimitives.WriteInt32BigEndian(memory.Span[offset..], TransactionId);
 
-        return new MemoryRented<byte>(pool, SIZE);
+        return new RentedArray<byte>(array, SIZE);
     }
 }

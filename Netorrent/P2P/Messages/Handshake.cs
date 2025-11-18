@@ -45,11 +45,11 @@ internal readonly record struct Handshake(
     /// <summary>
     /// Serializes the handshake into a byte array ready to send over TCP.
     /// </summary>
-    public MemoryRented<byte> ToBytes()
+    public RentedArray<byte> ToBytes()
     {
-        var memory = MemoryPool<byte>.Shared.Rent(TotalLength);
+        var array = ArrayPool<byte>.Shared.Rent(TotalLength);
 
-        var buffer = memory.Memory.Span[..TotalLength];
+        var buffer = array.AsSpan()[..TotalLength];
         int offset = 0;
 
         buffer[offset] = Pstrlen;
@@ -67,7 +67,7 @@ internal readonly record struct Handshake(
 
         PeerIdBytes.AsSpan().CopyTo(buffer[offset..]);
 
-        return new MemoryRented<byte>(memory, buffer.Length);
+        return new RentedArray<byte>(array, buffer.Length);
     }
 
     /// <summary>

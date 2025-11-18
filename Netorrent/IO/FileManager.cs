@@ -217,7 +217,7 @@ internal class FileManager : IDisposable
         }
     }
 
-    public async ValueTask<MemoryRented<byte>> ReadPieceAsync(
+    public async ValueTask<RentedArray<byte>> ReadPieceAsync(
         int pieceIndex,
         int begin,
         int length,
@@ -229,14 +229,14 @@ internal class FileManager : IDisposable
         return await ReadAsync(offset, length, ct);
     }
 
-    private async ValueTask<MemoryRented<byte>> ReadAsync(
+    private async ValueTask<RentedArray<byte>> ReadAsync(
         long globalOffset,
         int length,
         CancellationToken ct
     )
     {
-        var memoryPool = MemoryPool<byte>.Shared.Rent(length);
-        var buffer = memoryPool.Memory[..length];
+        var array = ArrayPool<byte>.Shared.Rent(length);
+        var buffer = array.AsMemory()[..length];
         int totalRead = 0;
 
         foreach (var file in _files)
@@ -264,7 +264,7 @@ internal class FileManager : IDisposable
         if (totalRead < length)
             length = totalRead;
 
-        return new MemoryRented<byte>(memoryPool, length);
+        return new RentedArray<byte>(array, length);
     }
 
     public void Dispose()
