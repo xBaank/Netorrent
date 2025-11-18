@@ -42,8 +42,8 @@ public class Bitfield
     }
 
     public bool IsComplete => _bits.HasAllSet();
-    public IReadOnlySet<int> PiecesIndexes =>
-        Enumerable.Range(0, _bits.Length).AsValueEnumerable().Where(i => _bits[i]).ToHashSet();
+    public IReadOnlyList<bool> Pieces =>
+        Enumerable.Range(0, _bits.Length).AsValueEnumerable().Select(i => _bits[i]).ToList();
 
     internal async Task AddPiece(int index, CancellationToken cancellationToken)
     {

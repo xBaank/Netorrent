@@ -3,7 +3,7 @@ using System.Threading.Channels;
 
 namespace Netorrent.P2P.Managers.Request;
 
-internal class RequestManager : IAsyncDisposable
+internal class UploadScheduler : IAsyncDisposable
 {
     private const int PEER_REQUEST_LIMIT = 8;
     private const int MAX_IGNORED_REQUESTS = 16;

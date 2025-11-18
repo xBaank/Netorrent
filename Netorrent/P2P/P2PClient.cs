@@ -126,7 +126,7 @@ internal class P2PClient : IAsyncDisposable
             iPEndPoint,
             _bitField,
             FileManager,
-            new RequestManager(),
+            new UploadScheduler(),
             new PieceManager(FileManager.MaxBlocksByPiece),
             _pieceSelector,
             _logger
@@ -196,7 +196,7 @@ internal class P2PClient : IAsyncDisposable
                 remoteEndPoint,
                 _bitField,
                 FileManager,
-                new RequestManager(),
+                new UploadScheduler(),
                 new PieceManager(FileManager.MaxBlocksByPiece),
                 _pieceSelector,
                 _logger

@@ -58,7 +58,7 @@ internal class FileManager : IDisposable
         MaxBlocksByPiece = _pieceLength / BlockSize;
     }
 
-    public List<RequestBlock> GetBlocksByPieceIndex(int pieceIndex)
+    public RequestBlock[] GetBlocksByPieceIndex(int pieceIndex)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(pieceIndex);
 
@@ -84,7 +84,7 @@ internal class FileManager : IDisposable
             requests[i] = new RequestBlock(pieceIndex, begin, length);
         }
 
-        return [.. requests];
+        return requests;
     }
 
     public ulong GetWrittenBytes()

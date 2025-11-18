@@ -23,7 +23,7 @@ internal class PeerConnection(
     IPEndPoint iPEndPoint,
     Bitfield myBitField,
     FileManager fileManager,
-    RequestManager requestManager,
+    UploadScheduler uploadScheduler,
     PieceManager pieceManager,
     PieceSelector pieceSelector,
     ILogger logger,
@@ -38,7 +38,7 @@ internal class PeerConnection(
     [Lazy]
     private NetworkStream Stream => TcpClient.GetStream();
     private readonly FileManager _fileManager = fileManager;
-    private readonly RequestManager _requestManager = requestManager;
+    private readonly UploadScheduler _uploadScheduler = uploadScheduler;
     private readonly PieceManager _pieceManager = pieceManager;
     private readonly PieceSelector _pieceSelector = pieceSelector;
     private readonly ILogger _logger = logger;
@@ -216,7 +216,7 @@ internal class PeerConnection(
 
     private async Task ProcessReceivedRequestsAsync(CancellationToken cancellationToken)
     {
-        await foreach (var item in _requestManager.Requests.WithCancellation(cancellationToken))
+        await foreach (var item in _uploadScheduler.Requests.WithCancellation(cancellationToken))
         {
             await ProcessRequestAsync(item, cancellationToken);
         }
@@ -261,7 +261,7 @@ internal class PeerConnection(
         var length = BinaryPrimitives.ReadInt32BigEndian(span[8..12]);
 
         var request = new RequestBlock(index, begin, length);
-        var response = await _requestManager.AddRequestAsync(request, cancellationToken);
+        var response = await _uploadScheduler.AddRequestAsync(request, cancellationToken);
 
         if (response == RequestResponseType.Violation)
             throw new InvalidDataException("Received invalid request from peer.");
@@ -371,7 +371,7 @@ internal class PeerConnection(
         var length = BinaryPrimitives.ReadInt32BigEndian(span[8..12]);
 
         var request = new RequestBlock(index, begin, length);
-        _requestManager.CancelRequest(request);
+        _uploadScheduler.CancelRequest(request);
     }
 
     public async ValueTask PerformHandshakeAsync(
@@ -542,7 +542,7 @@ internal class PeerConnection(
         {
             item.Dispose();
         }
-        await _requestManager.DisposeAsync();
+        await _uploadScheduler.DisposeAsync();
         await _pieceManager.DisposeAsync();
         TcpClient.Close();
     }
