@@ -1,5 +1,7 @@
 ﻿using System.Net;
+using System.Threading.Channels;
 using Netorrent.IO;
+using Netorrent.P2P.Managers.Request;
 using Netorrent.P2P.Messages;
 using ZLinq;
 
@@ -11,6 +13,10 @@ internal class RequestManager(
     FileManager fileManager
 )
 {
+    private Channel<RequestBlock> _requestBlocks = Channel.CreateBounded<RequestBlock>(
+        new BoundedChannelOptions(50) { SingleWriter = false, SingleReader = false }
+    );
+
     public void Start() { }
 
     public async Task ScheduleBlocksTask(CancellationToken cancellationToken)
