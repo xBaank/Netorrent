@@ -1,4 +1,4 @@
-﻿namespace Netorrent.P2P.Managers.Request;
+﻿namespace Netorrent.P2P.Messages;
 
 internal enum RequestResponseType
 {

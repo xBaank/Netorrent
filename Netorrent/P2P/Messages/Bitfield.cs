@@ -45,7 +45,7 @@ public class Bitfield
     public IReadOnlyList<bool> Pieces =>
         Enumerable.Range(0, _bits.Length).AsValueEnumerable().Select(i => _bits[i]).ToList();
 
-    internal async Task AddPiece(int index, CancellationToken cancellationToken)
+    internal async Task SetPieceAsync(int index, CancellationToken cancellationToken)
     {
         if (index >= _bits.Length)
             return;

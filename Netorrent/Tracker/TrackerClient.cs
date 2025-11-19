@@ -24,9 +24,15 @@ internal class TrackerClient(
     IPAddress? forcedIp
 ) : IAsyncDisposable
 {
-    private List<ITracker> _trackers = [];
+    private readonly List<ITracker> _trackers = [];
+    private Task? _processTrackersTask;
 
-    public async Task Start(CancellationToken cancellationToken)
+    public Task? ProcessTrackersTask => _processTrackersTask;
+
+    public void Start(CancellationToken cancellationToken) =>
+        _processTrackersTask ??= ProcessTrackersAsync(cancellationToken);
+
+    private async Task ProcessTrackersAsync(CancellationToken cancellationToken)
     {
         List<string> announceList = [metaInfo.Announce, .. metaInfo.AnnounceList ?? []];
         var urls =

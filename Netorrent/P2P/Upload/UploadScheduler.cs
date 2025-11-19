@@ -1,7 +1,8 @@
 ﻿using System.Collections.Concurrent;
 using System.Threading.Channels;
+using Netorrent.P2P.Messages;
 
-namespace Netorrent.P2P.Managers.Request;
+namespace Netorrent.P2P.Upload;
 
 internal class UploadScheduler : IAsyncDisposable
 {

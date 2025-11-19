@@ -2,32 +2,41 @@
 
 namespace Netorrent.P2P.Measurement;
 
-public class SpeedTracker
+public class SpeedTracker(double alpha = 0.3)
 {
-    private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
-    private readonly Lock _lock = new();
     private long _bytesSinceLast;
-    private TimeSpan _lastTime;
+    private long _totalBytes;
 
-    public DownloadSpeed CurrentBps => GetCurrentBps();
-    public ByteSize TotalBytes { get; private set; }
+    private double _currentBps;
+    private long _lastTimestamp = Stopwatch.GetTimestamp();
+
+    private readonly double _alpha = alpha;
+
+    public ByteSize TotalBytes => Interlocked.Read(ref _totalBytes);
+    public DownloadSpeed CurrentBps => _currentBps;
 
     public void AddBytes(int count)
     {
-        lock (_lock)
-        {
-            TotalBytes += count;
-            _bytesSinceLast += count;
-        }
+        if (count <= 0)
+            return;
+        Interlocked.Add(ref _bytesSinceLast, count);
+        Interlocked.Add(ref _totalBytes, count);
     }
 
-    private DownloadSpeed GetCurrentBps()
+    internal void Sample()
     {
-        var now = _stopwatch.Elapsed;
-        var delta = now - _lastTime;
-        var toReturn = _bytesSinceLast / delta.TotalSeconds;
-        _bytesSinceLast = 0;
-        _lastTime = now;
-        return toReturn;
+        long now = Stopwatch.GetTimestamp();
+        long prev = _lastTimestamp;
+        _lastTimestamp = now;
+
+        long bytes = Interlocked.Exchange(ref _bytesSinceLast, 0);
+
+        double elapsedSec = (double)(now - prev) / Stopwatch.Frequency;
+        if (elapsedSec <= 0)
+            return;
+
+        double instant = bytes / elapsedSec;
+
+        _currentBps = _alpha * instant + (1 - _alpha) * _currentBps;
     }
 }

@@ -1,6 +1,6 @@
 ﻿using Netorrent.Other;
 
-namespace Netorrent.P2P.Managers.Piece;
+namespace Netorrent.P2P.Messages;
 
 internal readonly struct Block(int index, int begin, RentedArray<byte> payload) : IDisposable
 {

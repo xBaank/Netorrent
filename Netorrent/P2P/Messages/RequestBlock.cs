@@ -1,11 +1,11 @@
-﻿namespace Netorrent.P2P.Managers.Request;
+﻿namespace Netorrent.P2P.Messages;
 
 internal struct RequestBlock(int index, int begin, int length)
 {
     public readonly int Index = index;
     public readonly int Begin = begin;
     public readonly int Length = length;
-    public bool IsCancelled = false;
+    public bool IsCancelled { get; set; } = false;
 
     public static bool operator ==(RequestBlock left, RequestBlock right) => left.Equals(right);
 

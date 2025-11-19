@@ -5,9 +5,9 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.IO;
 using Netorrent.Other;
-using Netorrent.P2P.Managers.Piece;
-using Netorrent.P2P.Managers.Request;
+using Netorrent.P2P.Download;
 using Netorrent.P2P.Messages;
+using Netorrent.P2P.Upload;
 using Netorrent.TorrentFile.FileStructure;
 using TimeSpanXt;
 using ZLinq;
@@ -24,7 +24,7 @@ internal class P2PClient : IAsyncDisposable
     private readonly ConcurrentQueue<IPEndPoint> _knownPeers = [];
     private readonly PeerId _peerId;
     private readonly Bitfield _bitField;
-    private readonly PieceSelector _pieceSelector;
+    private readonly RequestManager _requestManager;
     private readonly ChannelReader<IPEndPoint> _trackersChannel;
     private Task? _listenerTask;
     private Task? _peersTask;
@@ -54,7 +54,7 @@ internal class P2PClient : IAsyncDisposable
         FileManager = fileManager;
         DownloadInfo = new DownloadInfo(_activePeers, fileManager, bitField);
         _peerIpProxy = peerIpProxy;
-        _pieceSelector = new PieceSelector(_activePeers, _bitField);
+        _requestManager = new RequestManager(_activePeers, _bitField, fileManager);
     }
 
     public void ProcessPeers(CancellationToken cancellationToken) =>
@@ -65,6 +65,24 @@ internal class P2PClient : IAsyncDisposable
 
     private async Task ProcessPeersTask(CancellationToken cancellationToken)
     {
+        _requestManager.Start(cancellationToken);
+        _requestManager.WaitTask?.ContinueWith(
+            task =>
+            {
+                if (task.IsCanceled)
+                {
+                    DownloadInfo.SetCanceled();
+                }
+                else if (task.IsFaulted)
+                {
+                    DownloadInfo.SetException(task.Exception);
+                }
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default
+        );
+
         var connectTasks = new List<Task>();
 
         await foreach (var iPEndPoint in _trackersChannel.ReadAllAsync(cancellationToken))
@@ -127,8 +145,7 @@ internal class P2PClient : IAsyncDisposable
             _bitField,
             FileManager,
             new UploadScheduler(),
-            new PieceManager(FileManager.MaxBlocksByPiece),
-            _pieceSelector,
+            _requestManager,
             _logger
         );
 
@@ -197,8 +214,7 @@ internal class P2PClient : IAsyncDisposable
                 _bitField,
                 FileManager,
                 new UploadScheduler(),
-                new PieceManager(FileManager.MaxBlocksByPiece),
-                _pieceSelector,
+                _requestManager,
                 _logger
             );
 
@@ -257,7 +273,6 @@ internal class P2PClient : IAsyncDisposable
                 }
 
                 _activePeers.Remove(peerConnection.IPEndPoint, out _);
-                await _pieceSelector.OnPeerDisconnected(cancellationToken);
                 await peerConnection.DisposeAsync();
 
                 if (_knownPeers.TryDequeue(out var iPEndPoint))
@@ -273,13 +288,15 @@ internal class P2PClient : IAsyncDisposable
 
     private PeerConnection? GetWorstPeer()
     {
+        //TODO if im downloading then i should get rid of peers that chock me first and then the slowest ones
+        //TODO if im uploading then i should get rid of peers that i chock first and then the slowest ones
         var minAge = 30.Seconds();
 
         if (_activePeers.IsEmpty)
             return null;
 
         var avgSpeedKbps = _activePeers
-            .Values.Select(p => p.SpeedTracker.CurrentBps.Kbps)
+            .Values.Select(p => p.DownloadSpeedTracker.CurrentBps.Kbps)
             .DefaultIfEmpty(0.0)
             .Average();
 
@@ -292,14 +309,14 @@ internal class P2PClient : IAsyncDisposable
             .Values.AsValueEnumerable()
             .Where(p =>
                 p.ConnectionDuration > minAge
-                && (p.SpeedTracker.CurrentBps.Kbps < minAcceptableSpeed || p.PeerChocking)
+                && (p.DownloadSpeedTracker.CurrentBps.Kbps < minAcceptableSpeed || p.PeerChocking)
             )
             .ToList();
 
         if (candidates.Count == 0)
             return null;
 
-        return candidates.MinBy(p => p.SpeedTracker.CurrentBps.Bps);
+        return candidates.MinBy(p => p.DownloadSpeedTracker.CurrentBps.Bps);
     }
 
     public async ValueTask DisposeAsync()

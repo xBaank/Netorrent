@@ -17,7 +17,8 @@ public class DownloadInfo
         _peers.Values.Where(i => !i.PeerChocking && i.AmInterested);
     public int ActivePeers => PeersNotChocking.Count();
     public int TotalPeers => _peers.Values.Count();
-    public DownloadSpeed DownloadSpeed => PeersNotChocking.Sum(p => p.SpeedTracker.CurrentBps.Bps);
+    public DownloadSpeed DownloadSpeed =>
+        PeersNotChocking.Sum(p => p.DownloadSpeedTracker.CurrentBps.Bps);
     public ByteSize DownloadedBytes => (long)_fileManager.GetWrittenBytes();
     public ByteSize TotalBytes => _fileManager.TotalSize;
     public Task DownloadTask => _downloadTaskCompletitionSource.Task;

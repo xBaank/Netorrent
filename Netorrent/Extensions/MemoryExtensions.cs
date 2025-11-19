@@ -1,5 +1,4 @@
 ﻿using System.Buffers;
-using System.IO;
 using Netorrent.Other;
 using ZLinq;
 
@@ -7,7 +6,7 @@ namespace Netorrent.Extensions;
 
 internal static class MemoryExtensions
 {
-    extension(IList<Memory<byte>> chunks)
+    extension(Memory<byte>[] chunks)
     {
         public RentedArray<byte> Combine()
         {

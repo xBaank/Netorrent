@@ -80,46 +80,44 @@ public class Torrent : IAsyncDisposable
         DownloadInfo.Reset();
         _cancellationTokenSource = new();
         var cancellationToken = _cancellationTokenSource.Token;
+        cancellationToken.Register(_p2pClient.DownloadInfo.SetCanceled);
 
         _p2pClient.ListenForPeers(cancellationToken);
         _p2pClient.ProcessPeers(cancellationToken);
         _p2pClient.ListenerTask?.ContinueWith(
-            task =>
-            {
-                if (task.IsCanceled)
-                {
-                    DownloadInfo.SetCanceled();
-                }
-                else if (task.IsFaulted)
-                {
-                    DownloadInfo.SetException(task.Exception);
-                }
-            },
+            Cancel,
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default
         );
         _p2pClient.PeersTask?.ContinueWith(
-            task =>
-            {
-                if (task.IsCanceled)
-                {
-                    DownloadInfo.SetCanceled();
-                }
-                else if (task.IsFaulted)
-                {
-                    DownloadInfo.SetException(task.Exception);
-                }
-            },
+            Cancel,
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default
         );
 
-        cancellationToken.Register(_p2pClient.DownloadInfo.SetCanceled);
         _trackerClient.Start(cancellationToken);
+        _trackerClient.ProcessTrackersTask?.ContinueWith(
+            Cancel,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default
+        );
 
         State = State.Started;
+    }
+
+    private void Cancel(Task task)
+    {
+        if (task.IsCanceled)
+        {
+            DownloadInfo.SetCanceled();
+        }
+        else if (task.IsFaulted)
+        {
+            DownloadInfo.SetException(task.Exception);
+        }
     }
 
     public void Stop()
