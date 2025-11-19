@@ -160,6 +160,11 @@ internal class PeerConnection(
             {
                 var bitfieldBytes = message.Payload!.Value.Memory;
                 PeerBitField = new Bitfield(bitfieldBytes.Span, MyBitField.Length);
+                foreach (var (index, hasPiece) in PeerBitField.Pieces.AsValueEnumerable().Index())
+                {
+                    if (hasPiece)
+                        _requestManager.IncreaseRarity(index);
+                }
                 await SendInterestAsync(cancellationToken);
                 continue;
             }
@@ -195,6 +200,11 @@ internal class PeerConnection(
                 int pieceIndex = BinaryPrimitives.ReadInt32BigEndian(
                     message.Payload!.Value.Memory.Span
                 );
+
+                if (PeerBitField.HasPiece(pieceIndex))
+                    continue;
+
+                _requestManager.IncreaseRarity(pieceIndex);
                 await PeerBitField.SetPieceAsync(pieceIndex, cancellationToken);
                 await SendInterestAsync(cancellationToken);
                 continue;
@@ -257,9 +267,12 @@ internal class PeerConnection(
         }
     }
 
-    internal async ValueTask AddRequestAsync(RequestBlock requestBlock)
+    internal async ValueTask AddRequestAsync(
+        RequestBlock requestBlock,
+        CancellationToken cancellationToken
+    )
     {
-        await _blockToRequest.Writer.WriteAsync(requestBlock);
+        await _blockToRequest.Writer.WriteAsync(requestBlock, cancellationToken);
         Interlocked.Add(ref _requestedBlocksCount, 1);
     }
 
@@ -521,6 +534,11 @@ internal class PeerConnection(
         while (_currentPieceBlocks.TryDequeue(out var item))
         {
             item.Dispose();
+        }
+        foreach (var (index, hasPiece) in PeerBitField.Pieces.AsValueEnumerable().Index())
+        {
+            if (hasPiece)
+                _requestManager.DecreaseRarity(index);
         }
         await _uploadScheduler.DisposeAsync();
         TcpClient.Close();

@@ -86,6 +86,16 @@ internal class FileManager : IDisposable
         return requests;
     }
 
+    public List<RequestBlock> GetAllRequestBlocks()
+    {
+        var allRequests = new List<RequestBlock>();
+        for (int i = 0; i < _pieceHashes.Count; i++)
+        {
+            allRequests.AddRange(GetBlocksByPieceIndex(i));
+        }
+        return allRequests;
+    }
+
     public ulong GetWrittenBytes()
     {
         long total = 0;
