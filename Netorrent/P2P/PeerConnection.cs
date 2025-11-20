@@ -55,7 +55,6 @@ internal class PeerConnection(
         new BoundedChannelOptions(16) { SingleWriter = false, SingleReader = true }
     );
     private int _requestedBlocksCount = 0;
-    private readonly ConcurrentQueue<Block> _currentPieceBlocks = new();
     private DateTime _lastKeepAlive;
     private Task? _loopTask;
     private CancellationTokenSource? _cancellationTokenSource;
@@ -260,7 +259,7 @@ internal class PeerConnection(
         {
             if (PeerChocking)
             {
-                await _requestManager.CancelRequestAsync(item, cancellationToken);
+                item.State = RequestBlockState.Pending;
                 continue;
             }
             await SendRequestAsync(item, cancellationToken);
@@ -336,10 +335,9 @@ internal class PeerConnection(
 
     private async ValueTask ProcessBlockAsync(Block block, CancellationToken cancellationToken)
     {
-        _currentPieceBlocks.Enqueue(block);
         var memory = block.Payload.Memory;
         DownloadSpeedTracker.AddBytes(memory.Length);
-        await _requestManager.ReceiveBlockAsync(block);
+        await _requestManager.ReceiveBlockAsync(block, cancellationToken);
     }
 
     private void ReceiveCancel(Message message)
@@ -528,10 +526,6 @@ internal class PeerConnection(
             item.Dispose();
         }
         await foreach (var item in _incomingMessages.Reader.ReadAllAsync())
-        {
-            item.Dispose();
-        }
-        while (_currentPieceBlocks.TryDequeue(out var item))
         {
             item.Dispose();
         }

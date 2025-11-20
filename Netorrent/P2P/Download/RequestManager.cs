@@ -14,13 +14,6 @@ internal class RequestManager(
     FileManager fileManager
 )
 {
-    private readonly Channel<RequestBlock> _requestBlocks = Channel.CreateBounded<RequestBlock>(
-        new BoundedChannelOptions(fileManager.MaxBlocksByPiece * 5)
-        {
-            SingleWriter = false,
-            SingleReader = false,
-        }
-    );
     private readonly Channel<Block> _receiveBlocks = Channel.CreateBounded<Block>(
         new BoundedChannelOptions(fileManager.MaxBlocksByPiece * 5)
         {
@@ -29,6 +22,7 @@ internal class RequestManager(
         }
     );
     private readonly List<RequestBlock> _allRequestBlocks = fileManager.GetAllRequestBlocks();
+    private readonly ConcurrentDictionary<int, PieceBuffer> _pieceBuffers = [];
     private Task? _requestManagerTask;
 
     public Task? WaitTask => _requestManagerTask;
@@ -48,7 +42,40 @@ internal class RequestManager(
     public async Task ReceiveBlocksAsync(CancellationToken cancellationToken)
     {
         await foreach (var receiveBlock in _receiveBlocks.Reader.ReadAllAsync(cancellationToken))
-        { }
+        {
+            if (!_pieceBuffers.TryGetValue(receiveBlock.Index, out var pieceBuffer))
+            {
+                pieceBuffer = new PieceBuffer(receiveBlock.Index, fileManager);
+                _pieceBuffers[receiveBlock.Index] = pieceBuffer;
+            }
+
+            pieceBuffer.AddBlock(receiveBlock);
+
+            if (!pieceBuffer.IsComplete)
+                continue;
+
+            try
+            {
+                var isWritten = await pieceBuffer.WritePieceAsync(cancellationToken);
+                _pieceBuffers.TryRemove(receiveBlock.Index, out _);
+
+                if (!isWritten)
+                {
+                    _pieceBuffers[receiveBlock.Index] = new PieceBuffer(
+                        receiveBlock.Index,
+                        fileManager
+                    );
+                }
+                else
+                {
+                    await myBitfield.SetPieceAsync(receiveBlock.Index, cancellationToken);
+                }
+            }
+            finally
+            {
+                pieceBuffer.Dispose();
+            }
+        }
     }
 
     public async Task ScheduleBlocksAsync(CancellationToken cancellationToken)
@@ -64,17 +91,19 @@ internal class RequestManager(
                 var blocksToRequest = _allRequestBlocks
                     .AsValueEnumerable()
                     .Where(i => i.State == RequestBlockState.Pending)
+                    .Where(i => peerConnection.PeerBitField.HasPiece(i.Index))
                     .OrderByDescending(i => i.Rarity)
-                    .ThenBy(_ => Random.Shared.Next())
-                    .Take(8)
+                    .Take(fileManager.MaxBlocksByPiece * 5)
+                    .OrderByDescending(_ => Random.Shared.Next())
+                    .Take(8 - peerConnection.RequestedBlocksCount)
                     .ToArray();
 
                 foreach (var requestBlock in blocksToRequest)
                 {
-                    await peerConnection.AddRequestAsync(requestBlock, cancellationToken);
-                    requestBlock.State = RequestBlockState.Pending;
+                    requestBlock.State = RequestBlockState.Requested;
                     requestBlock.RequestedFrom = peerConnection;
                     requestBlock.RequestedAt = DateTimeOffset.UtcNow;
+                    await peerConnection.AddRequestAsync(requestBlock, cancellationToken);
                 }
             }
 
@@ -98,16 +127,19 @@ internal class RequestManager(
         }
     }
 
-    internal async ValueTask ReceiveBlockAsync(Block block)
+    internal async ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken)
     {
-        await _receiveBlocks.Writer.WriteAsync(block);
-    }
+        var requestBlock = _allRequestBlocks
+            .AsValueEnumerable()
+            .FirstOrDefault(i => i.Index == block.Index && i.Begin == block.Begin);
 
-    internal async ValueTask CancelRequestAsync(
-        RequestBlock item,
-        CancellationToken cancellationToken
-    )
-    {
-        await _requestBlocks.Writer.WriteAsync(item, cancellationToken);
+        if (requestBlock is not null)
+        {
+            requestBlock.State = RequestBlockState.Received;
+            requestBlock.RequestedFrom = null;
+            requestBlock.RequestedAt = null;
+        }
+
+        await _receiveBlocks.Writer.WriteAsync(block, cancellationToken);
     }
 }

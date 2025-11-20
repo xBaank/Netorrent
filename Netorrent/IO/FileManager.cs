@@ -57,6 +57,24 @@ internal class FileManager : IDisposable
         MaxBlocksByPiece = _pieceLength / BlockSize;
     }
 
+    public int GetBlockCountByPieceIndex(int pieceIndex)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(pieceIndex);
+
+        var pieceCount = (TotalSize + _pieceLength - 1) / _pieceLength;
+
+        if (pieceIndex >= pieceCount)
+            throw new ArgumentOutOfRangeException(nameof(pieceIndex));
+
+        var pieceLength =
+            (pieceIndex == pieceCount - 1)
+                ? TotalSize - (long)pieceIndex * _pieceLength
+                : _pieceLength;
+
+        int blockCount = (int)((pieceLength + BlockSize - 1) / BlockSize);
+        return blockCount;
+    }
+
     public RequestBlock[] GetBlocksByPieceIndex(int pieceIndex)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(pieceIndex);
