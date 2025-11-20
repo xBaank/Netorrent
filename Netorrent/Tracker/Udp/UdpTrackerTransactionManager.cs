@@ -3,9 +3,9 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
+using Netorrent.Extensions;
 using Netorrent.Tracker.Udp.Request;
 using Netorrent.Tracker.Udp.Response;
-using TimeSpanXt;
 
 namespace Netorrent.Tracker.Udp;
 
@@ -119,11 +119,11 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
                     );
                     transaction.RetryCount++;
                     var seconds = 15 * (transaction.RetryCount + 1);
-                    transaction.NextRetryTime = DateTime.UtcNow + seconds.Seconds();
+                    transaction.NextRetryTime = DateTime.UtcNow + seconds.Seconds;
                 }
             }
 
-            await Task.Delay(1.Seconds(), cancellationToken);
+            await Task.Delay(1.Seconds, cancellationToken);
         }
     }
 
@@ -186,7 +186,7 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
         if (_connectionCreationById.TryGetValue(connectionId, out var creationTime))
         {
             var diff = DateTime.UtcNow - creationTime;
-            return diff > 1.Minutes();
+            return diff > 1.Minutes;
         }
         return true;
     }
@@ -207,7 +207,7 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
 
         using var payload = packet.ToMemoryRented();
         var seconds = 15 * (transaction.RetryCount + 1);
-        transaction.NextRetryTime = DateTime.UtcNow + seconds.Seconds();
+        transaction.NextRetryTime = DateTime.UtcNow + seconds.Seconds;
 
         await udpClient.SendAsync(payload.Memory, packet.IPEndPoint, cancellationToken);
 

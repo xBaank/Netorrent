@@ -1,14 +1,13 @@
 ﻿// See https://aka.ms/new-console-template for more information
 using Microsoft.Extensions.Logging;
 using Netorrent.TorrentFile;
-using TimeSpanXt;
 
 ILogger logger = LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger("TorrentCLI");
 
 var torrentClient = new TorrentClient(o => o with { Logger = logger });
 await using var torrent = await torrentClient.ImportTorrentAsync(
     "C:\\Users\\elrob\\Downloads\\debian-13.2.0-amd64-netinst.iso.torrent",
-    "C:\\Users\\elrob\\Downloads\\output"
+    "D:\\output"
 );
 
 var task = Task.Run(async () =>
@@ -23,7 +22,7 @@ var task = Task.Run(async () =>
             torrent.DownloadInfo.ActivePeers,
             torrent.DownloadInfo.TotalPeers
         );
-        await Task.Delay(1.Seconds());
+        await Task.Delay(1000);
     }
 });
 torrent.Start();

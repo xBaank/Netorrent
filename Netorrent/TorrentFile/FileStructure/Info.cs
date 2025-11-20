@@ -1,5 +1,4 @@
 ﻿using System.Security.Cryptography;
-using Lazy;
 using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
 
@@ -25,8 +24,7 @@ public record Info(
     List<InfoFile>? Files = null
 )
 {
-    [Lazy]
-    public byte[] InfoHash => ComputeInfoHash(RawInfo);
+    public byte[] InfoHash = ComputeInfoHash(RawInfo);
 
     private static byte[] ComputeInfoHash(BDictionary info)
     {

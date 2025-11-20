@@ -23,8 +23,9 @@ internal class UploadScheduler : IAsyncDisposable
 
     public bool IsIgnoring => _pendingRequests.Reader.Count >= PEER_REQUEST_LIMIT;
     public IAsyncEnumerable<RequestBlock> Requests =>
-        _pendingRequests.Reader.ReadAllAsync().Where(i => !i.IsCancelled);
+        _pendingRequests.Reader.ReadAllAsync().Where(i => i.State != RequestBlockState.Cancelled);
 
+    //TODO calculate max based on upload speed and latency
     public async ValueTask<RequestResponseType> AddRequestAsync(
         RequestBlock request,
         CancellationToken cancellationToken
@@ -67,7 +68,7 @@ internal class UploadScheduler : IAsyncDisposable
         if (!_requestByIBL.TryGetValue(key, out var requestBlock))
             return;
 
-        requestBlock.IsCancelled = true;
+        requestBlock.State = RequestBlockState.Cancelled;
         _requestByIBL.TryRemove(key, out _);
     }
 

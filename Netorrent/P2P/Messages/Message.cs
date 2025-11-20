@@ -46,7 +46,7 @@ internal readonly record struct Message(byte Id, RentedArray<byte>? Payload) : I
         BinaryPrimitives.WriteInt32BigEndian(buffer[..4], 1 + payloadLength);
         buffer[4] = Id;
         if (payloadLength > 0)
-            Payload!.Value.Memory.Span.CopyTo(buffer.Slice(5, payloadLength));
+            Payload!.Memory.Span.CopyTo(buffer.Slice(5, payloadLength));
         return new(array, buffer.Length);
     }
 
@@ -94,6 +94,17 @@ internal readonly record struct Message(byte Id, RentedArray<byte>? Payload) : I
         BinaryPrimitives.WriteInt32BigEndian(buffer.Span.Slice(4, 4), begin);
         BinaryPrimitives.WriteInt32BigEndian(buffer.Span.Slice(8, 4), length);
         return new Message(Request, new RentedArray<byte>(array, buffer.Length));
+    }
+
+    public static Message CreateCancel(int index, int begin, int length)
+    {
+        var array = ArrayPool<byte>.Shared.Rent(12);
+        var buffer = array.AsMemory()[..12];
+
+        BinaryPrimitives.WriteInt32BigEndian(buffer.Span[..4], index);
+        BinaryPrimitives.WriteInt32BigEndian(buffer.Span.Slice(4, 4), begin);
+        BinaryPrimitives.WriteInt32BigEndian(buffer.Span.Slice(8, 4), length);
+        return new Message(Cancel, new RentedArray<byte>(array, buffer.Length));
     }
 
     public static Message CreatePiece(int index, int begin, RentedArray<byte> block)

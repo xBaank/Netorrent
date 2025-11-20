@@ -3,13 +3,13 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
+using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.Other;
 using Netorrent.P2P.Download;
 using Netorrent.P2P.Messages;
 using Netorrent.P2P.Upload;
 using Netorrent.TorrentFile.FileStructure;
-using TimeSpanXt;
 using ZLinq;
 
 namespace Netorrent.P2P;
@@ -290,7 +290,7 @@ internal class P2PClient : IAsyncDisposable
     {
         //TODO if im downloading then i should get rid of peers that chock me first and then the slowest ones
         //TODO if im uploading then i should get rid of peers that i chock first and then the slowest ones
-        var minAge = 30.Seconds();
+        var minAge = 30.Seconds;
 
         if (_activePeers.IsEmpty)
             return null;

@@ -2,6 +2,7 @@
 using System.Security.Cryptography;
 using Microsoft.Win32.SafeHandles;
 using Netorrent.Other;
+using Netorrent.P2P.Download;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
 
@@ -75,7 +76,7 @@ internal class FileManager : IDisposable
         return blockCount;
     }
 
-    public RequestBlock[] GetBlocksByPieceIndex(int pieceIndex)
+    private RequestBlock[] GetBlocksByPieceIndex(int pieceIndex, PieceRarity pieceRarity)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(pieceIndex);
 
@@ -98,7 +99,7 @@ internal class FileManager : IDisposable
         {
             var begin = (int)(i * BlockSize);
             var length = (int)Math.Min(BlockSize, pieceLength - begin);
-            requests[i] = new RequestBlock(pieceIndex, begin, length);
+            requests[i] = new RequestBlock(pieceIndex, begin, length, pieceRarity);
         }
 
         return requests;
@@ -109,7 +110,7 @@ internal class FileManager : IDisposable
         var allRequests = new List<RequestBlock>();
         for (int i = 0; i < _pieceHashes.Count; i++)
         {
-            allRequests.AddRange(GetBlocksByPieceIndex(i));
+            allRequests.AddRange(GetBlocksByPieceIndex(i, new()));
         }
         return allRequests;
     }

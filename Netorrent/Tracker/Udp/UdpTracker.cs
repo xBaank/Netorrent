@@ -5,7 +5,6 @@ using Netorrent.Extensions;
 using Netorrent.P2P;
 using Netorrent.Tracker.Udp.Request;
 using Netorrent.Tracker.Udp.Response;
-using TimeSpanXt;
 
 namespace Netorrent.Tracker.Udp;
 
@@ -54,9 +53,9 @@ internal class UdpTracker(
 
         while (!_cancellationTokenSource.Token.IsCancellationRequested)
         {
-            await Task.Delay(_lastResponse.Interval.Seconds(), _cancellationTokenSource.Token);
+            await Task.Delay(_lastResponse.Interval.Seconds, _cancellationTokenSource.Token);
 
-            var interval = _lastResponse.Interval.Seconds();
+            var interval = _lastResponse.Interval.Seconds;
 
             if (logger.IsEnabled(LogLevel.Trace))
                 logger.LogTrace("Waiting {seconds} seconds", interval.TotalSeconds);

@@ -1,8 +1,8 @@
 ﻿using System.Net;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
+using Netorrent.Extensions;
 using Netorrent.P2P;
-using TimeSpanXt;
 
 namespace Netorrent.Tracker.Http;
 
@@ -43,7 +43,7 @@ internal class HttpTracker(
 
         while (!_cancellationTokenSource.Token.IsCancellationRequested)
         {
-            var interval = response.Interval.Seconds();
+            var interval = response.Interval.Seconds;
 
             if (logger.IsEnabled(LogLevel.Trace))
                 logger.LogTrace("Waiting {seconds} seconds", interval.TotalSeconds);

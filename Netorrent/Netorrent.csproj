@@ -13,9 +13,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Lazy.Fody" Version="1.11.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
-    <PackageReference Include="TimeSpan.Xt" Version="0.5.3" />
     <PackageReference Include="ZLinq" Version="1.5.4" />
   </ItemGroup>
   <ItemGroup>

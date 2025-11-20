@@ -56,7 +56,7 @@ public class Bitfield
             await OnHavePieceAsync(index, cancellationToken);
     }
 
-    internal bool HasPiece(int index) => _bits.Length < index && _bits[index];
+    internal bool HasPiece(int index) => index < _bits.Length && _bits[index];
 
     internal bool HasAnyMissingPiece(Bitfield other)
     {

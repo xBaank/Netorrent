@@ -1,17 +1,26 @@
-﻿using System.Collections.Concurrent;
-using Netorrent.Extensions;
+﻿using Netorrent.Extensions;
 using Netorrent.IO;
-using Netorrent.Other;
 using Netorrent.P2P.Messages;
 using ZLinq;
 
 namespace Netorrent.P2P.Download;
 
-internal class PieceBuffer(int index, FileManager fileManager) : IDisposable
+internal class PieceBuffer : IDisposable
 {
-    private readonly List<Block> _buffer = [];
-    private readonly int blocksCount = fileManager.GetBlockCountByPieceIndex(index);
-    public bool IsComplete => _buffer.Count == blocksCount;
+    private readonly List<Block> _buffer;
+    private readonly int _blocksCount;
+    private readonly int _index;
+    private readonly FileManager _fileManager;
+
+    public PieceBuffer(int index, FileManager fileManager)
+    {
+        _index = index;
+        _fileManager = fileManager;
+        _blocksCount = fileManager.GetBlockCountByPieceIndex(index);
+        _buffer = new List<Block>(_blocksCount);
+    }
+
+    public bool IsComplete => _buffer.Count == _blocksCount;
 
     public void AddBlock(Block block)
     {
@@ -20,35 +29,33 @@ internal class PieceBuffer(int index, FileManager fileManager) : IDisposable
 
     public async ValueTask<bool> WritePieceAsync(CancellationToken cancellationToken)
     {
-        if (_buffer.Count != blocksCount)
+        if (_buffer.Count != _blocksCount)
         {
             return false;
         }
 
         using var data = _buffer
             .AsValueEnumerable()
-            .OrderBy(i => i.Index)
+            .OrderBy(i => i.Begin)
             .Select(i => i.Payload.Memory)
             .ToArray()
             .Combine();
 
-        var isOK = await fileManager.VerifyPieceAsync(index, data.Memory, cancellationToken);
+        var isOK = await _fileManager.VerifyPieceAsync(_index, data.Memory, cancellationToken);
 
         if (isOK)
         {
-            await fileManager.WritePieceAsync(index, 0, data.Memory, cancellationToken);
+            await _fileManager.WritePieceAsync(_index, 0, data.Memory, cancellationToken);
         }
 
         return isOK;
     }
 
-    //TODO rented array that is created based on the piece index and where blocks will be written to
     public void Dispose()
     {
         foreach (var item in _buffer)
         {
             item.Dispose();
         }
-        _buffer.Clear();
     }
 }
