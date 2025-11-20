@@ -76,43 +76,22 @@ internal class FileManager : IDisposable
         return blockCount;
     }
 
-    private RequestBlock[] GetBlocksByPieceIndex(int pieceIndex, PieceRarity pieceRarity)
+    public RequestBlock GetRequestBlockByBlockIndex(int pieceIndex, int blockIndex)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(pieceIndex);
-
-        // total number of pieces
+        ArgumentOutOfRangeException.ThrowIfNegative(blockIndex);
         var pieceCount = (TotalSize + _pieceLength - 1) / _pieceLength;
         if (pieceIndex >= pieceCount)
             throw new ArgumentOutOfRangeException(nameof(pieceIndex));
-
-        // compute actual piece length (last piece may be smaller)
         var pieceLength =
             (pieceIndex == pieceCount - 1)
                 ? TotalSize - (long)pieceIndex * _pieceLength
                 : _pieceLength;
-
-        // number of blocks in this piece (ceiling division)
         int blockCount = (int)((pieceLength + BlockSize - 1) / BlockSize);
-        var requests = new RequestBlock[blockCount];
-
-        for (int i = 0; i < blockCount; i++)
-        {
-            var begin = (int)(i * BlockSize);
-            var length = (int)Math.Min(BlockSize, pieceLength - begin);
-            requests[i] = new RequestBlock(pieceIndex, begin, length, pieceRarity);
-        }
-
-        return requests;
-    }
-
-    public List<RequestBlock> GetAllRequestBlocks()
-    {
-        var allRequests = new List<RequestBlock>();
-        for (int i = 0; i < _pieceHashes.Count; i++)
-        {
-            allRequests.AddRange(GetBlocksByPieceIndex(i, new()));
-        }
-        return allRequests;
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(blockIndex, blockCount);
+        int begin = blockIndex * BlockSize;
+        int length = (int)Math.Min(BlockSize, pieceLength - begin);
+        return new RequestBlock(pieceIndex, begin, length);
     }
 
     public ulong GetWrittenBytes()
