@@ -197,7 +197,7 @@ internal class RequestManager(
     )
     {
         var desired = peerConnection.DownloadSpeedTracker.CurrentBps.Kbps / 50;
-        var max = Math.Clamp(desired, 8, 32);
+        var max = Math.Clamp(desired, 8, 16);
 
         while (peerConnection.RequestedBlocksCount < max)
         {
@@ -229,6 +229,7 @@ internal class RequestManager(
                         peerConnection.IPEndPoint
                     );
                 }
+                break;
             }
         }
     }
