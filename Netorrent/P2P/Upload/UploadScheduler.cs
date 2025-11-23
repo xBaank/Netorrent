@@ -1,12 +1,13 @@
 ﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
 using Netorrent.IO;
 using Netorrent.P2P.Messages;
 
 namespace Netorrent.P2P.Upload;
 
-internal class UploadScheduler(FileManager fileManager) : IAsyncDisposable
+internal class UploadScheduler(FileManager fileManager, ILogger logger) : IAsyncDisposable
 {
     private readonly Channel<RequestBlock> _pendingRequests = Channel.CreateBounded<RequestBlock>(
         new BoundedChannelOptions(128) { SingleWriter = false, SingleReader = true }
@@ -32,6 +33,11 @@ internal class UploadScheduler(FileManager fileManager) : IAsyncDisposable
             if (requestBlock is { State: RequestBlockState.Cancelled } or { RequestedFrom: null })
                 continue;
 
+            _requestByIBL.TryRemove(
+                (requestBlock.Index, requestBlock.Begin, requestBlock.Length),
+                out _
+            );
+
             var pieceData = await fileManager.ReadPieceAsync(
                 requestBlock.Index,
                 requestBlock.Begin,
@@ -40,7 +46,24 @@ internal class UploadScheduler(FileManager fileManager) : IAsyncDisposable
             );
 
             using var block = new Block(requestBlock.Index, requestBlock.Begin, pieceData);
-            await requestBlock.RequestedFrom.SendBlockAsync(block, cancellationToken);
+            try
+            {
+                await requestBlock.RequestedFrom.SendBlockAsync(block, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                if (logger.IsEnabled(LogLevel.Error))
+                {
+                    logger.LogError(
+                        ex,
+                        "Failed to send block Index: {Index}, Begin: {Begin}, Length: {Length} to Peer: {PeerEndPoint}",
+                        requestBlock.Index,
+                        requestBlock.Begin,
+                        requestBlock.Length,
+                        requestBlock.RequestedFrom.IPEndPoint
+                    );
+                }
+            }
         }
     }
 
@@ -74,7 +97,7 @@ internal class UploadScheduler(FileManager fileManager) : IAsyncDisposable
     )
     {
         var desired = request.RequestedFrom!.UploadSpeedTracker.CurrentBps.Kbps / 50;
-        var max = Math.Clamp(desired, min: 4, max: 8);
+        var max = Math.Clamp(desired, min: 8, max: 32);
 
         if (request.RequestedFrom!.UploadRequestedBlocksCount >= max)
             return false;

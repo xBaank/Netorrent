@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.P2P.Messages;
@@ -11,18 +12,19 @@ namespace Netorrent.P2P.Download;
 internal class RequestManager(
     IReadOnlyDictionary<IPEndPoint, PeerConnection> activePeers,
     Bitfield myBitfield,
-    FileManager fileManager
+    FileManager fileManager,
+    ILogger logger
 ) : IAsyncDisposable
 {
     const int MinPeersForRarity = 6;
     const int WarmupTimeoutSecods = 8;
 
     private readonly Channel<Block> _receiveBlocks = Channel.CreateBounded<Block>(
-        new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
+        new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = false }
     );
     private readonly Channel<PeerConnection> _scheduleChannel =
         Channel.CreateBounded<PeerConnection>(
-            new BoundedChannelOptions(50) { SingleReader = true, SingleWriter = false }
+            new BoundedChannelOptions(256) { SingleReader = true, SingleWriter = false }
         );
     private readonly Lock _rarityLock = new();
     private readonly int[] _pieceRarity = new int[myBitfield.Length];
@@ -195,7 +197,7 @@ internal class RequestManager(
     )
     {
         var desired = peerConnection.DownloadSpeedTracker.CurrentBps.Kbps / 50;
-        var max = Math.Clamp(desired, 4, 32);
+        var max = Math.Clamp(desired, 8, 32);
 
         while (peerConnection.RequestedBlocksCount < max)
         {
@@ -209,16 +211,24 @@ internal class RequestManager(
             block.RequestedAt = DateTimeOffset.UtcNow;
             try
             {
-                await peerConnection
-                    .SendRequestAsync(block, cancellationToken)
-                    .ConfigureAwait(false);
+                await peerConnection.SendRequestAsync(block, cancellationToken);
             }
-            catch
+            catch (Exception ex)
             {
                 block.RequestedFrom = null;
                 block.RequestedAt = null;
                 block.State = RequestBlockState.Pending;
                 peerConnection.DecreaseRequestedBlockCount();
+                if (logger.IsEnabled(LogLevel.Error))
+                {
+                    logger.LogError(
+                        ex,
+                        "Failed to send request block {Index}:{Begin} to peer {Peer}",
+                        block.Index,
+                        block.Begin,
+                        peerConnection.IPEndPoint
+                    );
+                }
             }
         }
     }

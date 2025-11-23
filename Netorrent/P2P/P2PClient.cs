@@ -55,8 +55,8 @@ internal class P2PClient : IAsyncDisposable
         FileManager = fileManager;
         DownloadInfo = new DownloadInfo(_activePeers, fileManager, bitField);
         _peerIpProxy = peerIpProxy;
-        _requestManager = new RequestManager(_activePeers, _bitField, fileManager);
-        _uploadScheduler = new UploadScheduler(fileManager);
+        _requestManager = new RequestManager(_activePeers, _bitField, fileManager, logger);
+        _uploadScheduler = new UploadScheduler(fileManager, logger);
     }
 
     public void ProcessPeers(CancellationToken cancellationToken) =>
