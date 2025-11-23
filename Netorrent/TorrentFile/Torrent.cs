@@ -16,6 +16,7 @@ public class Torrent : IAsyncDisposable
     public MetaInfo MetaInfo { get; init; }
     public Bitfield Bitfield => _myBitfield;
     public DownloadInfo DownloadInfo => _p2pClient.DownloadInfo;
+    public string OutputDirectory => _fileManager.OutputDirectory;
 
     public State State { get; private set; } = State.None;
 
@@ -23,7 +24,6 @@ public class Torrent : IAsyncDisposable
     private readonly TrackerClient _trackerClient;
     private readonly FileManager _fileManager;
     private readonly Bitfield _myBitfield;
-    private readonly Func<IPAddress, IPAddress>? PeerIpProxy;
     private CancellationTokenSource? _cancellationTokenSource;
 
     internal Torrent(
@@ -69,7 +69,6 @@ public class Torrent : IAsyncDisposable
             logger,
             forcedIp
         );
-        PeerIpProxy = peerIpProxy;
     }
 
     public void Start()

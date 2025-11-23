@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
 using Netorrent.Extensions;
+using Netorrent.Other;
 using Netorrent.P2P;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker.Udp;
@@ -24,10 +25,7 @@ public class TorrentClient : IAsyncDisposable
     {
         var options = new TorrentClientOptions(new(), NullLogger.Instance, null);
         _options = action?.Invoke(options) ?? options;
-        var udpClient = new UdpClient(AddressFamily.InterNetworkV6);
-        udpClient.Client.DualMode = true;
-        udpClient.Client.Bind(new IPEndPoint(IPAddress.IPv6Any, 0));
-        _trackerTransactionManager = new(udpClient, _options.Logger);
+        _trackerTransactionManager = new(Udp.GetFreeUdpClient(), _options.Logger);
         _trackerTransactionManager.Start(_cancellationTokenSource.Token);
     }
 

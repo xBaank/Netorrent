@@ -20,6 +20,7 @@ internal class FileManager : IDisposable
 
     public long TotalSize { get; }
     public int MaxBlocksByPiece { get; }
+    public string OutputDirectory => _outputDirectory;
 
     public FileManager(
         string outputDirectory,

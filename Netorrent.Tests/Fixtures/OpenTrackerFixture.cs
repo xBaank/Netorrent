@@ -10,6 +10,8 @@ public class OpenTrackerFixture : IAsyncInitializer, IAsyncDisposable
     public string AnnounceUrl { get; private set; } = "";
     public string UdpAnnounceUrl { get; private set; } = "";
 
+    public string[] AnnounceUrls => [AnnounceUrl, UdpAnnounceUrl];
+
     public async Task InitializeAsync()
     {
         _container = new ContainerBuilder()

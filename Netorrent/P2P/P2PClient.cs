@@ -17,7 +17,7 @@ namespace Netorrent.P2P;
 internal class P2PClient : IAsyncDisposable
 {
     private const int MAX_ACTIVE_PEER_COUNT = 50;
-    private readonly TcpListener _listener = Tcp.GetFreeTcpListenerInRange(6881, 6899);
+    private readonly TcpListener _listener = Tcp.GetFreeTcpListener();
     private readonly MetaInfo _metaInfo;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _activePeers = [];
