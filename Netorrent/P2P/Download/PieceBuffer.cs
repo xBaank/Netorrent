@@ -8,6 +8,7 @@ namespace Netorrent.P2P.Download;
 internal class PieceBuffer : IDisposable
 {
     private readonly List<Block> _buffer;
+    private readonly bool[] _blockReceivedFlags;
     private readonly int _blocksCount;
     private readonly int _index;
     private readonly FileManager _fileManager;
@@ -17,15 +18,23 @@ internal class PieceBuffer : IDisposable
         _index = index;
         _fileManager = fileManager;
         _blocksCount = fileManager.GetBlockCountByPieceIndex(index);
+        _blockReceivedFlags = new bool[_blocksCount];
         _buffer = new List<Block>(_blocksCount);
     }
 
-    public bool IsComplete => _buffer.Count == _blocksCount;
-
     public void AddBlock(Block block)
     {
+        var blockIndex = block.BlockIndex;
+        if (_blockReceivedFlags[blockIndex])
+        {
+            block.Dispose();
+            return;
+        }
         _buffer.Add(block);
+        _blockReceivedFlags[blockIndex] = true;
     }
+
+    public bool IsComplete => _buffer.Count == _blocksCount;
 
     public async ValueTask<bool> WritePieceAsync(CancellationToken cancellationToken)
     {

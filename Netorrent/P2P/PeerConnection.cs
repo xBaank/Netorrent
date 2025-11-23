@@ -99,7 +99,7 @@ internal class PeerConnection(
 
     public async Task TrackSpeedAsync(CancellationToken cancellationToken)
     {
-        var waitTime = 100.Milliseconds;
+        var waitTime = 250.Milliseconds;
         while (!cancellationToken.IsCancellationRequested)
         {
             DownloadSpeedTracker.Sample();
@@ -414,6 +414,7 @@ internal class PeerConnection(
             var message = Message.CreateInterested();
             await _outgoingMessages.Writer.WriteAsync(message, cancellationToken);
             AmInterested = interest;
+            await _requestManager.OnPeerInterestedAsync(this, cancellationToken);
         }
     }
 

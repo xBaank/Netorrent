@@ -52,8 +52,7 @@ public class Bitfield
 
         _bits[index] = true;
 
-        if (OnHavePieceAsync is not null)
-            await OnHavePieceAsync(index, cancellationToken);
+        OnHavePieceAsync?.Invoke(index, cancellationToken);
     }
 
     internal bool HasPiece(int index) => index < _bits.Length && _bits[index];

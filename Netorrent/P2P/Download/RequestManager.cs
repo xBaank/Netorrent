@@ -18,7 +18,7 @@ internal class RequestManager(
 ) : IAsyncDisposable
 {
     const int MinPeersForRarity = 6;
-    const int WarmupTimeoutMs = 8000;
+    const int WarmupTimeoutSecods = 8;
 
     private readonly Channel<Block> _receiveBlocks = Channel.CreateBounded<Block>(
         new BoundedChannelOptions(fileManager.MaxBlocksByPiece * 5)
@@ -27,13 +27,15 @@ internal class RequestManager(
             SingleReader = true,
         }
     );
-    private readonly Lock _rarityLock = new();
-    private readonly uint[] _pieceRarity = new uint[myBitfield.Length];
-    private readonly Dictionary<uint, HashSet<int>> rarityBuckets = [];
-    private readonly ConcurrentDictionary<int, PieceState> _pieceStates = [];
-    private readonly ConcurrentDictionary<int, PieceBuffer> _pieceBuffers = [];
     private readonly Channel<PeerConnection> _scheduleChannel =
-        Channel.CreateUnbounded<PeerConnection>();
+        Channel.CreateBounded<PeerConnection>(
+            new BoundedChannelOptions(50) { SingleReader = true, SingleWriter = false }
+        );
+    private readonly Lock _rarityLock = new();
+    private readonly int[] _pieceRarity = new int[myBitfield.Length];
+    private readonly ConcurrentDictionary<int, RequestBlock?[]> _requestBlocksByPieceIndex = [];
+    private readonly ConcurrentDictionary<int, PieceBuffer> _pieceBuffers = [];
+    private HashSet<int>? _currentRarestPieces;
     private Task? _requestManagerTask;
 
     public Task? WaitTask => _requestManagerTask;
@@ -77,15 +79,26 @@ internal class RequestManager(
                         receiveBlock.Index,
                         fileManager
                     );
+                    _requestBlocksByPieceIndex.TryRemove(receiveBlock.Index, out _);
                 }
                 else
                 {
+                    lock (_rarityLock)
+                    {
+                        _currentRarestPieces?.Remove(receiveBlock.Index);
+                        if (_currentRarestPieces?.Count == 0)
+                        {
+                            _currentRarestPieces = null;
+                        }
+                    }
+                    _requestBlocksByPieceIndex.TryRemove(receiveBlock.Index, out _);
                     await myBitfield.SetPieceAsync(receiveBlock.Index, cancellationToken);
                 }
             }
             finally
             {
                 pieceBuffer.Dispose();
+                _pieceBuffers.TryRemove(receiveBlock.Index, out _);
             }
         }
     }
@@ -94,13 +107,31 @@ internal class RequestManager(
     {
         while (!cancellationToken.IsCancellationRequested)
         {
+            foreach (
+                var requestBlock in _requestBlocksByPieceIndex
+                    .Values.AsValueEnumerable()
+                    .SelectMany(i => i)
+                    .Where(i => i is not null)
+            )
+            {
+                var passedTime =
+                    DateTimeOffset.UtcNow - (requestBlock!.RequestedAt ?? DateTimeOffset.UtcNow);
+
+                if (passedTime > 10.Seconds)
+                {
+                    requestBlock.State = RequestBlockState.Pending;
+                    requestBlock.RequestedFrom = null;
+                    requestBlock.RequestedAt = null;
+                }
+            }
+
             await Task.Delay(1.Seconds, cancellationToken);
         }
     }
 
     public async Task SchedulePiecesAsync(CancellationToken cancellationToken)
     {
-        var warmupTask = Task.Delay(WarmupTimeoutMs, cancellationToken);
+        var warmupTask = Task.Delay(WarmupTimeoutSecods.Seconds, cancellationToken);
         var minPeersReady = 0;
         do
         {
@@ -112,22 +143,40 @@ internal class RequestManager(
             var peerConnection in _scheduleChannel.Reader.ReadAllAsync(cancellationToken)
         )
         {
-            var activePieces = rarityBuckets
-                .AsValueEnumerable()
-                .OrderBy(kvp => kvp.Key)
-                .SelectMany(kvp => kvp.Value)
-                .Take(250)
-                .ToArray();
+            lock (_rarityLock)
+            {
+                var toTake = _currentRarestPieces is null ? 250 : 250 - _currentRarestPieces.Count;
+
+                var rarestPieces = _pieceRarity
+                    .AsValueEnumerable()
+                    .Select((rarity, index) => new { Index = index, Rarity = rarity })
+                    .Where(i => !myBitfield.HasPiece(i.Index))
+                    .OrderByDescending(i => i.Rarity)
+                    .Take(500)
+                    .Shuffle()
+                    .Take(toTake)
+                    .Select(i => i.Index)
+                    .ToHashSet();
+
+                _currentRarestPieces ??= rarestPieces;
+
+                foreach (var pieceIndex in rarestPieces)
+                {
+                    if (_currentRarestPieces.Contains(pieceIndex))
+                        continue;
+
+                    _currentRarestPieces.Add(pieceIndex);
+                }
+            }
 
             if (!peerConnection.AmInterested)
                 continue;
 
-            await ScheduleRequests(activePieces, peerConnection, cancellationToken);
+            await ScheduleRequests(peerConnection, cancellationToken);
         }
     }
 
     private async Task ScheduleRequests(
-        int[] pieces,
         PeerConnection peerConnection,
         CancellationToken cancellationToken
     )
@@ -143,7 +192,8 @@ internal class RequestManager(
 
         while (peerConnection.RequestedBlocksCount < max)
         {
-            var block = SelectBlock(peerConnection, pieces);
+            var block = SelectBlock(peerConnection);
+
             if (block is null)
                 break;
 
@@ -154,36 +204,35 @@ internal class RequestManager(
         }
     }
 
-    private RequestBlock? SelectBlock(PeerConnection peerConnection, int[] pieces)
+    private RequestBlock? SelectBlock(PeerConnection peerConnection)
     {
-        foreach (var index in pieces)
+        lock (_rarityLock)
         {
-            if (!_pieceStates.TryGetValue(index, out var piece))
+            if (_currentRarestPieces is null)
+                return null;
+
+            foreach (var index in _currentRarestPieces)
             {
-                piece = new((byte)fileManager.GetBlockCountByPieceIndex(index));
-                _pieceStates[index] = piece;
-            }
+                if (myBitfield.HasPiece(index))
+                    continue;
 
-            if (piece.IsComplete)
-                continue;
+                if (!peerConnection.PeerBitField.HasPiece(index))
+                    continue;
 
-            if (!peerConnection.PeerBitField.HasPiece(index))
-                continue;
-
-            for (int i = 0; i < piece.BlockCount; i++)
-            {
-                bool isRequested = piece.HasRequestedBlock(i);
-                bool isReceived = piece.HasReceivedBlock(i);
-
-                if (!isRequested && !isReceived)
+                if (!_requestBlocksByPieceIndex.TryGetValue(index, out var requestBlocks))
                 {
-                    // mark block as requested
-                    piece.RequestBlock(i);
+                    var blockCount = fileManager.GetBlockCountByPieceIndex(index);
+                    requestBlocks = new RequestBlock[blockCount];
+                    _requestBlocksByPieceIndex[index] = requestBlocks;
+                }
 
-                    var requestBlock = fileManager.GetRequestBlockByBlockIndex(index, i);
-                    requestBlock.RequestedAt = DateTimeOffset.UtcNow;
-                    requestBlock.RequestedFrom = peerConnection;
-                    return requestBlock;
+                for (int i = 0; i < requestBlocks.Length; i++)
+                {
+                    var currentRequestBlock = requestBlocks[i];
+                    if (currentRequestBlock is null or { State: RequestBlockState.Pending })
+                    {
+                        return requestBlocks[i] = fileManager.GetRequestBlockByBlockIndex(index, i);
+                    }
                 }
             }
         }
@@ -193,29 +242,18 @@ internal class RequestManager(
 
     internal void IncreaseRarity(int index)
     {
-        lock (_rarityLock)
-        {
-            var old = _pieceRarity[index];
-            var now = ++_pieceRarity[index];
-
-            rarityBuckets[old].Remove(index);
-            rarityBuckets[now].Add(index);
-        }
+        Interlocked.Increment(ref _pieceRarity[index]);
     }
 
     internal void DecreaseRarity(int index)
     {
-        lock (_rarityLock)
-        {
-            var old = _pieceRarity[index];
-            var now = --_pieceRarity[index];
-
-            rarityBuckets[old].Remove(index);
-            rarityBuckets[now].Add(index);
-        }
+        Interlocked.Decrement(ref _pieceRarity[index]);
     }
 
-    internal void OnPeerInterested(PeerConnection peer) => _scheduleChannel.Writer.TryWrite(peer);
+    internal async ValueTask OnPeerInterestedAsync(
+        PeerConnection peer,
+        CancellationToken cancellationToken
+    ) => await _scheduleChannel.Writer.WriteAsync(peer, cancellationToken);
 
     internal async ValueTask ReceiveBlockAsync(
         Block block,
@@ -223,13 +261,14 @@ internal class RequestManager(
         CancellationToken cancellationToken
     )
     {
-        _scheduleChannel.Writer.TryWrite(receiver);
         await _receiveBlocks.Writer.WriteAsync(block, cancellationToken);
+        await _scheduleChannel.Writer.WriteAsync(receiver, cancellationToken);
     }
 
     public async ValueTask DisposeAsync()
     {
         _receiveBlocks.Writer.TryComplete();
+        _scheduleChannel.Writer.TryComplete();
         await foreach (var item in _receiveBlocks.Reader.ReadAllAsync())
         {
             item.Dispose();
