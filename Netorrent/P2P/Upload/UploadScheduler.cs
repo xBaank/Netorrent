@@ -1,65 +1,88 @@
 ﻿using System.Collections.Concurrent;
+using System.Net;
 using System.Threading.Channels;
+using Netorrent.IO;
 using Netorrent.P2P.Messages;
 
 namespace Netorrent.P2P.Upload;
 
-internal class UploadScheduler : IAsyncDisposable
+internal class UploadScheduler(FileManager fileManager) : IAsyncDisposable
 {
-    private const int PEER_REQUEST_LIMIT = 8;
-    private const int MAX_IGNORED_REQUESTS = 16;
-    private const int MAX_VIOLATION_COUNT = 16;
-    private const int MAX_BLOCK_LENGTH = 16 * 1024;
-
     private readonly Channel<RequestBlock> _pendingRequests = Channel.CreateBounded<RequestBlock>(
-        new BoundedChannelOptions(PEER_REQUEST_LIMIT) { SingleWriter = true, SingleReader = true }
+        new BoundedChannelOptions(128) { SingleWriter = false, SingleReader = true }
     );
     private readonly ConcurrentDictionary<
         (int Index, int Begin, int Length),
         RequestBlock
     > _requestByIBL = [];
-    private int _violationCount = 0;
-    private int _ignoredRequests = 0;
 
-    public bool IsIgnoring => _pendingRequests.Reader.Count >= PEER_REQUEST_LIMIT;
-    public IAsyncEnumerable<RequestBlock> Requests =>
-        _pendingRequests.Reader.ReadAllAsync().Where(i => i.State != RequestBlockState.Cancelled);
+    private readonly Lock _unchokedSlotsLock = new();
+    private int _unchokedSlots = 0;
+    private Task? _waitTask;
 
-    //TODO calculate max based on upload speed and latency
-    public async ValueTask<RequestResponseType> AddRequestAsync(
+    public Task? WaitTask => _waitTask;
+
+    public void Start(CancellationToken cancellationToken) =>
+        _waitTask ??= ProcessRequestsAsync(cancellationToken);
+
+    private async Task ProcessRequestsAsync(CancellationToken cancellationToken)
+    {
+        await foreach (var requestBlock in _pendingRequests.Reader.ReadAllAsync(cancellationToken))
+        {
+            if (requestBlock is { State: RequestBlockState.Cancelled } or { RequestedFrom: null })
+                continue;
+
+            var pieceData = await fileManager.ReadPieceAsync(
+                requestBlock.Index,
+                requestBlock.Begin,
+                requestBlock.Length,
+                cancellationToken
+            );
+
+            using var block = new Block(requestBlock.Index, requestBlock.Begin, pieceData);
+            await requestBlock.RequestedFrom.SendBlockAsync(block, cancellationToken);
+        }
+    }
+
+    public void AddChokedSlot(PeerConnection peerConnection)
+    {
+        lock (_unchokedSlotsLock)
+        {
+            if (peerConnection.AmChocking)
+                return;
+            if (_unchokedSlots >= 4)
+                return;
+
+            _unchokedSlots++;
+        }
+    }
+
+    public void RemoveChokedSlot(PeerConnection peerConnection)
+    {
+        lock (_unchokedSlotsLock)
+        {
+            if (!peerConnection.AmChocking)
+                return;
+            if (_unchokedSlots <= 0)
+                return;
+            _unchokedSlots--;
+        }
+    }
+
+    public async ValueTask AddRequestAsync(
         RequestBlock request,
         CancellationToken cancellationToken
     )
     {
-        if (_violationCount >= MAX_VIOLATION_COUNT)
-            return RequestResponseType.Violation;
+        var desired = request.RequestedFrom!.UploadSpeedTracker.CurrentBps.Kbps / 50;
+        var max = Math.Clamp(desired, min: 2, max: 8);
 
-        if (IsIgnoring)
-        {
-            _ignoredRequests++;
-            if (_ignoredRequests >= MAX_IGNORED_REQUESTS)
-                return RequestResponseType.Ignored;
-        }
-
-        if (
-            request.Length <= 0
-            || request.Length > MAX_BLOCK_LENGTH
-            || request.Index < 0
-            || request.Index >= request.Length
-        )
-        {
-            _violationCount++;
-            return RequestResponseType.Ignored;
-        }
-
-        _ignoredRequests = 0;
-        _violationCount = 0;
+        if (request.RequestedFrom!.UploadRequestedBlocksCount >= max)
+            return;
 
         await _pendingRequests.Writer.WriteAsync(request, cancellationToken);
         var key = (request.Index, request.Begin, request.Length);
         _requestByIBL.TryAdd(key, request);
-
-        return RequestResponseType.Ok;
     }
 
     public void CancelRequest(RequestBlock request)

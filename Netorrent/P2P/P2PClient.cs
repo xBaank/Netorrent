@@ -25,6 +25,7 @@ internal class P2PClient : IAsyncDisposable
     private readonly PeerId _peerId;
     private readonly Bitfield _bitField;
     private readonly RequestManager _requestManager;
+    private readonly UploadScheduler _uploadScheduler;
     private readonly ChannelReader<IPEndPoint> _trackersChannel;
     private Task? _listenerTask;
     private Task? _peersTask;
@@ -55,6 +56,7 @@ internal class P2PClient : IAsyncDisposable
         DownloadInfo = new DownloadInfo(_activePeers, fileManager, bitField);
         _peerIpProxy = peerIpProxy;
         _requestManager = new RequestManager(_activePeers, _bitField, fileManager);
+        _uploadScheduler = new UploadScheduler(fileManager);
     }
 
     public void ProcessPeers(CancellationToken cancellationToken) =>
@@ -67,6 +69,24 @@ internal class P2PClient : IAsyncDisposable
     {
         _requestManager.Start(cancellationToken);
         _requestManager.WaitTask?.ContinueWith(
+            task =>
+            {
+                if (task.IsCanceled)
+                {
+                    DownloadInfo.SetCanceled();
+                }
+                else if (task.IsFaulted)
+                {
+                    DownloadInfo.SetException(task.Exception);
+                }
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default
+        );
+
+        _uploadScheduler.Start(cancellationToken);
+        _uploadScheduler.WaitTask?.ContinueWith(
             task =>
             {
                 if (task.IsCanceled)
@@ -144,7 +164,7 @@ internal class P2PClient : IAsyncDisposable
             iPEndPoint,
             _bitField,
             FileManager,
-            new UploadScheduler(),
+            _uploadScheduler,
             _requestManager,
             _logger
         );
@@ -213,7 +233,7 @@ internal class P2PClient : IAsyncDisposable
                 remoteEndPoint,
                 _bitField,
                 FileManager,
-                new UploadScheduler(),
+                _uploadScheduler,
                 _requestManager,
                 _logger
             );
@@ -326,6 +346,8 @@ internal class P2PClient : IAsyncDisposable
         {
             await item.Value.DisposeAsync();
         }
+        await _requestManager.DisposeAsync();
+        await _uploadScheduler.DisposeAsync();
         DownloadInfo.Dispose();
     }
 }

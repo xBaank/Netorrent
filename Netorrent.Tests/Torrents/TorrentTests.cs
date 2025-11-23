@@ -202,7 +202,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 }
             );
 
-            await using var leecherTorrent = leecher.ImportTorrent(metaInfo, $"Output_{i}");
+            var leecherTorrent = leecher.ImportTorrent(metaInfo, $"Output_{i}");
 
             yield return leecherTorrent;
         }

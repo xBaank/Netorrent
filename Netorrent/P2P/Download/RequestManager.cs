@@ -1,8 +1,5 @@
 ﻿using System.Collections.Concurrent;
-using System.Collections.Immutable;
-using System.IO.Pipelines;
 using System.Net;
-using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using Netorrent.Extensions;
 using Netorrent.IO;
@@ -21,11 +18,7 @@ internal class RequestManager(
     const int WarmupTimeoutSecods = 8;
 
     private readonly Channel<Block> _receiveBlocks = Channel.CreateBounded<Block>(
-        new BoundedChannelOptions(fileManager.MaxBlocksByPiece * 5)
-        {
-            SingleWriter = true,
-            SingleReader = true,
-        }
+        new BoundedChannelOptions(256) { SingleWriter = true, SingleReader = true }
     );
     private readonly Channel<PeerConnection> _scheduleChannel =
         Channel.CreateBounded<PeerConnection>(
@@ -131,14 +124,7 @@ internal class RequestManager(
 
     public async Task SchedulePiecesAsync(CancellationToken cancellationToken)
     {
-        var warmupTask = Task.Delay(WarmupTimeoutSecods.Seconds, cancellationToken);
-        var minPeersReady = 0;
-        do
-        {
-            await Task.Delay(100.Milliseconds, cancellationToken);
-            minPeersReady = activePeers.Values.Count(i => i.AmInterested);
-        } while (!warmupTask.IsCompletedSuccessfully && minPeersReady < MinPeersForRarity);
-
+        await WarmupAsync(cancellationToken);
         await foreach (
             var peerConnection in _scheduleChannel.Reader.ReadAllAsync(cancellationToken)
         )
@@ -169,11 +155,22 @@ internal class RequestManager(
                 }
             }
 
-            if (!peerConnection.AmInterested)
+            if (!peerConnection.AmInterested || peerConnection.PeerChocking)
                 continue;
 
             await ScheduleRequests(peerConnection, cancellationToken);
         }
+    }
+
+    private async Task WarmupAsync(CancellationToken cancellationToken)
+    {
+        var warmupTask = Task.Delay(WarmupTimeoutSecods.Seconds, cancellationToken);
+        var minPeersReady = 0;
+        do
+        {
+            await Task.Delay(100.Milliseconds, cancellationToken);
+            minPeersReady = activePeers.Values.Count(i => i.AmInterested && !i.PeerChocking);
+        } while (!warmupTask.IsCompletedSuccessfully && minPeersReady < MinPeersForRarity);
     }
 
     private async Task ScheduleRequests(
@@ -181,14 +178,8 @@ internal class RequestManager(
         CancellationToken cancellationToken
     )
     {
-        var max = peerConnection.DownloadSpeedTracker.CurrentBps.Kbps switch
-        {
-            >= 1000 => 32,
-            >= 500 => 16,
-            >= 200 => 12,
-            >= 50 => 10,
-            _ => 8,
-        };
+        var desired = peerConnection.DownloadSpeedTracker.CurrentBps.Kbps / 50;
+        var max = Math.Clamp(desired, 8, 32);
 
         while (peerConnection.RequestedBlocksCount < max)
         {
@@ -250,7 +241,7 @@ internal class RequestManager(
         Interlocked.Decrement(ref _pieceRarity[index]);
     }
 
-    internal async ValueTask OnPeerInterestedAsync(
+    internal async ValueTask OnPeerUnchockedAsync(
         PeerConnection peer,
         CancellationToken cancellationToken
     ) => await _scheduleChannel.Writer.WriteAsync(peer, cancellationToken);

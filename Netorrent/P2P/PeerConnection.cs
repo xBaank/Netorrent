@@ -43,14 +43,8 @@ internal class PeerConnection(
         new BoundedChannelOptions(50) { SingleWriter = false, SingleReader = true }
     );
 
-    private readonly Channel<RequestBlock> _blockToRequest = Channel.CreateBounded<RequestBlock>(
-        new BoundedChannelOptions(32) { SingleWriter = false, SingleReader = true }
-    );
-
-    private readonly Channel<Block> _receivedBlocks = Channel.CreateBounded<Block>(
-        new BoundedChannelOptions(32) { SingleWriter = false, SingleReader = true }
-    );
     private int _requestedBlocksCount = 0;
+    private int _uploadRequestedBlocksCount = 0;
     private DateTime _lastKeepAlive;
     private Task? _loopTask;
     private CancellationTokenSource? _cancellationTokenSource;
@@ -70,6 +64,7 @@ internal class PeerConnection(
     public Task? WaitTask => _loopTask;
     public TimeSpan ConnectionDuration => DateTime.UtcNow - _startedConnectionTime;
     public int RequestedBlocksCount => _requestedBlocksCount;
+    public int UploadRequestedBlocksCount => _uploadRequestedBlocksCount;
 
     public void Start(CancellationToken cancellationToken) =>
         _loopTask ??= RunPeerLoopAsync(cancellationToken);
@@ -87,9 +82,6 @@ internal class PeerConnection(
             WriteLoopAsync(_cancellationTokenSource.Token),
             ReadLoopAsync(_cancellationTokenSource.Token),
             ProcessIncomingMessagesAsync(_cancellationTokenSource.Token),
-            ProcessBlocksToRequestAsync(_cancellationTokenSource.Token),
-            ProcessReceivedBlocksAsync(_cancellationTokenSource.Token),
-            ProcessReceivedRequestsAsync(_cancellationTokenSource.Token),
             CheckTimeoutAsync(_cancellationTokenSource.Token),
             TrackSpeedAsync(_cancellationTokenSource.Token)
         );
@@ -187,6 +179,8 @@ internal class PeerConnection(
             if (message.Id == Message.Unchoke)
             {
                 PeerChocking = false;
+                _uploadScheduler.AddChokedSlot(this);
+                await _requestManager.OnPeerUnchockedAsync(this, cancellationToken);
                 continue;
             }
 
@@ -231,41 +225,17 @@ internal class PeerConnection(
         }
     }
 
-    private async Task ProcessReceivedRequestsAsync(CancellationToken cancellationToken)
-    {
-        await foreach (var item in _uploadScheduler.Requests.WithCancellation(cancellationToken))
-        {
-            await ProcessRequestAsync(item, cancellationToken);
-        }
-    }
-
-    private async Task ProcessReceivedBlocksAsync(CancellationToken cancellationToken)
-    {
-        await foreach (var item in _receivedBlocks.Reader.ReadAllAsync(cancellationToken))
-        {
-            await ProcessBlockAsync(item, cancellationToken);
-        }
-    }
-
-    private async Task ProcessBlocksToRequestAsync(CancellationToken cancellationToken)
-    {
-        await foreach (var item in _blockToRequest.Reader.ReadAllAsync(cancellationToken))
-        {
-            if (PeerChocking)
-            {
-                item.State = RequestBlockState.Pending;
-                continue;
-            }
-            await SendRequestAsync(item, cancellationToken);
-        }
-    }
-
     internal async ValueTask AddRequestAsync(
         RequestBlock requestBlock,
         CancellationToken cancellationToken
     )
     {
-        await _blockToRequest.Writer.WriteAsync(requestBlock, cancellationToken);
+        if (PeerChocking)
+        {
+            requestBlock.State = RequestBlockState.Pending;
+            return;
+        }
+        await SendRequestAsync(requestBlock, cancellationToken);
         Interlocked.Add(ref _requestedBlocksCount, 1);
     }
 
@@ -274,19 +244,21 @@ internal class PeerConnection(
         CancellationToken cancellationToken
     )
     {
+        if (AmChocking)
+            return;
+
         var span = message.Payload!.Memory.Span;
         var index = BinaryPrimitives.ReadInt32BigEndian(span[..4]);
         var begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
         var length = BinaryPrimitives.ReadInt32BigEndian(span[8..12]);
 
-        var request = new RequestBlock(index, begin, length);
-        var response = await _uploadScheduler.AddRequestAsync(request, cancellationToken);
-
-        if (response == RequestResponseType.Violation)
-            throw new InvalidDataException("Received invalid request from peer.");
-
-        if (response == RequestResponseType.Ignored)
-            return;
+        var request = new RequestBlock(index, begin, length)
+        {
+            RequestedAt = DateTimeOffset.UtcNow,
+            RequestedFrom = this,
+        };
+        await _uploadScheduler.AddRequestAsync(request, cancellationToken);
+        Interlocked.Increment(ref _uploadRequestedBlocksCount);
     }
 
     private async Task SendRequestAsync(RequestBlock nextBlock, CancellationToken cancellationToken)
@@ -300,20 +272,12 @@ internal class PeerConnection(
         Interlocked.Add(ref _requestedBlocksCount, -1);
     }
 
-    private async ValueTask ProcessRequestAsync(
-        RequestBlock request,
-        CancellationToken cancellationToken
-    )
+    public async ValueTask SendBlockAsync(Block block, CancellationToken cancellationToken)
     {
-        UploadSpeedTracker.AddBytes(request.Length);
-        using var pieceData = await _fileManager.ReadPieceAsync(
-            request.Index,
-            request.Begin,
-            request.Length,
-            cancellationToken
-        );
-        var pieceMessage = Message.CreatePiece(request.Index, request.Begin, pieceData);
+        UploadSpeedTracker.AddBytes(block.Payload.Length);
+        var pieceMessage = Message.CreatePiece(block.Index, block.Begin, block.Payload);
         await _outgoingMessages.Writer.WriteAsync(pieceMessage, cancellationToken);
+        Interlocked.Decrement(ref _uploadRequestedBlocksCount);
     }
 
     private async ValueTask ReceiveBlockAsync(Message message, CancellationToken cancellationToken)
@@ -324,7 +288,10 @@ internal class PeerConnection(
         var array = ArrayPool<byte>.Shared.Rent(span.Length - 8);
         span[8..].CopyTo(array.AsSpan());
         var block = new Block(index, begin, new RentedArray<byte>(array, span.Length - 8));
-        await _receivedBlocks.Writer.WriteAsync(block, cancellationToken);
+
+        var memory = block.Payload.Memory;
+        DownloadSpeedTracker.AddBytes(memory.Length);
+        await _requestManager.ReceiveBlockAsync(block, this, cancellationToken);
     }
 
     private async ValueTask ProcessBlockAsync(Block block, CancellationToken cancellationToken)
@@ -343,6 +310,7 @@ internal class PeerConnection(
 
         var request = new RequestBlock(index, begin, length);
         _uploadScheduler.CancelRequest(request);
+        Interlocked.Decrement(ref _uploadRequestedBlocksCount);
     }
 
     public async ValueTask PerformHandshakeAsync(
@@ -414,7 +382,6 @@ internal class PeerConnection(
             var message = Message.CreateInterested();
             await _outgoingMessages.Writer.WriteAsync(message, cancellationToken);
             AmInterested = interest;
-            await _requestManager.OnPeerInterestedAsync(this, cancellationToken);
         }
     }
 
@@ -535,7 +502,7 @@ internal class PeerConnection(
             if (hasPiece)
                 _requestManager.DecreaseRarity(index);
         }
-        await _uploadScheduler.DisposeAsync();
+        _uploadScheduler.RemoveChokedSlot(this);
         TcpClient.Close();
     }
 }
