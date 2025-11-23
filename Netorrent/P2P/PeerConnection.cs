@@ -179,7 +179,6 @@ internal class PeerConnection(
             if (message.Id == Message.Unchoke)
             {
                 PeerChocking = false;
-                _uploadScheduler.AddChokedSlot(this);
                 await _requestManager.OnPeerUnchockedAsync(this, cancellationToken);
                 continue;
             }
@@ -225,20 +224,6 @@ internal class PeerConnection(
         }
     }
 
-    internal async ValueTask AddRequestAsync(
-        RequestBlock requestBlock,
-        CancellationToken cancellationToken
-    )
-    {
-        if (PeerChocking)
-        {
-            requestBlock.State = RequestBlockState.Pending;
-            return;
-        }
-        await SendRequestAsync(requestBlock, cancellationToken);
-        Interlocked.Add(ref _requestedBlocksCount, 1);
-    }
-
     private async ValueTask ReceiveRequestAsync(
         Message message,
         CancellationToken cancellationToken
@@ -257,11 +242,12 @@ internal class PeerConnection(
             RequestedAt = DateTimeOffset.UtcNow,
             RequestedFrom = this,
         };
-        await _uploadScheduler.AddRequestAsync(request, cancellationToken);
-        Interlocked.Increment(ref _uploadRequestedBlocksCount);
+
+        if (await _uploadScheduler.AddRequestAsync(request, cancellationToken))
+            Interlocked.Increment(ref _uploadRequestedBlocksCount);
     }
 
-    private async Task SendRequestAsync(RequestBlock nextBlock, CancellationToken cancellationToken)
+    public async Task SendRequestAsync(RequestBlock nextBlock, CancellationToken cancellationToken)
     {
         var requestMessage = Message.CreateRequest(
             nextBlock.Index,
@@ -269,7 +255,19 @@ internal class PeerConnection(
             nextBlock.Length
         );
         await _outgoingMessages.Writer.WriteAsync(requestMessage, cancellationToken);
-        Interlocked.Add(ref _requestedBlocksCount, -1);
+        Interlocked.Increment(ref _requestedBlocksCount);
+    }
+
+    public void DecreaseRequestedBlockCount()
+    {
+        Interlocked.Decrement(ref _requestedBlocksCount);
+    }
+
+    public async Task SendCancelAsync(RequestBlock request, CancellationToken cancellationToken)
+    {
+        var cancelMessage = Message.CreateCancel(request.Index, request.Begin, request.Length);
+        await _outgoingMessages.Writer.WriteAsync(cancelMessage, cancellationToken);
+        Interlocked.Decrement(ref _requestedBlocksCount);
     }
 
     public async ValueTask SendBlockAsync(Block block, CancellationToken cancellationToken)
@@ -289,13 +287,6 @@ internal class PeerConnection(
         span[8..].CopyTo(array.AsSpan());
         var block = new Block(index, begin, new RentedArray<byte>(array, span.Length - 8));
 
-        var memory = block.Payload.Memory;
-        DownloadSpeedTracker.AddBytes(memory.Length);
-        await _requestManager.ReceiveBlockAsync(block, this, cancellationToken);
-    }
-
-    private async ValueTask ProcessBlockAsync(Block block, CancellationToken cancellationToken)
-    {
         var memory = block.Payload.Memory;
         DownloadSpeedTracker.AddBytes(memory.Length);
         await _requestManager.ReceiveBlockAsync(block, this, cancellationToken);
@@ -396,12 +387,6 @@ internal class PeerConnection(
         }
     }
 
-    internal async Task SendCancelAsync(RequestBlock request, CancellationToken cancellationToken)
-    {
-        var message = Message.CreateCancel(request.Index, request.Begin, request.Length);
-        await _outgoingMessages.Writer.WriteAsync(message, cancellationToken);
-    }
-
     private async Task SendChokedAsync(CancellationToken cancellationToken)
     {
         if (!AmChocking)
@@ -409,12 +394,13 @@ internal class PeerConnection(
             var message = Message.CreateChoke();
             await _outgoingMessages.Writer.WriteAsync(message, cancellationToken);
             AmChocking = true;
+            _uploadScheduler.RemoveChokedSlot(this);
         }
     }
 
     private async Task SendUnchokedAsync(CancellationToken cancellationToken)
     {
-        if (AmChocking)
+        if (AmChocking && _uploadScheduler.AddChokedSlot(this))
         {
             var message = Message.CreateUnchoke();
             await _outgoingMessages.Writer.WriteAsync(message, cancellationToken);

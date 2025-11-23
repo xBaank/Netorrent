@@ -85,9 +85,10 @@ public class TorrentTests(OpenTrackerFixture fixture)
             leecherTorrent.Start();
         }
 
-        await Task.WhenAll(
-            leechersTorrents.Select(lt => lt.DownloadInfo.DownloadTask.ShouldNotThrowAsync())
-        );
+        foreach (var leecherTorrent in leechersTorrents)
+        {
+            await leecherTorrent.DownloadInfo.DownloadTask.ShouldNotThrowAsync();
+        }
 
         foreach (var seederTorrent in seedersTorrents)
         {
@@ -107,6 +108,16 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 cancellationToken
             );
             originalFile.SequenceEqual(downloadedFile).ShouldBeTrue();
+        }
+
+        foreach (var seederTorrent in seedersTorrents)
+        {
+            await seederTorrent.DisposeAsync();
+        }
+
+        foreach (var leecherTorrent in leechersTorrents)
+        {
+            await leecherTorrent.DisposeAsync();
         }
     }
 
@@ -202,7 +213,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 }
             );
 
-            var leecherTorrent = leecher.ImportTorrent(metaInfo, $"Output_{i}");
+            var leecherTorrent = leecher.ImportTorrent(metaInfo, $"Output/Test_{i}");
 
             yield return leecherTorrent;
         }

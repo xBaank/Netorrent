@@ -44,45 +44,45 @@ internal class UploadScheduler(FileManager fileManager) : IAsyncDisposable
         }
     }
 
-    public void AddChokedSlot(PeerConnection peerConnection)
+    public bool AddChokedSlot(PeerConnection peerConnection)
     {
         lock (_unchokedSlotsLock)
         {
-            if (peerConnection.AmChocking)
-                return;
             if (_unchokedSlots >= 4)
-                return;
+                return false;
 
             _unchokedSlots++;
+            return true;
         }
     }
 
-    public void RemoveChokedSlot(PeerConnection peerConnection)
+    public bool RemoveChokedSlot(PeerConnection peerConnection)
     {
         lock (_unchokedSlotsLock)
         {
-            if (!peerConnection.AmChocking)
-                return;
             if (_unchokedSlots <= 0)
-                return;
+                return false;
+
             _unchokedSlots--;
+            return true;
         }
     }
 
-    public async ValueTask AddRequestAsync(
+    public async ValueTask<bool> AddRequestAsync(
         RequestBlock request,
         CancellationToken cancellationToken
     )
     {
         var desired = request.RequestedFrom!.UploadSpeedTracker.CurrentBps.Kbps / 50;
-        var max = Math.Clamp(desired, min: 2, max: 8);
+        var max = Math.Clamp(desired, min: 4, max: 8);
 
         if (request.RequestedFrom!.UploadRequestedBlocksCount >= max)
-            return;
+            return false;
 
-        await _pendingRequests.Writer.WriteAsync(request, cancellationToken);
         var key = (request.Index, request.Begin, request.Length);
         _requestByIBL.TryAdd(key, request);
+        await _pendingRequests.Writer.WriteAsync(request, cancellationToken);
+        return true;
     }
 
     public void CancelRequest(RequestBlock request)
