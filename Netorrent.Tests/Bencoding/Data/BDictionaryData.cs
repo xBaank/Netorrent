@@ -2,13 +2,13 @@
 
 namespace Netorrent.Tests.Bencoding.Data;
 
-public class BDictionaryData : TheoryData<string, BDictionary>
+public class BDictionaryData
 {
-    public BDictionaryData()
+    public static IEnumerable<(string, IBencodingNode)> GetTestData()
     {
-        Add("de", new BDictionary([]));
+        yield return ("de", new BDictionary([]));
 
-        Add(
+        yield return (
             "d3:cow3:mooe",
             new BDictionary(
                 new Dictionary<BString, IBencodingNode>()
@@ -18,7 +18,7 @@ public class BDictionaryData : TheoryData<string, BDictionary>
             )
         );
 
-        Add(
+        yield return (
             "d3:foo3:bare",
             new BDictionary(
                 new Dictionary<BString, IBencodingNode>()
@@ -28,7 +28,7 @@ public class BDictionaryData : TheoryData<string, BDictionary>
             )
         );
 
-        Add(
+        yield return (
             "d3:bar4:spam3:fooi42ee",
             new BDictionary(
                 new Dictionary<BString, IBencodingNode>()
@@ -39,7 +39,7 @@ public class BDictionaryData : TheoryData<string, BDictionary>
             )
         );
 
-        Add(
+        yield return (
             "d4:spaml1:a1:bee",
             new BDictionary(
                 new Dictionary<BString, IBencodingNode>()
@@ -49,7 +49,7 @@ public class BDictionaryData : TheoryData<string, BDictionary>
             )
         );
 
-        Add(
+        yield return (
             "d4:name5:alice3:numli1ei2ei3eee",
             new BDictionary(
                 new Dictionary<BString, IBencodingNode>()
@@ -60,7 +60,7 @@ public class BDictionaryData : TheoryData<string, BDictionary>
             )
         );
 
-        Add(
+        yield return (
             "d4:datai123e4:text5:helloe",
             new BDictionary(
                 new Dictionary<BString, IBencodingNode>()
@@ -71,7 +71,7 @@ public class BDictionaryData : TheoryData<string, BDictionary>
             )
         );
 
-        Add(
+        yield return (
             "d4:metad3:fooi1ee4:testi2ee",
             new BDictionary(
                 new Dictionary<BString, IBencodingNode>()
@@ -87,7 +87,7 @@ public class BDictionaryData : TheoryData<string, BDictionary>
             )
         );
 
-        Add(
+        yield return (
             "d3:outd3:inn4:deepee",
             new BDictionary(
                 new Dictionary<BString, IBencodingNode>()
@@ -102,7 +102,7 @@ public class BDictionaryData : TheoryData<string, BDictionary>
             )
         );
 
-        Add(
+        yield return (
             "d5:emptyle4:type4:liste",
             new BDictionary(
                 new Dictionary<BString, IBencodingNode>()

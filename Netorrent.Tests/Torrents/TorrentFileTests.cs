@@ -1,4 +1,5 @@
-﻿using Netorrent.Bencoding;
+﻿using System.Threading;
+using Netorrent.Bencoding;
 using Netorrent.TorrentFile;
 using Shouldly;
 
@@ -6,30 +7,24 @@ namespace Netorrent.Tests.Torrents;
 
 public class TorrentFileTests
 {
-    [Fact]
-    public async Task Should_export_torrent_file()
+    [Test]
+    public async Task Should_export_torrent_file(CancellationToken cancellationToken)
     {
         var torrentClient = new TorrentClient();
         var torrent = await torrentClient.ImportTorrentAsync(
             "Data/nosferatu.torrent",
             "Output",
-            TestContext.Current.CancellationToken
+            cancellationToken
         );
         File.Delete("Output/asd.torrent");
-        await torrent.ExportAsync("Output/asd.torrent", TestContext.Current.CancellationToken);
+        await torrent.ExportAsync("Output/asd.torrent", cancellationToken);
 
         var decoder = new BDecoder(
-            await File.ReadAllBytesAsync(
-                "Data/nosferatu.torrent",
-                TestContext.Current.CancellationToken
-            )
+            await File.ReadAllBytesAsync("Data/nosferatu.torrent", cancellationToken)
         );
 
         var decoder2 = new BDecoder(
-            await File.ReadAllBytesAsync(
-                "Output/asd.torrent",
-                TestContext.Current.CancellationToken
-            )
+            await File.ReadAllBytesAsync("Output/asd.torrent", cancellationToken)
         );
 
         var original = decoder.DecodeDic();
@@ -59,8 +54,8 @@ public class TorrentFileTests
         originalMetainfo.Info.InfoHash.ShouldBeEquivalentTo(expectedMetainfo.Info.InfoHash);
     }
 
-    [Fact]
-    public async Task Should_create_torrent_file_from_directory()
+    [Test]
+    public async Task Should_create_torrent_file_from_directory(CancellationToken cancellationToken)
     {
         var torrentClient = new TorrentClient();
         var torrent = await torrentClient.CreateTorrentAsync(
@@ -68,7 +63,7 @@ public class TorrentFileTests
             "http://test.com",
             ["http://test.com"],
             ["http://test.com"],
-            cancellationToken: TestContext.Current.CancellationToken
+            cancellationToken: cancellationToken
         );
 
         torrent.MetaInfo.Info.Type.ShouldBe(TorrentFile.FileStructure.InfoType.Multiple);
@@ -83,8 +78,8 @@ public class TorrentFileTests
         paths.ShouldContain("Folder1/Folder2/test3.txt");
     }
 
-    [Fact]
-    public async Task Should_create_torrent_file_from_file()
+    [Test]
+    public async Task Should_create_torrent_file_from_file(CancellationToken cancellationToken)
     {
         var torrentClient = new TorrentClient();
         var torrent = await torrentClient.CreateTorrentAsync(
@@ -92,7 +87,7 @@ public class TorrentFileTests
             "http://test.com",
             ["http://test.com"],
             ["http://test.com"],
-            cancellationToken: TestContext.Current.CancellationToken
+            cancellationToken: cancellationToken
         );
 
         torrent.MetaInfo.Info.Type.ShouldBe(TorrentFile.FileStructure.InfoType.Single);

@@ -2,24 +2,27 @@ using Netorrent.Bencoding.Structs;
 
 namespace Netorrent.Tests.Bencoding.Data;
 
-public class BlistData : TheoryData<string, BList>
+public class BlistData
 {
-    public BlistData()
+    public static IEnumerable<(string, BList)> GetTestData()
     {
-        Add("le", new List<IBencodingNode>() { });
+        yield return ("le", new List<IBencodingNode>() { });
 
-        Add("l4:spame", new List<IBencodingNode>() { new BString("spam") });
+        yield return ("l4:spame", new List<IBencodingNode>() { new BString("spam") });
 
-        Add("li42ee", new List<IBencodingNode>() { new BInt(42) });
+        yield return ("li42ee", new List<IBencodingNode>() { new BInt(42) });
 
-        Add(
+        yield return (
             "l4:spam4:eggse",
             new List<IBencodingNode>() { new BString("spam"), new BString("eggs") }
         );
 
-        Add("li1ei2ei3ee", new List<IBencodingNode>() { new BInt(1), new BInt(2), new BInt(3) });
+        yield return (
+            "li1ei2ei3ee",
+            new List<IBencodingNode>() { new BInt(1), new BInt(2), new BInt(3) }
+        );
 
-        Add(
+        yield return (
             "l4:spamli1ei2ee4:eggse",
             new List<IBencodingNode>()
             {
@@ -29,16 +32,22 @@ public class BlistData : TheoryData<string, BList>
             }
         );
 
-        Add("ll4:spamee", new List<IBencodingNode>() { new BList([new BString("spam")]) });
+        yield return (
+            "ll4:spamee",
+            new List<IBencodingNode>() { new BList([new BString("spam")]) }
+        );
 
-        Add("l0:4:datae", new List<IBencodingNode>() { new BString(""), new BString("data") });
+        yield return (
+            "l0:4:datae",
+            new List<IBencodingNode>() { new BString(""), new BString("data") }
+        );
 
-        Add(
+        yield return (
             "li-42e7:negintle",
             new List<IBencodingNode>() { new BInt(-42), new BString("negintl") }
         );
 
-        Add(
+        yield return (
             "l5:hello5:worldi123e3:abce",
             new List<IBencodingNode>()
             {
@@ -49,12 +58,12 @@ public class BlistData : TheoryData<string, BList>
             }
         );
 
-        Add(
+        yield return (
             "ll4:innee3:oute",
             new List<IBencodingNode>() { new BList([new BString("inne")]), new BString("out") }
         );
 
-        Add(
+        yield return (
             "ld3:key5:valuee4:testi123ee",
             new List<IBencodingNode>()
             {
