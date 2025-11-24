@@ -148,12 +148,16 @@ internal class RequestManager(
 
                     var freePeer = activePeers
                         .Values.AsValueEnumerable()
-                        .Where(i => i.AmInterested && !i.PeerChocking)
-                        .Shuffle()
-                        .FirstOrDefault();
+                        .FirstOrDefault(i =>
+                            i.AmInterested
+                            && !i.PeerChocking
+                            && i.RequestedBlocksCount < i.PeerRequestWindow.MaxInFlightRequests
+                        );
 
                     if (freePeer is not null)
-                        await _scheduleChannel.Writer.WriteAsync(freePeer, cancellationToken);
+                    {
+                        await ScheduleRequests(freePeer, cancellationToken);
+                    }
                 }
             }
 
