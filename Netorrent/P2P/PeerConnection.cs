@@ -286,7 +286,7 @@ internal class PeerConnection(
 
         var memory = block.Payload.Memory;
         DownloadSpeedTracker.AddBytes(memory.Length);
-        await _requestManager.ReceiveBlockAsync(block, this, cancellationToken);
+        await _requestManager.ReceiveBlockAsync(block, cancellationToken);
     }
 
     private void ReceiveCancel(Message message)

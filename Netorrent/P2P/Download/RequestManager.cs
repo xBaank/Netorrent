@@ -18,6 +18,7 @@ internal class RequestManager(
 {
     const int MinPeersForRarity = 6;
     const int WarmupTimeoutSecods = 8;
+    const int TimeoutSeconds = 10;
 
     private readonly Channel<Block> _receiveBlocks = Channel.CreateBounded<Block>(
         new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = false }
@@ -72,7 +73,7 @@ internal class RequestManager(
                 {
                     var rtt = requestBlock.RequestedAt.HasValue
                         ? receiveBlock.ReceivedAt - requestBlock.RequestedAt.Value
-                        : 10.Seconds;
+                        : TimeoutSeconds.Seconds;
                     receiveBlock.FromPeer.PeerRequestWindow.CalculateWindow(
                         (long)receiveBlock.FromPeer.DownloadSpeedTracker.CurrentBps.Bps,
                         rtt
@@ -135,7 +136,7 @@ internal class RequestManager(
                 var passedTime =
                     DateTimeOffset.UtcNow - (requestBlock!.RequestedAt ?? DateTimeOffset.UtcNow);
 
-                if (passedTime > 10.Seconds)
+                if (passedTime > TimeoutSeconds.Seconds)
                 {
                     var lastRequestedFrom = requestBlock.RequestedFrom[^1];
                     requestBlock.State = RequestBlockState.Pending;
@@ -313,11 +314,7 @@ internal class RequestManager(
         CancellationToken cancellationToken
     ) => await _scheduleChannel.Writer.WriteAsync(peer, cancellationToken);
 
-    internal async ValueTask ReceiveBlockAsync(
-        Block block,
-        PeerConnection receiver,
-        CancellationToken cancellationToken
-    )
+    internal async ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken)
     {
         await _receiveBlocks.Writer.WriteAsync(block, cancellationToken);
     }
