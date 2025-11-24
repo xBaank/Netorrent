@@ -16,7 +16,7 @@ internal class RequestBlock(int index, int begin, int length)
     public readonly int Begin = begin;
     public readonly int Length = length;
     public RequestBlockState State { get; set; } = RequestBlockState.Pending;
-    public PeerConnection? RequestedFrom { get; set; }
+    public List<PeerConnection> RequestedFrom { get; set; } = [];
     public DateTimeOffset? RequestedAt { get; set; }
 
     public static bool operator ==(RequestBlock left, RequestBlock right) => left.Equals(right);

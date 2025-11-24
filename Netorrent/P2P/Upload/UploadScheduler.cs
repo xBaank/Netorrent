@@ -1,5 +1,4 @@
 ﻿using System.Collections.Concurrent;
-using System.Net;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.IO;
@@ -10,7 +9,7 @@ namespace Netorrent.P2P.Upload;
 internal class UploadScheduler(FileManager fileManager, ILogger logger) : IAsyncDisposable
 {
     private readonly Channel<RequestBlock> _pendingRequests = Channel.CreateBounded<RequestBlock>(
-        new BoundedChannelOptions(128) { SingleWriter = false, SingleReader = true }
+        new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
     );
     private readonly ConcurrentDictionary<
         (int Index, int Begin, int Length),
@@ -30,8 +29,13 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IAsync
     {
         await foreach (var requestBlock in _pendingRequests.Reader.ReadAllAsync(cancellationToken))
         {
-            if (requestBlock is { State: RequestBlockState.Cancelled } or { RequestedFrom: null })
+            if (
+                requestBlock.State == RequestBlockState.Cancelled
+                || requestBlock.RequestedFrom.Count == 0
+            )
                 continue;
+
+            var peer = requestBlock.RequestedFrom[0];
 
             _requestByIBL.TryRemove(
                 (requestBlock.Index, requestBlock.Begin, requestBlock.Length),
@@ -45,10 +49,11 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IAsync
                 cancellationToken
             );
 
-            using var block = new Block(requestBlock.Index, requestBlock.Begin, pieceData);
+            using var block = new Block(requestBlock.Index, requestBlock.Begin, pieceData, peer);
+
             try
             {
-                await requestBlock.RequestedFrom.SendBlockAsync(block, cancellationToken);
+                await peer.SendBlockAsync(block, cancellationToken);
             }
             catch (Exception ex)
             {
@@ -60,14 +65,14 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IAsync
                         requestBlock.Index,
                         requestBlock.Begin,
                         requestBlock.Length,
-                        requestBlock.RequestedFrom.IPEndPoint
+                        peer
                     );
                 }
             }
         }
     }
 
-    public bool AddChokedSlot(PeerConnection peerConnection)
+    public bool AddChokedSlot()
     {
         lock (_unchokedSlotsLock)
         {
@@ -79,7 +84,7 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IAsync
         }
     }
 
-    public bool RemoveChokedSlot(PeerConnection peerConnection)
+    public bool RemoveChokedSlot()
     {
         lock (_unchokedSlotsLock)
         {
@@ -96,10 +101,9 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IAsync
         CancellationToken cancellationToken
     )
     {
-        var desired = request.RequestedFrom!.UploadSpeedTracker.CurrentBps.Kbps / 50;
-        var max = Math.Clamp(desired, min: 8, max: 32);
+        var from = request.RequestedFrom[0];
 
-        if (request.RequestedFrom!.UploadRequestedBlocksCount >= max)
+        if (from.UploadRequestedBlocksCount >= 4)
             return false;
 
         var key = (request.Index, request.Begin, request.Length);

@@ -19,10 +19,8 @@ internal class PeerConnection(
     TcpClient tcpClient,
     IPEndPoint iPEndPoint,
     Bitfield myBitField,
-    FileManager fileManager,
     UploadScheduler uploadScheduler,
     RequestManager requestManager,
-    ILogger logger,
     bool amChocking = true,
     bool amInterested = false,
     bool peerChocking = true,
@@ -32,19 +30,15 @@ internal class PeerConnection(
     private const int TimeoutInSeconds = 120;
 
     private readonly NetworkStream Stream = tcpClient.GetStream();
-    private readonly FileManager _fileManager = fileManager;
     private readonly UploadScheduler _uploadScheduler = uploadScheduler;
     private readonly RequestManager _requestManager = requestManager;
-    private readonly ILogger _logger = logger;
     private readonly Channel<Message> _incomingMessages = Channel.CreateBounded<Message>(
-        new BoundedChannelOptions(50) { SingleWriter = true, SingleReader = true }
+        new BoundedChannelOptions(256) { SingleWriter = true, SingleReader = true }
     );
     private readonly Channel<Message> _outgoingMessages = Channel.CreateBounded<Message>(
-        new BoundedChannelOptions(50) { SingleWriter = false, SingleReader = true }
+        new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
     );
 
-    private int _requestedBlocksCount = 0;
-    private int _uploadRequestedBlocksCount = 0;
     private DateTime _lastKeepAlive;
     private Task? _loopTask;
     private CancellationTokenSource? _cancellationTokenSource;
@@ -61,10 +55,20 @@ internal class PeerConnection(
     public bool PeerInterested { get; private set; } = peerInterested;
     public PeerId? PeerId { get; private set; }
     public Bitfield PeerBitField { get; private set; } = new(myBitField.Length);
+    public PeerRequestWindow PeerRequestWindow { get; } = new(FileManager.BlockSize);
+
+    public int RequestedBlocksCount
+    {
+        get => field;
+        set => Interlocked.Exchange(ref field, value);
+    }
+    public int UploadRequestedBlocksCount
+    {
+        get => field;
+        set => Interlocked.Exchange(ref field, value);
+    }
     public Task? WaitTask => _loopTask;
     public TimeSpan ConnectionDuration => DateTime.UtcNow - _startedConnectionTime;
-    public int RequestedBlocksCount => _requestedBlocksCount;
-    public int UploadRequestedBlocksCount => _uploadRequestedBlocksCount;
 
     public void Start(CancellationToken cancellationToken) =>
         _loopTask ??= RunPeerLoopAsync(cancellationToken);
@@ -240,11 +244,11 @@ internal class PeerConnection(
         var request = new RequestBlock(index, begin, length)
         {
             RequestedAt = DateTimeOffset.UtcNow,
-            RequestedFrom = this,
         };
+        request.RequestedFrom.Add(this);
 
         if (await _uploadScheduler.AddRequestAsync(request, cancellationToken))
-            Interlocked.Increment(ref _uploadRequestedBlocksCount);
+            UploadRequestedBlocksCount++;
     }
 
     public async Task SendRequestAsync(RequestBlock nextBlock, CancellationToken cancellationToken)
@@ -255,19 +259,12 @@ internal class PeerConnection(
             nextBlock.Length
         );
         await _outgoingMessages.Writer.WriteAsync(requestMessage, cancellationToken);
-        Interlocked.Increment(ref _requestedBlocksCount);
-    }
-
-    public void DecreaseRequestedBlockCount()
-    {
-        Interlocked.Decrement(ref _requestedBlocksCount);
     }
 
     public async Task SendCancelAsync(RequestBlock request, CancellationToken cancellationToken)
     {
         var cancelMessage = Message.CreateCancel(request.Index, request.Begin, request.Length);
         await _outgoingMessages.Writer.WriteAsync(cancelMessage, cancellationToken);
-        Interlocked.Decrement(ref _requestedBlocksCount);
     }
 
     public async ValueTask SendBlockAsync(Block block, CancellationToken cancellationToken)
@@ -275,7 +272,7 @@ internal class PeerConnection(
         UploadSpeedTracker.AddBytes(block.Payload.Length);
         var pieceMessage = Message.CreatePiece(block.Index, block.Begin, block.Payload);
         await _outgoingMessages.Writer.WriteAsync(pieceMessage, cancellationToken);
-        Interlocked.Decrement(ref _uploadRequestedBlocksCount);
+        UploadRequestedBlocksCount--;
     }
 
     private async ValueTask ReceiveBlockAsync(Message message, CancellationToken cancellationToken)
@@ -285,7 +282,7 @@ internal class PeerConnection(
         var begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
         var array = ArrayPool<byte>.Shared.Rent(span.Length - 8);
         span[8..].CopyTo(array.AsSpan());
-        var block = new Block(index, begin, new RentedArray<byte>(array, span.Length - 8));
+        var block = new Block(index, begin, new RentedArray<byte>(array, span.Length - 8), this);
 
         var memory = block.Payload.Memory;
         DownloadSpeedTracker.AddBytes(memory.Length);
@@ -301,7 +298,7 @@ internal class PeerConnection(
 
         var request = new RequestBlock(index, begin, length);
         _uploadScheduler.CancelRequest(request);
-        Interlocked.Decrement(ref _uploadRequestedBlocksCount);
+        UploadRequestedBlocksCount--;
     }
 
     public async ValueTask PerformHandshakeAsync(
@@ -394,13 +391,13 @@ internal class PeerConnection(
             var message = Message.CreateChoke();
             await _outgoingMessages.Writer.WriteAsync(message, cancellationToken);
             AmChocking = true;
-            _uploadScheduler.RemoveChokedSlot(this);
+            _uploadScheduler.RemoveChokedSlot();
         }
     }
 
     private async Task SendUnchokedAsync(CancellationToken cancellationToken)
     {
-        if (AmChocking && _uploadScheduler.AddChokedSlot(this))
+        if (AmChocking && _uploadScheduler.AddChokedSlot())
         {
             var message = Message.CreateUnchoke();
             await _outgoingMessages.Writer.WriteAsync(message, cancellationToken);
@@ -488,7 +485,7 @@ internal class PeerConnection(
             if (hasPiece)
                 _requestManager.DecreaseRarity(index);
         }
-        _uploadScheduler.RemoveChokedSlot(this);
+        _uploadScheduler.RemoveChokedSlot();
         TcpClient.Close();
     }
 }

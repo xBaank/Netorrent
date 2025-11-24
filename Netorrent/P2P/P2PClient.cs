@@ -20,6 +20,7 @@ internal class P2PClient : IAsyncDisposable
     private readonly TcpListener _listener = Tcp.GetFreeTcpListener();
     private readonly MetaInfo _metaInfo;
     private readonly ILogger _logger;
+    private readonly SemaphoreSlim _peerSemaphore = new(1, 1);
     private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _activePeers = [];
     private readonly ConcurrentQueue<IPEndPoint> _knownPeers = [];
     private readonly PeerId _peerId;
@@ -163,10 +164,8 @@ internal class P2PClient : IAsyncDisposable
             client,
             iPEndPoint,
             _bitField,
-            FileManager,
             _uploadScheduler,
-            _requestManager,
-            _logger
+            _requestManager
         );
 
         try
@@ -195,11 +194,32 @@ internal class P2PClient : IAsyncDisposable
             return;
         }
 
-        if (_logger.IsEnabled(LogLevel.Information))
-            _logger.LogInformation("Connected to peer {PeerId}", peerConnection.PeerId);
+        await _peerSemaphore.WaitAsync(cancellationToken);
+        try
+        {
+            var peerIds = _activePeers.Values.AsValueEnumerable().Select(p => p.PeerId).ToHashSet();
 
-        _activePeers[iPEndPoint] = peerConnection;
-        await HandlePeer(peerConnection, cancellationToken);
+            if (peerIds.Contains(peerConnection.PeerId))
+            {
+                if (_logger.IsEnabled(LogLevel.Information))
+                    _logger.LogInformation(
+                        "Ignored active peer from {EndPoint}",
+                        peerConnection.IPEndPoint
+                    );
+                await peerConnection.DisposeAsync();
+                return;
+            }
+
+            if (_logger.IsEnabled(LogLevel.Information))
+                _logger.LogInformation("Connected to peer {PeerId}", peerConnection.PeerId);
+
+            _activePeers[iPEndPoint] = peerConnection;
+            HandlePeer(peerConnection, cancellationToken);
+        }
+        finally
+        {
+            _peerSemaphore.Release();
+        }
     }
 
     private async Task ListenTask(CancellationToken cancellationToken)
@@ -232,10 +252,8 @@ internal class P2PClient : IAsyncDisposable
                 tcpClient,
                 remoteEndPoint,
                 _bitField,
-                FileManager,
                 _uploadScheduler,
-                _requestManager,
-                _logger
+                _requestManager
             );
 
             try
@@ -265,18 +283,39 @@ internal class P2PClient : IAsyncDisposable
                 continue;
             }
 
-            if (_logger.IsEnabled(LogLevel.Information))
-                _logger.LogInformation("Connected from peer {PeerId}", peerConnection.PeerId);
+            await _peerSemaphore.WaitAsync(cancellationToken);
+            try
+            {
+                var peerIds = _activePeers
+                    .Values.AsValueEnumerable()
+                    .Select(p => p.PeerId)
+                    .ToHashSet();
 
-            _activePeers[remoteEndPoint] = peerConnection;
-            await HandlePeer(peerConnection, cancellationToken);
+                if (peerIds.Contains(peerConnection.PeerId))
+                {
+                    if (_logger.IsEnabled(LogLevel.Information))
+                        _logger.LogInformation(
+                            "Ignored active peer from {EndPoint}",
+                            peerConnection.IPEndPoint
+                        );
+                    await peerConnection.DisposeAsync();
+                    continue;
+                }
+
+                if (_logger.IsEnabled(LogLevel.Information))
+                    _logger.LogInformation("Connected from peer {PeerId}", peerConnection.PeerId);
+
+                _activePeers[remoteEndPoint] = peerConnection;
+                HandlePeer(peerConnection, cancellationToken);
+            }
+            finally
+            {
+                _peerSemaphore.Release();
+            }
         }
     }
 
-    private async Task HandlePeer(
-        PeerConnection peerConnection,
-        CancellationToken cancellationToken
-    )
+    private void HandlePeer(PeerConnection peerConnection, CancellationToken cancellationToken)
     {
         peerConnection.Start(cancellationToken);
         peerConnection.WaitTask?.ContinueWith(

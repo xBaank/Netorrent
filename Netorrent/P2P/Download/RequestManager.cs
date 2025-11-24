@@ -30,7 +30,7 @@ internal class RequestManager(
     private readonly int[] _pieceRarity = new int[myBitfield.Length];
     private readonly ConcurrentDictionary<int, RequestBlock?[]> _requestBlocksByPieceIndex = [];
     private readonly ConcurrentDictionary<int, PieceBuffer> _pieceBuffers = [];
-    private HashSet<int> _currentRarestPieces = [];
+    private readonly HashSet<int> _currentRarestPieces = [];
     private Task? _requestManagerTask;
 
     public Task? WaitTask => _requestManagerTask;
@@ -42,7 +42,7 @@ internal class RequestManager(
     {
         var faultedTask = await Task.WhenAny(
             ReceiveBlocksAsync(cancellationToken),
-            ReScheduleTimedoutBlocksAsync(cancellationToken),
+            ReScheduleTimeoutBlocksAsync(cancellationToken),
             SchedulePiecesAsync(cancellationToken)
         );
         await faultedTask;
@@ -65,10 +65,23 @@ internal class RequestManager(
                 var requestBlock = requestBlocks.FirstOrDefault(i =>
                     i?.Begin == receiveBlock.Begin
                 );
-                requestBlock?.RequestedFrom?.DecreaseRequestedBlockCount();
+                if (
+                    requestBlock is not null
+                    && requestBlock.RequestedAt is not null
+                    && requestBlock.RequestedFrom.Contains(receiveBlock.FromPeer)
+                )
+                {
+                    var rtt = receiveBlock.ReceivedAt - requestBlock.RequestedAt.Value;
+                    receiveBlock.FromPeer.PeerRequestWindow.CalculateWindow(
+                        (long)receiveBlock.FromPeer.DownloadSpeedTracker.CurrentBps.Bps,
+                        rtt
+                    );
+                }
+
+                receiveBlock.FromPeer.RequestedBlocksCount -= 1;
                 requestBlock?.State = RequestBlockState.Completed;
                 requestBlock?.RequestedAt = null;
-                requestBlock?.RequestedFrom = null;
+                requestBlock?.RequestedFrom.Clear();
             }
 
             if (!pieceBuffer.IsComplete)
@@ -105,7 +118,7 @@ internal class RequestManager(
         }
     }
 
-    public async Task ReScheduleTimedoutBlocksAsync(CancellationToken cancellationToken)
+    public async Task ReScheduleTimeoutBlocksAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -121,10 +134,13 @@ internal class RequestManager(
 
                 if (passedTime > 10.Seconds)
                 {
-                    requestBlock.RequestedFrom?.DecreaseRequestedBlockCount();
+                    var lastRequestedFrom = requestBlock.RequestedFrom[^1];
                     requestBlock.State = RequestBlockState.Pending;
-                    requestBlock.RequestedFrom = null;
                     requestBlock.RequestedAt = null;
+                    lastRequestedFrom.PeerRequestWindow.CalculateWindow(
+                        (long)lastRequestedFrom.DownloadSpeedTracker.CurrentBps.Bps,
+                        passedTime
+                    );
                 }
             }
 
@@ -196,10 +212,10 @@ internal class RequestManager(
         CancellationToken cancellationToken
     )
     {
-        var desired = peerConnection.DownloadSpeedTracker.CurrentBps.Kbps / 50;
-        var max = Math.Clamp(desired, 8, 16);
-
-        while (peerConnection.RequestedBlocksCount < max)
+        while (
+            peerConnection.RequestedBlocksCount
+            < peerConnection.PeerRequestWindow.MaxInFlightRequests
+        )
         {
             var block = SelectBlock(peerConnection);
 
@@ -207,18 +223,20 @@ internal class RequestManager(
                 break;
 
             block.State = RequestBlockState.Requested;
-            block.RequestedFrom = peerConnection;
+            block.RequestedFrom.Add(peerConnection);
             block.RequestedAt = DateTimeOffset.UtcNow;
+            peerConnection.RequestedBlocksCount++;
+
             try
             {
                 await peerConnection.SendRequestAsync(block, cancellationToken);
             }
             catch (Exception ex)
             {
-                block.RequestedFrom = null;
+                block.RequestedFrom.Remove(peerConnection);
                 block.RequestedAt = null;
                 block.State = RequestBlockState.Pending;
-                peerConnection.DecreaseRequestedBlockCount();
+                peerConnection.RequestedBlocksCount -= 1;
                 if (logger.IsEnabled(LogLevel.Error))
                 {
                     logger.LogError(

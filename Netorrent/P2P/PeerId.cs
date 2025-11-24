@@ -43,7 +43,7 @@ public readonly struct PeerId
 
     public override bool Equals(object? obj)
     {
-        return obj is PeerId id && Value == id.Value;
+        return obj is PeerId peerId && Value == peerId.Value;
     }
 
     public override int GetHashCode()
