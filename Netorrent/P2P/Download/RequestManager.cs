@@ -67,21 +67,23 @@ internal class RequestManager(
                 );
                 if (
                     requestBlock is not null
-                    && requestBlock.RequestedAt is not null
                     && requestBlock.RequestedFrom.Contains(receiveBlock.FromPeer)
                 )
                 {
-                    var rtt = receiveBlock.ReceivedAt - requestBlock.RequestedAt.Value;
+                    var rtt = requestBlock.RequestedAt.HasValue
+                        ? receiveBlock.ReceivedAt - requestBlock.RequestedAt.Value
+                        : 10.Seconds;
                     receiveBlock.FromPeer.PeerRequestWindow.CalculateWindow(
                         (long)receiveBlock.FromPeer.DownloadSpeedTracker.CurrentBps.Bps,
                         rtt
                     );
                 }
 
-                receiveBlock.FromPeer.RequestedBlocksCount -= 1;
+                receiveBlock.FromPeer.RequestedBlocksCount--;
                 requestBlock?.State = RequestBlockState.Completed;
                 requestBlock?.RequestedAt = null;
                 requestBlock?.RequestedFrom.Clear();
+                await _scheduleChannel.Writer.WriteAsync(receiveBlock.FromPeer, cancellationToken);
             }
 
             if (!pieceBuffer.IsComplete)
@@ -127,6 +129,7 @@ internal class RequestManager(
                     .Values.AsValueEnumerable()
                     .SelectMany(i => i)
                     .Where(i => i is not null)
+                    .ToArray()
             )
             {
                 var passedTime =
@@ -141,17 +144,17 @@ internal class RequestManager(
                         (long)lastRequestedFrom.DownloadSpeedTracker.CurrentBps.Bps,
                         passedTime
                     );
+
+                    var freePeer = activePeers
+                        .Values.AsValueEnumerable()
+                        .Where(i => i.AmInterested && !i.PeerChocking)
+                        .Shuffle()
+                        .FirstOrDefault();
+
+                    if (freePeer is not null)
+                        await _scheduleChannel.Writer.WriteAsync(freePeer, cancellationToken);
                 }
             }
-
-            var freePeer = activePeers
-                .Values.AsValueEnumerable()
-                .Where(i => i.AmInterested && !i.PeerChocking)
-                .Shuffle()
-                .FirstOrDefault();
-
-            if (freePeer is not null)
-                _scheduleChannel.Writer.TryWrite(freePeer);
 
             await Task.Delay(1.Seconds, cancellationToken);
         }
@@ -236,7 +239,7 @@ internal class RequestManager(
                 block.RequestedFrom.Remove(peerConnection);
                 block.RequestedAt = null;
                 block.State = RequestBlockState.Pending;
-                peerConnection.RequestedBlocksCount -= 1;
+                peerConnection.RequestedBlocksCount--;
                 if (logger.IsEnabled(LogLevel.Error))
                 {
                     logger.LogError(
@@ -317,7 +320,6 @@ internal class RequestManager(
     )
     {
         await _receiveBlocks.Writer.WriteAsync(block, cancellationToken);
-        await _scheduleChannel.Writer.WriteAsync(receiver, cancellationToken);
     }
 
     public async ValueTask DisposeAsync()
