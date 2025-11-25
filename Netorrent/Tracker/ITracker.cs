@@ -2,6 +2,5 @@
 
 internal interface ITracker : IAsyncDisposable
 {
-    public Task? TrackerTask { get; }
-    public void Start(CancellationToken cancellationToken);
+    public ValueTask StartAsync(CancellationToken cancellationToken);
 }

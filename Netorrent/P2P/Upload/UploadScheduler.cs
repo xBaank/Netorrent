@@ -18,14 +18,8 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IAsync
 
     private readonly Lock _unchokedSlotsLock = new();
     private int _unchokedSlots = 0;
-    private Task? _waitTask;
 
-    public Task? WaitTask => _waitTask;
-
-    public void Start(CancellationToken cancellationToken) =>
-        _waitTask ??= ProcessRequestsAsync(cancellationToken);
-
-    private async Task ProcessRequestsAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         await foreach (var requestBlock in _pendingRequests.Reader.ReadAllAsync(cancellationToken))
         {

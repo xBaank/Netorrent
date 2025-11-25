@@ -20,15 +20,11 @@ internal class UdpTracker(
     IPAddress? forcedIp
 ) : ITracker
 {
-    public Task? TrackerTask { get; private set; }
     private CancellationTokenSource? _cancellationTokenSource;
     private UdpTrackerResponse? _lastResponse;
     private readonly Guid _trackerId = Guid.CreateVersion7();
 
-    public void Start(CancellationToken cancellationToken) =>
-        TrackerTask ??= ProcessLoop(cancellationToken);
-
-    public async Task ProcessLoop(CancellationToken cancellationToken)
+    public async ValueTask StartAsync(CancellationToken cancellationToken)
     {
         _cancellationTokenSource ??= CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
@@ -155,5 +151,6 @@ internal class UdpTracker(
         _cancellationTokenSource?.Cancel();
         if (iPEndPoint is not null && _lastResponse is not null)
             await TryAnnounceAsync(iPEndPoint, Events.Stopped, default);
+        _cancellationTokenSource?.Dispose();
     }
 }

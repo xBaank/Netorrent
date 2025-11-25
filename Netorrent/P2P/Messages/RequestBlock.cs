@@ -1,6 +1,4 @@
-﻿using Netorrent.P2P.Download;
-
-namespace Netorrent.P2P.Messages;
+﻿namespace Netorrent.P2P.Messages;
 
 enum RequestBlockState
 {

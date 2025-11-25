@@ -1,5 +1,4 @@
-﻿using System.Threading;
-using Netorrent.Bencoding;
+﻿using Netorrent.Bencoding;
 using Netorrent.TorrentFile;
 using Shouldly;
 

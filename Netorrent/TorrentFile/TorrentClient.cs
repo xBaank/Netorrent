@@ -1,6 +1,4 @@
 ﻿using System.Buffers;
-using System.Net;
-using System.Net.Sockets;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging.Abstractions;
 using Netorrent.Bencoding;
@@ -13,7 +11,7 @@ using Netorrent.Tracker.Udp;
 
 namespace Netorrent.TorrentFile;
 
-public class TorrentClient : IAsyncDisposable
+public sealed class TorrentClient : IAsyncDisposable
 {
     private readonly PeerId _peerId = new();
     private readonly TorrentClientOptions _options;
@@ -408,11 +406,12 @@ public class TorrentClient : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _cancellationTokenSource.Cancel();
         foreach (var item in torrents)
         {
             await item.DisposeAsync();
         }
         _trackerTransactionManager.Dispose();
-        _cancellationTokenSource.Cancel();
+        _cancellationTokenSource.Dispose();
     }
 }

@@ -20,38 +20,39 @@ internal class RequestManager(
     const int WarmupTimeoutSecods = 8;
     const int TimeoutSeconds = 10;
 
-    private readonly Channel<Block> _receiveBlocks = Channel.CreateBounded<Block>(
+    private readonly Channel<Block> _receiveBlocksChannel = Channel.CreateBounded<Block>(
         new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = false }
     );
     private readonly Channel<PeerConnection> _scheduleChannel =
         Channel.CreateBounded<PeerConnection>(
             new BoundedChannelOptions(256) { SingleReader = true, SingleWriter = false }
         );
+
+    private CancellationTokenSource? _cancellationTokenSource;
     private readonly Lock _rarityLock = new();
     private readonly int[] _pieceRarity = new int[myBitfield.Length];
     private readonly ConcurrentDictionary<int, RequestBlock?[]> _requestBlocksByPieceIndex = [];
     private readonly ConcurrentDictionary<int, PieceBuffer> _pieceBuffers = [];
     private readonly HashSet<int> _currentRarestPieces = [];
-    private Task? _requestManagerTask;
 
-    public Task? WaitTask => _requestManagerTask;
-
-    public void Start(CancellationToken cancellationToken) =>
-        _requestManagerTask ??= RunRequestManagerAsync(cancellationToken);
-
-    public async Task RunRequestManagerAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
-        var faultedTask = await Task.WhenAny(
-            ReceiveBlocksAsync(cancellationToken),
-            ReScheduleTimeoutBlocksAsync(cancellationToken),
-            SchedulePiecesAsync(cancellationToken)
+        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken
         );
-        await faultedTask;
+        var finishedTask = await Task.WhenAny(
+            ReceiveBlocksAsync(_cancellationTokenSource.Token),
+            ReScheduleTimeoutBlocksAsync(_cancellationTokenSource.Token),
+            SchedulePiecesAsync(_cancellationTokenSource.Token)
+        );
+        await finishedTask;
     }
 
     public async Task ReceiveBlocksAsync(CancellationToken cancellationToken)
     {
-        await foreach (var receiveBlock in _receiveBlocks.Reader.ReadAllAsync(cancellationToken))
+        await foreach (
+            var receiveBlock in _receiveBlocksChannel.Reader.ReadAllAsync(cancellationToken)
+        )
         {
             if (!_pieceBuffers.TryGetValue(receiveBlock.Index, out var pieceBuffer))
             {
@@ -320,20 +321,25 @@ internal class RequestManager(
 
     internal async ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken)
     {
-        await _receiveBlocks.Writer.WriteAsync(block, cancellationToken);
+        await _receiveBlocksChannel.Writer.WriteAsync(block, cancellationToken);
     }
 
     public async ValueTask DisposeAsync()
     {
-        _receiveBlocks.Writer.TryComplete();
+        _cancellationTokenSource?.Cancel();
+        _receiveBlocksChannel.Writer.TryComplete();
         _scheduleChannel.Writer.TryComplete();
-        await foreach (var item in _receiveBlocks.Reader.ReadAllAsync())
+
+        foreach (var item in _pieceBuffers.Values)
         {
             item.Dispose();
         }
-        foreach (var item in _pieceBuffers)
+
+        while (_receiveBlocksChannel.Reader.TryRead(out var block))
         {
-            item.Value.Dispose();
+            block.Dispose();
         }
+
+        _cancellationTokenSource?.Dispose();
     }
 }

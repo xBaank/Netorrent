@@ -2,7 +2,6 @@
 using System.Security.Cryptography;
 using Microsoft.Win32.SafeHandles;
 using Netorrent.Other;
-using Netorrent.P2P.Download;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
 

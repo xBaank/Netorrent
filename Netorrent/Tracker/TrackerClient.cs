@@ -23,14 +23,8 @@ internal class TrackerClient(
 ) : IAsyncDisposable
 {
     private readonly List<ITracker> _trackers = [];
-    private Task? _processTrackersTask;
 
-    public Task? ProcessTrackersTask => _processTrackersTask;
-
-    public void Start(CancellationToken cancellationToken) =>
-        _processTrackersTask ??= ProcessTrackersAsync(cancellationToken);
-
-    private async Task ProcessTrackersAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         List<string> announceList = [metaInfo.Announce, .. metaInfo.AnnounceList ?? []];
         var urls =
@@ -39,27 +33,12 @@ internal class TrackerClient(
                 .Distinct(StringComparer.OrdinalIgnoreCase)
             ?? [];
 
-        await foreach (var tracker in CreateTrackers(urls, cancellationToken))
-        {
-            tracker.Start(cancellationToken);
-            tracker.TrackerTask?.ContinueWith(
-                async task =>
-                {
-                    if (task.IsCanceled)
-                    {
-                        p2PClient.DownloadInfo.SetCanceled();
-                    }
-                    else if (task.IsFaulted)
-                    {
-                        p2PClient.DownloadInfo.SetException(task.Exception);
-                    }
-                    await tracker.DisposeAsync();
-                },
-                CancellationToken.None,
-                TaskContinuationOptions.RunContinuationsAsynchronously,
-                TaskScheduler.Default
-            );
-        }
+        var tasks = await CreateTrackers(urls, cancellationToken)
+            .Select(i => i.StartAsync(cancellationToken).AsTask())
+            .ToListAsync(cancellationToken: cancellationToken);
+
+        var finishedTask = await Task.WhenAny(tasks);
+        await finishedTask;
     }
 
     private async IAsyncEnumerable<ITracker> CreateTrackers(

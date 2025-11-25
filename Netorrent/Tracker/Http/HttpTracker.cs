@@ -17,15 +17,9 @@ internal class HttpTracker(
     IPAddress? forcedIp
 ) : ITracker
 {
-    private Task? _trackerTask;
-
-    public Task? TrackerTask => _trackerTask;
     private CancellationTokenSource? _cancellationTokenSource;
 
-    public void Start(CancellationToken cancellationToken = default) =>
-        _trackerTask ??= AnnounceLoopTask(cancellationToken);
-
-    private async Task AnnounceLoopTask(CancellationToken cancellationToken)
+    public async ValueTask StartAsync(CancellationToken cancellationToken)
     {
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
@@ -112,5 +106,6 @@ internal class HttpTracker(
     {
         _cancellationTokenSource?.Cancel();
         await TryAnnounceAsync(Events.Stopped);
+        _cancellationTokenSource?.Dispose();
     }
 }

@@ -16,7 +16,9 @@ namespace Netorrent.P2P;
 
 internal class P2PClient : IAsyncDisposable
 {
-    private const int MAX_ACTIVE_PEER_COUNT = 50;
+    const int MAX_ACTIVE_PEER_COUNT = 50;
+    const int PEER_TIMEOUT_SECONDS = 120;
+
     private readonly TcpListener _listener = Tcp.GetFreeTcpListener();
     private readonly MetaInfo _metaInfo;
     private readonly ILogger _logger;
@@ -27,15 +29,11 @@ internal class P2PClient : IAsyncDisposable
     private readonly RequestManager _requestManager;
     private readonly UploadScheduler _uploadScheduler;
     private readonly ChannelReader<IPEndPoint> _trackersChannel;
-    private Task? _listenerTask;
-    private Task? _peersTask;
     private Func<IPAddress, IPAddress>? _peerIpProxy;
 
     public FileManager FileManager { get; }
     public DownloadInfo DownloadInfo { get; }
     public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
-    public Task? ListenerTask => _listenerTask;
-    public Task? PeersTask => _peersTask;
 
     public P2PClient(
         MetaInfo metaInfo,
@@ -59,50 +57,20 @@ internal class P2PClient : IAsyncDisposable
         _uploadScheduler = new UploadScheduler(fileManager, logger);
     }
 
-    public void ProcessPeers(CancellationToken cancellationToken) =>
-        _peersTask ??= ProcessPeersTask(cancellationToken);
-
-    public void ListenForPeers(CancellationToken cancellationToken) =>
-        _listenerTask ??= ListenTask(cancellationToken);
-
-    private async Task ProcessPeersTask(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _requestManager.Start(cancellationToken);
-        _requestManager.WaitTask?.ContinueWith(
-            task =>
-            {
-                if (task.IsCanceled)
-                {
-                    DownloadInfo.SetCanceled();
-                }
-                else if (task.IsFaulted)
-                {
-                    DownloadInfo.SetException(task.Exception);
-                }
-            },
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default
+        var finishedTask = Task.WhenAny(
+            _requestManager.StartAsync(cancellationToken),
+            _uploadScheduler.StartAsync(cancellationToken),
+            ProcessPeersAsync(cancellationToken),
+            ListenToPeersAsync(cancellationToken)
         );
 
-        _uploadScheduler.Start(cancellationToken);
-        _uploadScheduler.WaitTask?.ContinueWith(
-            task =>
-            {
-                if (task.IsCanceled)
-                {
-                    DownloadInfo.SetCanceled();
-                }
-                else if (task.IsFaulted)
-                {
-                    DownloadInfo.SetException(task.Exception);
-                }
-            },
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default
-        );
+        await finishedTask;
+    }
 
+    private async Task ProcessPeersAsync(CancellationToken cancellationToken)
+    {
         var connectTasks = new List<Task>();
 
         await foreach (var iPEndPoint in _trackersChannel.ReadAllAsync(cancellationToken))
@@ -123,7 +91,7 @@ internal class P2PClient : IAsyncDisposable
         }
     }
 
-    private async Task ListenTask(CancellationToken cancellationToken)
+    private async Task ListenToPeersAsync(CancellationToken cancellationToken)
     {
         _listener.Start();
         while (!cancellationToken.IsCancellationRequested)
@@ -161,11 +129,11 @@ internal class P2PClient : IAsyncDisposable
         }
 
         var peerConnection = new PeerConnection(
-            client,
             iPEndPoint,
             _bitField,
             _uploadScheduler,
-            _requestManager
+            _requestManager,
+            new MessageStream(client.GetStream(), PEER_TIMEOUT_SECONDS.Seconds)
         );
 
         try
@@ -229,35 +197,34 @@ internal class P2PClient : IAsyncDisposable
         HandlePeer(peerConnection, cancellationToken);
     }
 
-    private void HandlePeer(PeerConnection peerConnection, CancellationToken cancellationToken)
-    {
-        peerConnection.Start(cancellationToken);
-        peerConnection.WaitTask?.ContinueWith(
-            async task =>
-            {
-                if (task.IsFaulted)
+    private void HandlePeer(PeerConnection peerConnection, CancellationToken cancellationToken) =>
+        peerConnection
+            .StartAsync(cancellationToken)
+            .ContinueWith(
+                async task =>
                 {
-                    if (_logger.IsEnabled(LogLevel.Debug))
-                        _logger.LogDebug(
-                            task.Exception,
-                            "Exception on peer {peerId}",
-                            peerConnection.PeerId
-                        );
-                }
+                    if (task.IsFaulted)
+                    {
+                        if (_logger.IsEnabled(LogLevel.Debug))
+                            _logger.LogDebug(
+                                task.Exception,
+                                "Exception on peer {peerId}",
+                                peerConnection.PeerId
+                            );
+                    }
 
-                _activePeers.Remove(peerConnection.IPEndPoint, out _);
-                await peerConnection.DisposeAsync();
+                    _activePeers.Remove(peerConnection.IPEndPoint, out _);
+                    await peerConnection.DisposeAsync();
 
-                if (_knownPeers.TryDequeue(out var iPEndPoint))
-                {
-                    await ConnectToPeerAsync(null, iPEndPoint);
-                }
-            },
-            CancellationToken.None,
-            TaskContinuationOptions.RunContinuationsAsynchronously,
-            TaskScheduler.Default
-        );
-    }
+                    if (_knownPeers.TryDequeue(out var iPEndPoint))
+                    {
+                        await ConnectToPeerAsync(null, iPEndPoint);
+                    }
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.RunContinuationsAsynchronously,
+                TaskScheduler.Default
+            );
 
     private PeerConnection? GetWorstPeer()
     {

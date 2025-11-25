@@ -11,7 +11,7 @@ using Netorrent.Tracker.Udp;
 
 namespace Netorrent.TorrentFile;
 
-public class Torrent : IAsyncDisposable
+public sealed class Torrent : IAsyncDisposable
 {
     public MetaInfo MetaInfo { get; init; }
     public Bitfield Bitfield => _myBitfield;
@@ -81,28 +81,23 @@ public class Torrent : IAsyncDisposable
         var cancellationToken = _cancellationTokenSource.Token;
         cancellationToken.Register(_p2pClient.DownloadInfo.SetCanceled);
 
-        _p2pClient.ListenForPeers(cancellationToken);
-        _p2pClient.ProcessPeers(cancellationToken);
-        _p2pClient.ListenerTask?.ContinueWith(
-            Cancel,
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default
-        );
-        _p2pClient.PeersTask?.ContinueWith(
-            Cancel,
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default
-        );
+        _p2pClient
+            .StartAsync(cancellationToken)
+            .ContinueWith(
+                Cancel,
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default
+            );
 
-        _trackerClient.Start(cancellationToken);
-        _trackerClient.ProcessTrackersTask?.ContinueWith(
-            Cancel,
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default
-        );
+        _trackerClient
+            .StartAsync(cancellationToken)
+            .ContinueWith(
+                Cancel,
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default
+            );
 
         State = State.Started;
     }
@@ -146,5 +141,6 @@ public class Torrent : IAsyncDisposable
         _fileManager.Dispose();
         await _p2pClient.DisposeAsync();
         await _trackerClient.DisposeAsync();
+        _cancellationTokenSource?.Dispose();
     }
 }
