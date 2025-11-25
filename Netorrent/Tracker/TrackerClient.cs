@@ -123,7 +123,7 @@ internal class TrackerClient(
             udpTrackers.Add(trackerv6);
         }
 
-        return udpTrackers.ToArray();
+        return [.. udpTrackers];
     }
 
     private ITracker[] LogUnknownTracker(string scheme)

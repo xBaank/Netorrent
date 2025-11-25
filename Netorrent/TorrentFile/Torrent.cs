@@ -1,5 +1,7 @@
 ﻿using System.Net;
+using System.Threading;
 using System.Threading.Channels;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Netorrent.Bencoding;
 using Netorrent.IO;
@@ -19,6 +21,7 @@ public sealed class Torrent : IAsyncDisposable
     public string OutputDirectory => _fileManager.OutputDirectory;
 
     public State State { get; private set; } = State.None;
+    public Task? TorrentTask { get; private set; }
 
     private readonly P2PClient _p2pClient;
     private readonly TrackerClient _trackerClient;
@@ -78,39 +81,28 @@ public sealed class Torrent : IAsyncDisposable
 
         DownloadInfo.Reset();
         _cancellationTokenSource = new();
-        var cancellationToken = _cancellationTokenSource.Token;
-        cancellationToken.Register(_p2pClient.DownloadInfo.SetCanceled);
-
-        _p2pClient
-            .StartAsync(cancellationToken)
-            .ContinueWith(
-                Cancel,
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default
-            );
-
-        _trackerClient
-            .StartAsync(cancellationToken)
-            .ContinueWith(
-                Cancel,
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default
-            );
-
+        _cancellationTokenSource.Token.Register(_p2pClient.DownloadInfo.SetCanceled);
+        TorrentTask = StartAsync(_cancellationTokenSource.Token);
         State = State.Started;
     }
 
-    private void Cancel(Task task)
+    private async Task StartAsync(CancellationToken cancellationToken)
     {
-        if (task.IsCanceled)
+        try
+        {
+            var finishedTask = await Task.WhenAny(
+                _p2pClient.StartAsync(cancellationToken),
+                _trackerClient.StartAsync(cancellationToken)
+            );
+            await finishedTask;
+        }
+        catch (OperationCanceledException)
         {
             DownloadInfo.SetCanceled();
         }
-        else if (task.IsFaulted)
+        catch (Exception ex)
         {
-            DownloadInfo.SetException(task.Exception);
+            DownloadInfo.SetException(ex);
         }
     }
 

@@ -88,16 +88,18 @@ public class TorrentTests(OpenTrackerFixture fixture)
         var logger = new TUnitLogger(TestContext.Current!.GetDefaultLogger());
         var path = await CreateRandomFileAsync("Input");
 
-        var seedersTorrents = await GetSeedersAsync(seedersCount, logger, path, cancellationToken)
+        var seeders = await GetSeedersAsync(seedersCount, logger, path, cancellationToken)
             .ToListAsync(cancellationToken: cancellationToken);
+        var seedersTorrents = seeders.Select(i => i.Item1).ToList();
 
-        var leechersTorrents = await GetLeechersAsync(
+        var leechers = await GetLeechersAsync(
                 leechersCount,
                 seedersTorrents[0].MetaInfo,
                 logger,
                 cancellationToken
             )
             .ToListAsync(cancellationToken: cancellationToken);
+        var leechersTorrents = leechers.Select(i => i.Item1).ToList();
 
         foreach (var seederTorrent in seedersTorrents)
         {
@@ -134,14 +136,14 @@ public class TorrentTests(OpenTrackerFixture fixture)
             originalFile.SequenceEqual(downloadedFile).ShouldBeTrue();
         }
 
-        foreach (var seederTorrent in seedersTorrents)
+        foreach (var (_, client) in seeders)
         {
-            await seederTorrent.DisposeAsync();
+            await client.DisposeAsync();
         }
 
-        foreach (var leecherTorrent in leechersTorrents)
+        foreach (var (_, client) in leechers)
         {
-            await leecherTorrent.DisposeAsync();
+            await client.DisposeAsync();
         }
     }
 
@@ -157,16 +159,18 @@ public class TorrentTests(OpenTrackerFixture fixture)
         var logger = new TUnitLogger(TestContext.Current!.GetDefaultLogger());
         var path = await CreateRandomFileAsync("Input");
 
-        var seedersTorrents = await GetSeedersAsync(seedersCount, logger, path, cancellationToken)
+        var seeders = await GetSeedersAsync(seedersCount, logger, path, cancellationToken)
             .ToListAsync(cancellationToken: cancellationToken);
+        var seedersTorrents = seeders.Select(i => i.Item1).ToList();
 
-        var leechersTorrents = await GetLeechersAsync(
+        var leechers = await GetLeechersAsync(
                 leechersCount,
                 seedersTorrents[0].MetaInfo,
                 logger,
                 cancellationToken
             )
             .ToListAsync(cancellationToken: cancellationToken);
+        var leechersTorrents = leechers.Select(i => i.Item1).ToList();
 
         foreach (var seederTorrent in seedersTorrents)
         {
@@ -192,9 +196,19 @@ public class TorrentTests(OpenTrackerFixture fixture)
         {
             await leecherTorrent.DownloadInfo.DownloadTask.ShouldThrowAsync<TaskCanceledException>();
         }
+
+        foreach (var (_, client) in seeders)
+        {
+            await client.DisposeAsync();
+        }
+
+        foreach (var (_, client) in leechers)
+        {
+            await client.DisposeAsync();
+        }
     }
 
-    private async IAsyncEnumerable<Torrent> GetSeedersAsync(
+    private async IAsyncEnumerable<(Torrent, TorrentClient)> GetSeedersAsync(
         int number,
         ILogger logger,
         string path,
@@ -219,11 +233,11 @@ public class TorrentTests(OpenTrackerFixture fixture)
             );
             cancellationToken.Register(seederTorrent.Stop);
 
-            yield return seederTorrent;
+            yield return (seederTorrent, seeder);
         }
     }
 
-    private static async IAsyncEnumerable<Torrent> GetLeechersAsync(
+    private static async IAsyncEnumerable<(Torrent, TorrentClient)> GetLeechersAsync(
         int number,
         MetaInfo metaInfo,
         ILogger logger,
@@ -244,7 +258,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
             var leecherTorrent = leecher.ImportTorrent(metaInfo, $"Output/Test_{pathName}");
             cancellationToken.Register(leecherTorrent.Stop);
 
-            yield return leecherTorrent;
+            yield return (leecherTorrent, leecher);
         }
     }
 

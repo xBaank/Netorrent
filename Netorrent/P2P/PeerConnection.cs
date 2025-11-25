@@ -64,16 +64,16 @@ internal class PeerConnection(
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
-        var finishedTask = await Task.WhenAny(
+        List<Task> tasks =
+        [
             messageStream.StartAsync(_cancellationTokenSource.Token),
             ProcessIncomingMessagesAsync(_cancellationTokenSource.Token),
             CheckTimeoutAsync(_cancellationTokenSource.Token),
-            TrackSpeedAsync(_cancellationTokenSource.Token)
-        );
-        if (finishedTask.IsFaulted)
-        {
-            _cancellationTokenSource.Cancel();
-        }
+            TrackSpeedAsync(_cancellationTokenSource.Token),
+        ];
+        var finishedTask = await Task.WhenAny(tasks);
+        _cancellationTokenSource.Cancel();
+        await Task.WhenAll(tasks);
         await finishedTask;
     }
 
@@ -356,5 +356,6 @@ internal class PeerConnection(
                 _requestManager.DecreaseRarity(index);
         }
         _uploadScheduler.RemoveChokedSlot();
+        messageStream.Dispose();
     }
 }

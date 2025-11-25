@@ -71,8 +71,6 @@ internal class P2PClient : IAsyncDisposable
 
     private async Task ProcessPeersAsync(CancellationToken cancellationToken)
     {
-        var connectTasks = new List<Task>();
-
         await foreach (var iPEndPoint in _trackersChannel.ReadAllAsync(cancellationToken))
         {
             var targetEndPoint = new IPEndPoint(
@@ -80,14 +78,7 @@ internal class P2PClient : IAsyncDisposable
                 iPEndPoint.Port
             );
 
-            var task = ConnectToPeerAsync(null, targetEndPoint, cancellationToken);
-            connectTasks.Add(task);
-
-            if (connectTasks.Count >= 100)
-            {
-                await Task.WhenAll(connectTasks);
-                connectTasks.Clear();
-            }
+            await ConnectToPeerAsync(null, targetEndPoint, cancellationToken);
         }
     }
 
@@ -194,37 +185,37 @@ internal class P2PClient : IAsyncDisposable
             _logger.LogInformation("Connected to peer {PeerId}", peerConnection.PeerId);
 
         _activePeers[iPEndPoint] = peerConnection;
-        HandlePeer(peerConnection, cancellationToken);
+        _ = HandlePeer(peerConnection, cancellationToken);
     }
 
-    private void HandlePeer(PeerConnection peerConnection, CancellationToken cancellationToken) =>
-        peerConnection
-            .StartAsync(cancellationToken)
-            .ContinueWith(
-                async task =>
-                {
-                    if (task.IsFaulted)
-                    {
-                        if (_logger.IsEnabled(LogLevel.Debug))
-                            _logger.LogDebug(
-                                task.Exception,
-                                "Exception on peer {peerId}",
-                                peerConnection.PeerId
-                            );
-                    }
+    private async Task HandlePeer(
+        PeerConnection peerConnection,
+        CancellationToken cancellationToken
+    )
+    {
+        try
+        {
+            await peerConnection.StartAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.LogDebug(ex, "Exception on peer {peerId}", peerConnection.PeerId);
+            }
+        }
+        finally
+        {
+            _activePeers.Remove(peerConnection.IPEndPoint, out _);
 
-                    _activePeers.Remove(peerConnection.IPEndPoint, out _);
-                    await peerConnection.DisposeAsync();
+            await peerConnection.DisposeAsync();
 
-                    if (_knownPeers.TryDequeue(out var iPEndPoint))
-                    {
-                        await ConnectToPeerAsync(null, iPEndPoint);
-                    }
-                },
-                CancellationToken.None,
-                TaskContinuationOptions.RunContinuationsAsynchronously,
-                TaskScheduler.Default
-            );
+            if (_knownPeers.TryDequeue(out var nextEndpoint))
+            {
+                await ConnectToPeerAsync(null, nextEndpoint, cancellationToken);
+            }
+        }
+    }
 
     private PeerConnection? GetWorstPeer()
     {

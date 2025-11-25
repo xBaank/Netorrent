@@ -17,15 +17,9 @@ internal class HttpTracker(
     IPAddress? forcedIp
 ) : ITracker
 {
-    private CancellationTokenSource? _cancellationTokenSource;
-
     public async ValueTask StartAsync(CancellationToken cancellationToken)
     {
-        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken
-        );
-
-        var response = await TryAnnounceAsync(Events.Started, _cancellationTokenSource.Token);
+        var response = await TryAnnounceAsync(Events.Started, cancellationToken);
 
         if (response is null)
             return;
@@ -35,18 +29,16 @@ internal class HttpTracker(
             await channelWriter.WriteAsync(iPEndPoint, cancellationToken);
         }
 
-        while (!_cancellationTokenSource.Token.IsCancellationRequested)
+        while (!cancellationToken.IsCancellationRequested)
         {
             var interval = response.Interval.Seconds;
 
             if (logger.IsEnabled(LogLevel.Trace))
                 logger.LogTrace("Waiting {seconds} seconds", interval.TotalSeconds);
 
-            await Task.Delay(interval, _cancellationTokenSource.Token);
+            await Task.Delay(interval, cancellationToken);
 
-            var newResponse = await TryAnnounceAsync(
-                cancellationToken: _cancellationTokenSource.Token
-            );
+            var newResponse = await TryAnnounceAsync(cancellationToken: cancellationToken);
 
             if (newResponse is null)
                 continue;
@@ -104,8 +96,6 @@ internal class HttpTracker(
 
     public async ValueTask DisposeAsync()
     {
-        _cancellationTokenSource?.Cancel();
         await TryAnnounceAsync(Events.Stopped);
-        _cancellationTokenSource?.Dispose();
     }
 }

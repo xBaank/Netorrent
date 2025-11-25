@@ -249,9 +249,10 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
 
     public void Dispose()
     {
+        _cancellationTokenSource.Cancel();
         _packetsByTransactionId.Clear();
         _connectionCreationById.Clear();
         _connectionIdByTracker.Clear();
-        _cancellationTokenSource.Cancel();
+        _cancellationTokenSource.Dispose();
     }
 }
