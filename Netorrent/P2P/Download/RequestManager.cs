@@ -48,7 +48,7 @@ internal class RequestManager(
         await finishedTask;
     }
 
-    public async Task ReceiveBlocksAsync(CancellationToken cancellationToken)
+    private async Task ReceiveBlocksAsync(CancellationToken cancellationToken)
     {
         await foreach (
             var receiveBlock in _receiveBlocksChannel.Reader.ReadAllAsync(cancellationToken)
@@ -122,7 +122,7 @@ internal class RequestManager(
         }
     }
 
-    public async Task ReScheduleTimeoutBlocksAsync(CancellationToken cancellationToken)
+    private async Task ReScheduleTimeoutBlocksAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -166,7 +166,7 @@ internal class RequestManager(
         }
     }
 
-    public async Task SchedulePiecesAsync(CancellationToken cancellationToken)
+    private async Task SchedulePiecesAsync(CancellationToken cancellationToken)
     {
         await WarmupAsync(cancellationToken);
         await foreach (
@@ -304,22 +304,22 @@ internal class RequestManager(
         return null;
     }
 
-    internal void IncreaseRarity(int index)
+    public void IncreaseRarity(int index)
     {
         Interlocked.Increment(ref _pieceRarity[index]);
     }
 
-    internal void DecreaseRarity(int index)
+    public void DecreaseRarity(int index)
     {
         Interlocked.Decrement(ref _pieceRarity[index]);
     }
 
-    internal async ValueTask OnPeerUnchockedAsync(
+    public async ValueTask OnPeerUnchockedAsync(
         PeerConnection peer,
         CancellationToken cancellationToken
     ) => await _scheduleChannel.Writer.WriteAsync(peer, cancellationToken);
 
-    internal async ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken)
+    public async ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken)
     {
         await _receiveBlocksChannel.Writer.WriteAsync(block, cancellationToken);
     }

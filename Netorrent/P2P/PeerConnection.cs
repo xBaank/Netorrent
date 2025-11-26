@@ -17,7 +17,7 @@ internal class PeerConnection(
     Bitfield myBitField,
     UploadScheduler uploadScheduler,
     RequestManager requestManager,
-    MessageStream messageStream,
+    IMessageStream messageStream,
     bool amChocking = true,
     bool amInterested = false,
     bool peerChocking = true,

@@ -1,13 +1,14 @@
 ﻿using System.Buffers;
 using System.Buffers.Binary;
-using System.IO.Pipelines;
 using System.Threading.Channels;
 using Netorrent.Extensions;
 using Netorrent.Other;
+using Netorrent.P2P;
+using Netorrent.P2P.Messages;
 
-namespace Netorrent.P2P.Messages;
+namespace Netorrent.IO;
 
-internal class MessageStream(Stream stream, TimeSpan timeout) : IDisposable
+internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
 {
     private CancellationTokenSource? _cancellationTokenSource;
     private readonly Channel<Message> _incomingMessages = Channel.CreateBounded<Message>(
