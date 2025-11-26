@@ -1,5 +1,6 @@
 ﻿using System.Buffers;
 using System.Buffers.Binary;
+using System.IO.Pipelines;
 using System.Threading.Channels;
 using Netorrent.Extensions;
 using Netorrent.Other;
@@ -18,6 +19,9 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IDisposable
 
     public ChannelReader<Message> IncomingMessages => _incomingMessages.Reader;
     public ChannelWriter<Message> OutgoingMessages => _outgoingMessages.Writer;
+
+    private readonly byte[] _lengthBuffer = new byte[4];
+    private readonly byte[] _idBuffer = new byte[1];
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -95,34 +99,28 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IDisposable
         }
     }
 
-    private async ValueTask SendMessageAsync(
-        Message message,
-        CancellationToken cancellationToken = default
-    )
+    private async ValueTask SendMessageAsync(Message message, CancellationToken cancellationToken)
     {
         using var cts = cancellationToken.WithTimeout(timeout);
-        using var messageBytes = message.ToMemoryRented();
+        using var messageBytes = message.ToRentedArray();
         await stream.WriteAsync(messageBytes.Memory, cts.Token);
         await stream.FlushAsync(cts.Token);
     }
 
-    private async ValueTask<Message> ReceiveMessageAsync(
-        CancellationToken cancellationToken = default
-    )
+    private async ValueTask<Message> ReceiveMessageAsync(CancellationToken cancellationToken)
     {
         using var cts = cancellationToken.WithTimeout(timeout);
-        using var lengthPool = MemoryPool<byte>.Shared.Rent(4);
-        var lengthBuffer = lengthPool.Memory[..4];
-        await stream.ReadExactlyAsync(lengthBuffer, cts.Token);
-        int messageLength = BinaryPrimitives.ReadInt32BigEndian(lengthBuffer.Span[..4]);
+        await stream.ReadExactlyAsync(_lengthBuffer, cts.Token);
+        int messageLength = BinaryPrimitives.ReadInt32BigEndian(_lengthBuffer);
+        var payloadLength = messageLength - 1;
+
         if (messageLength == 0)
             return Message.CreateKeepAlive();
-        var array = ArrayPool<byte>.Shared.Rent(lengthBuffer.Length + messageLength);
-        var totalMessageBuffer = array.AsMemory()[..(lengthBuffer.Length + messageLength)];
-        var messageBuffer = array.AsMemory().Slice(lengthBuffer.Length, messageLength);
-        lengthBuffer.CopyTo(totalMessageBuffer);
-        await stream.ReadExactlyAsync(messageBuffer, cts.Token);
-        return Message.From(array, totalMessageBuffer.Length);
+
+        var array = ArrayPool<byte>.Shared.Rent(messageLength);
+        await stream.ReadExactlyAsync(_idBuffer, cts.Token);
+        await stream.ReadExactlyAsync(array, 0, payloadLength, cts.Token);
+        return Message.From(array, payloadLength, _idBuffer[0]);
     }
 
     private async ValueTask<(
