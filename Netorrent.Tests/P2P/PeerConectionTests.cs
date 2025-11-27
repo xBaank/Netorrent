@@ -110,12 +110,15 @@ public class PeerConectionTests
 
         _ = ctx.StartAsync(token);
 
-        // Expect IncreaseRarity called for each piece the peer has
-        // (peerBitfield is all-true => length 5)
+        var callTask = ctx.RequestMock.WaitForCallAsync(
+            x => x.IncreaseRarity(Arg.Any<int>()),
+            token
+        );
         await ctx.WriteAsync(Message.CreateBitfield(peerBitfield.ToRentedArray()), token);
 
         var bitfieldMessage = await ctx.ReadAsync(token);
         var interestedMessage = await ctx.ReadAsync(token);
+        await callTask;
         await ctx.DisposeAsync();
 
         // Verify internal state & outgoing messages
