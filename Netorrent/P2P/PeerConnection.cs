@@ -2,7 +2,6 @@
 using System.Buffers.Binary;
 using System.Net;
 using System.Reactive.Subjects;
-using System.Threading.Channels;
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.Other;
