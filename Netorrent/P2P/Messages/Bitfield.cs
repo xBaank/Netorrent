@@ -45,7 +45,7 @@ public class Bitfield
     public IReadOnlyList<bool> Pieces =>
         Enumerable.Range(0, _bits.Length).AsValueEnumerable().Select(i => _bits[i]).ToList();
 
-    internal async Task SetPieceAsync(int index, CancellationToken cancellationToken)
+    internal void SetPiece(int index, CancellationToken cancellationToken)
     {
         if (index >= _bits.Length)
             return;
@@ -72,12 +72,12 @@ public class Bitfield
         return false;
     }
 
-    internal RentedArray<byte> ToMemoryRented()
+    internal RentedArray<byte> ToRentedArray()
     {
         int byteCount = (_bits.Length + 7) / 8;
         var array = ArrayPool<byte>.Shared.Rent(byteCount);
-        var memory = array.AsMemory()[..byteCount];
-        PackBitsBigEndian(memory.Span);
+        var memory = array.AsSpan()[..byteCount];
+        PackBitsBigEndian(memory);
 
         return new RentedArray<byte>(array, byteCount);
     }

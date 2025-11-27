@@ -1,6 +1,8 @@
 ﻿using System.Buffers;
 using System.Buffers.Binary;
 using System.Net;
+using System.Reactive.Subjects;
+using System.Threading.Channels;
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.Other;
@@ -15,8 +17,8 @@ namespace Netorrent.P2P;
 internal class PeerConnection(
     IPEndPoint iPEndPoint,
     Bitfield myBitField,
-    UploadScheduler uploadScheduler,
-    RequestManager requestManager,
+    IUploadScheduler uploadScheduler,
+    IRequestScheduler requestScheduler,
     IMessageStream messageStream,
     bool amChocking = true,
     bool amInterested = false,
@@ -24,8 +26,9 @@ internal class PeerConnection(
     bool peerInterested = false
 ) : IAsyncDisposable
 {
-    private readonly UploadScheduler _uploadScheduler = uploadScheduler;
-    private readonly RequestManager _requestManager = requestManager;
+    private readonly IUploadScheduler _uploadScheduler = uploadScheduler;
+    private readonly IRequestScheduler _requestScheduler = requestScheduler;
+    private readonly Subject<PeerConnection> _stateChanged = new Subject<PeerConnection>();
 
     private DateTime _lastKeepAlive;
     private CancellationTokenSource? _cancellationTokenSource;
@@ -42,6 +45,7 @@ internal class PeerConnection(
     public PeerId? PeerId { get; private set; }
     public Bitfield PeerBitField { get; private set; } = new(myBitField.Length);
     public PeerRequestWindow PeerRequestWindow { get; } = new(FileManager.BlockSize);
+    public IObservable<PeerConnection> StateChanged => _stateChanged;
 
     public int RequestedBlocksCount
     {
@@ -123,7 +127,7 @@ internal class PeerConnection(
                 foreach (var (index, hasPiece) in PeerBitField.Pieces.AsValueEnumerable().Index())
                 {
                     if (hasPiece)
-                        _requestManager.IncreaseRarity(index);
+                        _requestScheduler.IncreaseRarity(index);
                 }
                 await SendInterestAsync(cancellationToken);
                 continue;
@@ -131,28 +135,44 @@ internal class PeerConnection(
 
             if (message.Id == Message.Interested)
             {
-                PeerInterested = true;
-                await SendUnchokedAsync(cancellationToken);
+                if (PeerInterested != true)
+                {
+                    PeerInterested = true;
+                    await SendUnchokedAsync(cancellationToken);
+                    _stateChanged.OnNext(this);
+                }
                 continue;
             }
 
             if (message.Id == Message.NotInterested)
             {
-                PeerInterested = false;
-                await SendChokedAsync(cancellationToken);
+                if (PeerInterested != false)
+                {
+                    PeerInterested = false;
+                    await SendChokedAsync(cancellationToken);
+                    _stateChanged.OnNext(this);
+                }
                 continue;
             }
 
             if (message.Id == Message.Choke)
             {
-                PeerChocking = true;
+                if (PeerChocking != true)
+                {
+                    PeerChocking = true;
+                    _stateChanged.OnNext(this);
+                }
                 continue;
             }
 
             if (message.Id == Message.Unchoke)
             {
-                PeerChocking = false;
-                await _requestManager.OnPeerUnchockedAsync(this, cancellationToken);
+                if (PeerChocking != false)
+                {
+                    PeerChocking = false;
+                    await _requestScheduler.OnPeerUnchockedAsync(this, cancellationToken);
+                    _stateChanged.OnNext(this);
+                }
                 continue;
             }
 
@@ -163,8 +183,8 @@ internal class PeerConnection(
                 if (PeerBitField.HasPiece(pieceIndex))
                     continue;
 
-                _requestManager.IncreaseRarity(pieceIndex);
-                await PeerBitField.SetPieceAsync(pieceIndex, cancellationToken);
+                _requestScheduler.IncreaseRarity(pieceIndex);
+                PeerBitField.SetPiece(pieceIndex, cancellationToken);
                 await SendInterestAsync(cancellationToken);
                 continue;
             }
@@ -261,7 +281,7 @@ internal class PeerConnection(
 
         var memory = block.Payload.Memory;
         DownloadSpeedTracker.AddBytes(memory.Length);
-        await _requestManager.ReceiveBlockAsync(block, cancellationToken);
+        await _requestScheduler.ReceiveBlockAsync(block, cancellationToken);
     }
 
     private void ReceiveCancel(Message message)
@@ -301,9 +321,10 @@ internal class PeerConnection(
         var interest = MyBitField.HasAnyMissingPiece(PeerBitField);
         if (interest != AmInterested)
         {
+            AmInterested = interest;
             var message = Message.CreateInterested();
             await messageStream.OutgoingMessages.WriteAsync(message, cancellationToken);
-            AmInterested = interest;
+            _stateChanged.OnNext(this);
         }
     }
 
@@ -312,36 +333,39 @@ internal class PeerConnection(
         var interest = MyBitField.HasAnyMissingPiece(PeerBitField);
         if (interest != AmInterested)
         {
+            AmInterested = interest;
             var message = Message.CreateNotInterested();
             await messageStream.OutgoingMessages.WriteAsync(message, cancellationToken);
-            AmInterested = interest;
+            _stateChanged.OnNext(this);
         }
     }
 
     private async Task SendChokedAsync(CancellationToken cancellationToken)
     {
-        if (!AmChocking)
+        if (AmChocking != true)
         {
+            AmChocking = true;
             var message = Message.CreateChoke();
             await messageStream.OutgoingMessages.WriteAsync(message, cancellationToken);
-            AmChocking = true;
             _uploadScheduler.RemoveChokedSlot();
+            _stateChanged.OnNext(this);
         }
     }
 
     private async Task SendUnchokedAsync(CancellationToken cancellationToken)
     {
-        if (AmChocking && _uploadScheduler.AddChokedSlot())
+        if (AmChocking != false && _uploadScheduler.AddChokedSlot())
         {
+            AmChocking = false;
             var message = Message.CreateUnchoke();
             await messageStream.OutgoingMessages.WriteAsync(message, cancellationToken);
-            AmChocking = false;
+            _stateChanged.OnNext(this);
         }
     }
 
     public async Task SendBitfieldAsync(Bitfield bitField, CancellationToken cancellationToken)
     {
-        var memoryRented = bitField.ToMemoryRented();
+        var memoryRented = bitField.ToRentedArray();
         var message = Message.CreateBitfield(memoryRented);
         await messageStream.OutgoingMessages.WriteAsync(message, cancellationToken);
     }
@@ -353,7 +377,7 @@ internal class PeerConnection(
         foreach (var (index, hasPiece) in PeerBitField.Pieces.AsValueEnumerable().Index())
         {
             if (hasPiece)
-                _requestManager.DecreaseRarity(index);
+                _requestScheduler.DecreaseRarity(index);
         }
         _uploadScheduler.RemoveChokedSlot();
         messageStream.Dispose();

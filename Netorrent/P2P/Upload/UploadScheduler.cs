@@ -6,7 +6,7 @@ using Netorrent.P2P.Messages;
 
 namespace Netorrent.P2P.Upload;
 
-internal class UploadScheduler(FileManager fileManager, ILogger logger) : IAsyncDisposable
+internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploadScheduler
 {
     private readonly Channel<RequestBlock> _pendingRequests = Channel.CreateBounded<RequestBlock>(
         new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }

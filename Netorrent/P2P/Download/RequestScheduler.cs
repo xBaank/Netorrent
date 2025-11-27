@@ -9,12 +9,12 @@ using ZLinq;
 
 namespace Netorrent.P2P.Download;
 
-internal class RequestManager(
+internal class RequestScheduler(
     IReadOnlyDictionary<IPEndPoint, PeerConnection> activePeers,
     Bitfield myBitfield,
     FileManager fileManager,
     ILogger logger
-) : IAsyncDisposable
+) : IRequestScheduler
 {
     const int MinPeersForRarity = 6;
     const int WarmupTimeoutSecods = 8;
@@ -111,7 +111,7 @@ internal class RequestManager(
                         _currentRarestPieces.Remove(receiveBlock.Index);
                     }
                     _requestBlocksByPieceIndex.TryRemove(receiveBlock.Index, out _);
-                    await myBitfield.SetPieceAsync(receiveBlock.Index, cancellationToken);
+                    myBitfield.SetPiece(receiveBlock.Index, cancellationToken);
                 }
             }
             finally

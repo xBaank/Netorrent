@@ -26,7 +26,7 @@ internal class P2PClient : IAsyncDisposable
     private readonly ConcurrentQueue<IPEndPoint> _knownPeers = [];
     private readonly PeerId _peerId;
     private readonly Bitfield _bitField;
-    private readonly RequestManager _requestManager;
+    private readonly RequestScheduler _requestManager;
     private readonly UploadScheduler _uploadScheduler;
     private readonly ChannelReader<IPEndPoint> _trackersChannel;
     private Func<IPAddress, IPAddress>? _peerIpProxy;
@@ -53,7 +53,7 @@ internal class P2PClient : IAsyncDisposable
         FileManager = fileManager;
         DownloadInfo = new DownloadInfo(_activePeers, fileManager, bitField);
         _peerIpProxy = peerIpProxy;
-        _requestManager = new RequestManager(_activePeers, _bitField, fileManager, logger);
+        _requestManager = new RequestScheduler(_activePeers, _bitField, fileManager, logger);
         _uploadScheduler = new UploadScheduler(fileManager, logger);
     }
 
