@@ -1,7 +1,9 @@
 ﻿using System.Reactive.Linq;
+using Netorrent.Tests.Extensions;
+using Netorrent.Tests.P2P;
 using NSubstitute;
 
-namespace Netorrent.Tests.P2P;
+namespace Netorrent.Tests.Extensions;
 
 public static class NSubstituteExtensions
 {
