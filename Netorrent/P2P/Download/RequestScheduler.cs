@@ -37,14 +37,18 @@ internal class RequestScheduler(
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
+        _cancellationTokenSource ??= CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
-        var finishedTask = await Task.WhenAny(
+        List<Task> tasks =
+        [
             ReceiveBlocksAsync(_cancellationTokenSource.Token),
             ReScheduleTimeoutBlocksAsync(_cancellationTokenSource.Token),
-            SchedulePiecesAsync(_cancellationTokenSource.Token)
-        );
+            SchedulePiecesAsync(_cancellationTokenSource.Token),
+        ];
+        var finishedTask = await Task.WhenAny(tasks);
+        _cancellationTokenSource?.Cancel();
+        await Task.WhenAll(tasks);
         await finishedTask;
     }
 

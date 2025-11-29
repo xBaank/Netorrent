@@ -38,6 +38,7 @@ internal class TrackerClient(
             .ToListAsync(cancellationToken: cancellationToken);
 
         var finishedTask = await Task.WhenAny(tasks);
+        await Task.WhenAll(tasks);
         await finishedTask;
     }
 

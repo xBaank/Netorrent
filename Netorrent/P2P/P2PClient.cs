@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
@@ -31,6 +32,8 @@ internal class P2PClient : IAsyncDisposable
     private readonly ChannelReader<IPEndPoint> _trackersChannel;
     private readonly Func<IPAddress, IPAddress>? _peerIpProxy;
     private readonly SemaphoreSlim _semaphoreSlim = new(1);
+    private readonly List<Task> _peerTasks = [];
+    private CancellationTokenSource? _cancellationTokenSource;
 
     public FileManager FileManager { get; }
     public DownloadInfo DownloadInfo { get; }
@@ -60,13 +63,17 @@ internal class P2PClient : IAsyncDisposable
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        var finishedTask = Task.WhenAny(
+        _cancellationTokenSource ??= new CancellationTokenSource();
+        List<Task> tasks =
+        [
             _requestManager.StartAsync(cancellationToken),
             _uploadScheduler.StartAsync(cancellationToken),
             ProcessPeersAsync(cancellationToken),
-            ListenToPeersAsync(cancellationToken)
-        );
-
+            ListenToPeersAsync(cancellationToken),
+        ];
+        var finishedTask = Task.WhenAny(tasks);
+        _cancellationTokenSource?.Cancel();
+        await Task.WhenAll([.. tasks, .. _peerTasks]);
         await finishedTask;
     }
 
@@ -203,7 +210,7 @@ internal class P2PClient : IAsyncDisposable
                 _logger.LogInformation("Connected to peer {PeerId}", peerConnection.PeerId);
 
             _activePeers[peerConnection.PeerEndpoint] = peerConnection;
-            _ = HandlePeer(peerConnection, cancellationToken);
+            _peerTasks.Add(HandlePeer(peerConnection, cancellationToken));
         }
         finally
         {
@@ -274,6 +281,7 @@ internal class P2PClient : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _cancellationTokenSource?.Cancel();
         _listener.Stop();
         foreach (var item in _activePeers)
         {

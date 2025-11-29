@@ -90,10 +90,14 @@ public sealed class Torrent : IAsyncDisposable
     {
         try
         {
-            var finishedTask = await Task.WhenAny(
+            List<Task> tasks =
+            [
                 _p2pClient.StartAsync(cancellationToken),
-                _trackerClient.StartAsync(cancellationToken)
-            );
+                _trackerClient.StartAsync(cancellationToken),
+            ];
+            var finishedTask = await Task.WhenAny(tasks);
+            Stop();
+            await Task.WhenAll(tasks);
             await finishedTask;
         }
         catch (OperationCanceledException)

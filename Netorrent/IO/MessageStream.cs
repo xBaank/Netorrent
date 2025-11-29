@@ -29,15 +29,16 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
-        var readTask = ReadLoopAsync(_cancellationTokenSource.Token);
-        var writeTask = WriteLoopAsync(_cancellationTokenSource.Token);
-        var finishedTask = await Task.WhenAny(readTask, writeTask);
-        if (finishedTask.IsFaulted)
-        {
-            _cancellationTokenSource.Cancel();
-            _incomingMessages.Writer.TryComplete(finishedTask.Exception);
-            _outgoingMessages.Writer.TryComplete(finishedTask.Exception);
-        }
+        List<Task> tasks =
+        [
+            ReadLoopAsync(_cancellationTokenSource.Token),
+            WriteLoopAsync(_cancellationTokenSource.Token),
+        ];
+        var finishedTask = await Task.WhenAny(tasks);
+        _cancellationTokenSource.Cancel();
+        _incomingMessages.Writer.TryComplete(finishedTask.Exception);
+        _outgoingMessages.Writer.TryComplete(finishedTask.Exception);
+        await Task.WhenAll(tasks);
         await finishedTask;
     }
 
