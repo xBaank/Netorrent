@@ -15,6 +15,7 @@ namespace Netorrent.Tests.P2P;
 [Timeout(5_000)]
 public class PeerConectionTests
 {
+    //These test cases simulate other peer sending data through a channel.
     //TODO Test send cases
     [Test]
     public async Task Should_Receive_Unchoke(CancellationToken token)
@@ -42,7 +43,7 @@ public class PeerConectionTests
 
         var state = ctx.Peer.NextStateAsync(token);
         await ctx.WriteAsync(Message.CreateChoke(), token);
-        var bitfieldMessage = await ctx.ReadAsync(token);
+        using var bitfieldMessage = await ctx.ReadAsync(token);
         await state;
 
         ctx.Peer.PeerChocking.ShouldBeTrue();
@@ -62,8 +63,8 @@ public class PeerConectionTests
 
         await ctx.WriteAsync(Message.CreateInterested(), token);
 
-        var bitfieldMessage = await ctx.ReadAsync(token);
-        var unchokeMessage = await ctx.ReadAsync(token);
+        using var bitfieldMessage = await ctx.ReadAsync(token);
+        using var unchokeMessage = await ctx.ReadAsync(token);
 
         await state;
         await ctx.DisposeAsync();
@@ -90,8 +91,8 @@ public class PeerConectionTests
 
         await ctx.WriteAsync(Message.CreateNotInterested(), token);
 
-        var bitfieldMessage = await ctx.ReadAsync(token);
-        var chokeMessage = await ctx.ReadAsync(token);
+        using var bitfieldMessage = await ctx.ReadAsync(token);
+        using var chokeMessage = await ctx.ReadAsync(token);
 
         await state;
 
@@ -117,8 +118,8 @@ public class PeerConectionTests
 
         await ctx.WriteAsync(Message.CreateBitfield(peerBitfield.ToRentedArray()), token);
 
-        var bitfieldMessage = await ctx.ReadAsync(token);
-        var interestedMessage = await ctx.ReadAsync(token);
+        using var bitfieldMessage = await ctx.ReadAsync(token);
+        using var interestedMessage = await ctx.ReadAsync(token);
         await callTask;
         await ctx.DisposeAsync();
 
@@ -144,8 +145,8 @@ public class PeerConectionTests
 
         await ctx.WriteAsync(Message.CreateHave(1), token);
 
-        var bitfieldMessage = await ctx.ReadAsync(token);
-        var interestedMessage = await ctx.ReadAsync(token);
+        using var bitfieldMessage = await ctx.ReadAsync(token);
+        using var interestedMessage = await ctx.ReadAsync(token);
         await callTask;
         await ctx.DisposeAsync();
 
@@ -173,7 +174,7 @@ public class PeerConectionTests
         _ = ctx.StartAsync(token);
 
         await ctx.WriteAsync(Message.CreateHave(1), token);
-        var bitfieldMessage = await ctx.ReadAsync(token);
+        using var bitfieldMessage = await ctx.ReadAsync(token);
         await callTask;
         await ctx.DisposeAsync();
 
@@ -202,7 +203,7 @@ public class PeerConectionTests
 
         await ctx.WriteAsync(Message.CreateBitfield(peerBitfield.ToRentedArray()), token);
 
-        var bitfieldMessage = await ctx.ReadAsync(token);
+        using var bitfieldMessage = await ctx.ReadAsync(token);
         await callTask;
         await ctx.DisposeAsync();
 
@@ -238,8 +239,8 @@ public class PeerConectionTests
         await ctx.WriteAsync(Message.CreateBitfield(peerBitfield.ToRentedArray()), token);
         await ctx.WriteAsync(Message.CreateInterested(), token);
 
-        var bitfieldMessage = await ctx.ReadAsync(token);
-        var unchokeMessage = await ctx.ReadAsync(token);
+        using var bitfieldMessage = await ctx.ReadAsync(token);
+        using var unchokeMessage = await ctx.ReadAsync(token);
 
         await ctx.WriteAsync(Message.CreateRequest(0, 0, FileManager.BlockSize), token);
 
@@ -268,12 +269,7 @@ public class PeerConectionTests
         var peerBitfield = new Bitfield(5, true);
 
         var ctx = new PeerConnectionTestContext(local);
-        using var block = new Block(
-            0,
-            0,
-            new RentedArray<byte>(ArrayPool<byte>.Shared.Rent(1), 1),
-            ctx.Peer
-        );
+
         var state = ctx.Peer.NextStateAsync(2, token);
         var receiveBlockCalled = ctx.RequestMock.WaitForCallAsync(
             async i => await i.ReceiveBlockAsync(Arg.Any<Block>(), Arg.Any<CancellationToken>()),
@@ -284,10 +280,13 @@ public class PeerConectionTests
 
         await ctx.WriteAsync(Message.CreateBitfield(peerBitfield.ToRentedArray()), token);
         await ctx.WriteAsync(Message.CreateUnchoke(), token);
-        await ctx.WriteAsync(Message.CreatePiece(0, 0, block.Payload), token);
+        await ctx.WriteAsync(
+            Message.CreatePiece(0, 0, new RentedArray<byte>(ArrayPool<byte>.Shared.Rent(1), 1)),
+            token
+        );
 
-        var bitfieldMessage = await ctx.ReadAsync(token);
-        var interestedMessage = await ctx.ReadAsync(token);
+        using var bitfieldMessage = await ctx.ReadAsync(token);
+        using var intersetedMessage = await ctx.ReadAsync(token);
 
         await state;
         await receiveBlockCalled;
@@ -297,17 +296,47 @@ public class PeerConectionTests
         ctx.Peer.PeerChocking.ShouldBeFalse();
 
         bitfieldMessage.Id.ShouldBe(Message.Bitfield);
-        interestedMessage.Id.ShouldBe(Message.Interested);
+        intersetedMessage.Id.ShouldBe(Message.Interested);
 
         await ctx
-            .RequestMock.Received()
-            .ReceiveBlockAsync(
-                Arg.Is<Block>(i =>
-                    i.Begin == block.Begin
-                    && i.FromPeer == ctx.Peer
-                    && i.Payload.Length == block.Payload.Length
-                ),
-                Arg.Any<CancellationToken>()
-            );
+            .RequestMock.Received(1)
+            .ReceiveBlockAsync(Arg.Any<Block>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Should_Send_Request(CancellationToken token)
+    {
+        var local = new Bitfield(5);
+        var peerBitfield = new Bitfield(5, true);
+
+        var ctx = new PeerConnectionTestContext(local);
+
+        var request = new RequestBlock(0, 0, 1)
+        {
+            RequestedAt = DateTimeOffset.UtcNow,
+            State = RequestBlockState.Requested,
+        };
+
+        var state = ctx.Peer.NextStateAsync(2, token);
+
+        _ = ctx.StartAsync(token);
+
+        await ctx.WriteAsync(Message.CreateBitfield(peerBitfield.ToRentedArray()), token);
+        await ctx.WriteAsync(Message.CreateUnchoke(), token);
+
+        using var bitfieldMessage = await ctx.ReadAsync(token);
+        using var interestedMessage = await ctx.ReadAsync(token);
+        await ctx.Peer.SendRequestAsync(request, token);
+        using var requestMessage = await ctx.ReadAsync(token);
+
+        await state;
+        await ctx.DisposeAsync();
+
+        ctx.Peer.AmInterested.ShouldBeTrue();
+        ctx.Peer.PeerChocking.ShouldBeFalse();
+
+        bitfieldMessage.Id.ShouldBe(Message.Bitfield);
+        interestedMessage.Id.ShouldBe(Message.Interested);
+        requestMessage.Id.ShouldBe(Message.Request);
     }
 }
