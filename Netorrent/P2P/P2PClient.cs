@@ -30,6 +30,7 @@ internal class P2PClient : IAsyncDisposable
     private readonly UploadScheduler _uploadScheduler;
     private readonly ChannelReader<IPEndPoint> _trackersChannel;
     private readonly Func<IPAddress, IPAddress>? _peerIpProxy;
+    private readonly SemaphoreSlim _semaphoreSlim = new(1);
 
     public FileManager FileManager { get; }
     public DownloadInfo DownloadInfo { get; }
@@ -71,14 +72,19 @@ internal class P2PClient : IAsyncDisposable
 
     private async Task ProcessPeersAsync(CancellationToken cancellationToken)
     {
+        List<Task> connectTasks = new(100);
         await foreach (var iPEndPoint in _trackersChannel.ReadAllAsync(cancellationToken))
         {
             var targetEndPoint = new IPEndPoint(
                 _peerIpProxy?.Invoke(iPEndPoint.Address) ?? iPEndPoint.Address,
                 iPEndPoint.Port
             );
+            connectTasks.Add(ConnectToPeerAsync(null, targetEndPoint, cancellationToken));
 
-            await ConnectToPeerAsync(null, targetEndPoint, cancellationToken);
+            if (connectTasks.Count >= 100)
+            {
+                await Task.WhenAll(connectTasks);
+            }
         }
     }
 
@@ -153,48 +159,56 @@ internal class P2PClient : IAsyncDisposable
             return;
         }
 
-        if (peerConnection.PeerId == _peerId)
+        await _semaphoreSlim.WaitAsync(cancellationToken);
+        try
         {
-            if (_logger.IsEnabled(LogLevel.Information))
-                _logger.LogInformation(
-                    "Ignored self connection to {EndPoint}",
-                    peerConnection.IPEndPoint
-                );
-            await peerConnection.DisposeAsync();
-            return;
-        }
-
-        if (_activePeers.ContainsKey(peerConnection.PeerEndpoint))
-        {
-            if (_logger.IsEnabled(LogLevel.Information))
-                _logger.LogInformation(
-                    "Ignored active peer from {EndPoint}",
-                    peerConnection.IPEndPoint
-                );
-            await peerConnection.DisposeAsync();
-            return;
-        }
-
-        if (_activePeers.Count >= MAX_ACTIVE_PEER_COUNT)
-        {
-            var worstPeer = GetWorstPeer();
-            if (worstPeer is not null)
+            if (peerConnection.PeerId == _peerId)
             {
-                _activePeers.Remove(worstPeer.PeerEndpoint, out _);
-                await worstPeer.DisposeAsync();
-            }
-            else
-            {
-                _knownPeers.Enqueue(iPEndPoint);
+                if (_logger.IsEnabled(LogLevel.Information))
+                    _logger.LogInformation(
+                        "Ignored self connection to {EndPoint}",
+                        peerConnection.IPEndPoint
+                    );
+                await peerConnection.DisposeAsync();
                 return;
             }
+
+            if (_activePeers.ContainsKey(peerConnection.PeerEndpoint))
+            {
+                if (_logger.IsEnabled(LogLevel.Information))
+                    _logger.LogInformation(
+                        "Ignored active peer from {EndPoint}",
+                        peerConnection.IPEndPoint
+                    );
+                await peerConnection.DisposeAsync();
+                return;
+            }
+
+            if (_activePeers.Count >= MAX_ACTIVE_PEER_COUNT)
+            {
+                var worstPeer = GetWorstPeer();
+                if (worstPeer is not null)
+                {
+                    _activePeers.Remove(worstPeer.PeerEndpoint, out _);
+                    await worstPeer.DisposeAsync();
+                }
+                else
+                {
+                    _knownPeers.Enqueue(iPEndPoint);
+                    return;
+                }
+            }
+
+            if (_logger.IsEnabled(LogLevel.Information))
+                _logger.LogInformation("Connected to peer {PeerId}", peerConnection.PeerId);
+
+            _activePeers[peerConnection.PeerEndpoint] = peerConnection;
+            _ = HandlePeer(peerConnection, cancellationToken);
         }
-
-        if (_logger.IsEnabled(LogLevel.Information))
-            _logger.LogInformation("Connected to peer {PeerId}", peerConnection.PeerId);
-
-        _activePeers[peerConnection.PeerEndpoint] = peerConnection;
-        _ = HandlePeer(peerConnection, cancellationToken);
+        finally
+        {
+            _semaphoreSlim.Release();
+        }
     }
 
     private async Task HandlePeer(
@@ -216,7 +230,6 @@ internal class P2PClient : IAsyncDisposable
         finally
         {
             _activePeers.Remove(peerConnection.PeerEndpoint, out _);
-
             await peerConnection.DisposeAsync();
 
             if (_knownPeers.TryDequeue(out var nextEndpoint))
