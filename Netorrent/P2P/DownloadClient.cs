@@ -7,7 +7,7 @@ namespace Netorrent.P2P;
 
 public class DownloadInfo
 {
-    private readonly IReadOnlyDictionary<IPEndPoint, PeerConnection> _peers;
+    private readonly IReadOnlyDictionary<PeerEndpoint, PeerConnection> _peers;
     private readonly FileManager _fileManager;
     private readonly Bitfield _bitfield;
     private TaskCompletionSource _downloadTaskCompletitionSource = new();
@@ -23,7 +23,7 @@ public class DownloadInfo
     public Task DownloadTask => _downloadTaskCompletitionSource.Task;
 
     internal DownloadInfo(
-        IReadOnlyDictionary<IPEndPoint, PeerConnection> peers,
+        IReadOnlyDictionary<PeerEndpoint, PeerConnection> peers,
         FileManager fileManager,
         Bitfield bitfield
     )

@@ -10,7 +10,7 @@ using ZLinq;
 namespace Netorrent.P2P.Download;
 
 internal class RequestScheduler(
-    IReadOnlyDictionary<IPEndPoint, PeerConnection> activePeers,
+    IReadOnlyDictionary<PeerEndpoint, PeerConnection> activePeers,
     Bitfield myBitfield,
     FileManager fileManager,
     ILogger logger

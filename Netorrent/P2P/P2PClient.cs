@@ -22,14 +22,14 @@ internal class P2PClient : IAsyncDisposable
     private readonly TcpListener _listener = Tcp.GetFreeTcpListener();
     private readonly MetaInfo _metaInfo;
     private readonly ILogger _logger;
-    private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _activePeers = [];
+    private readonly ConcurrentDictionary<PeerEndpoint, PeerConnection> _activePeers = [];
     private readonly ConcurrentQueue<IPEndPoint> _knownPeers = [];
     private readonly PeerId _peerId;
     private readonly Bitfield _bitField;
     private readonly RequestScheduler _requestManager;
     private readonly UploadScheduler _uploadScheduler;
     private readonly ChannelReader<IPEndPoint> _trackersChannel;
-    private Func<IPAddress, IPAddress>? _peerIpProxy;
+    private readonly Func<IPAddress, IPAddress>? _peerIpProxy;
 
     public FileManager FileManager { get; }
     public DownloadInfo DownloadInfo { get; }
@@ -100,10 +100,10 @@ internal class P2PClient : IAsyncDisposable
         CancellationToken cancellationToken = default
     )
     {
-        if (_activePeers.ContainsKey(iPEndPoint))
-            return;
+        var amInitiating = client is null;
 
-        if (client is null)
+        //If im initiaing the connection
+        if (amInitiating)
         {
             client = new TcpClient();
 
@@ -124,16 +124,27 @@ internal class P2PClient : IAsyncDisposable
             _bitField,
             _uploadScheduler,
             _requestManager,
-            new MessageStream(client.GetStream(), PEER_TIMEOUT_SECONDS.Seconds)
+            new MessageStream(client!.GetStream(), PEER_TIMEOUT_SECONDS.Seconds)
         );
 
         try
         {
-            await peerConnection.PerformHandshakeAsync(
-                _metaInfo.Info.InfoHash,
-                _peerId,
-                cancellationToken
-            );
+            if (amInitiating)
+            {
+                await peerConnection.PerformHandshakeAsync(
+                    _metaInfo.Info.InfoHash,
+                    _peerId,
+                    cancellationToken
+                );
+            }
+            else
+            {
+                await peerConnection.ReceiveHandshakeAsync(
+                    _metaInfo.Info.InfoHash,
+                    _peerId,
+                    cancellationToken
+                );
+            }
         }
         catch (Exception ex)
         {
@@ -153,9 +164,7 @@ internal class P2PClient : IAsyncDisposable
             return;
         }
 
-        var peerIds = _activePeers.Values.AsValueEnumerable().Select(p => p.PeerId).ToHashSet();
-
-        if (peerIds.Contains(peerConnection.PeerId))
+        if (_activePeers.ContainsKey(peerConnection.PeerEndpoint))
         {
             if (_logger.IsEnabled(LogLevel.Information))
                 _logger.LogInformation(
@@ -171,7 +180,7 @@ internal class P2PClient : IAsyncDisposable
             var worstPeer = GetWorstPeer();
             if (worstPeer is not null)
             {
-                _activePeers.Remove(worstPeer.IPEndPoint, out _);
+                _activePeers.Remove(worstPeer.PeerEndpoint, out _);
                 await worstPeer.DisposeAsync();
             }
             else
@@ -184,7 +193,7 @@ internal class P2PClient : IAsyncDisposable
         if (_logger.IsEnabled(LogLevel.Information))
             _logger.LogInformation("Connected to peer {PeerId}", peerConnection.PeerId);
 
-        _activePeers[iPEndPoint] = peerConnection;
+        _activePeers[peerConnection.PeerEndpoint] = peerConnection;
         _ = HandlePeer(peerConnection, cancellationToken);
     }
 
@@ -206,7 +215,7 @@ internal class P2PClient : IAsyncDisposable
         }
         finally
         {
-            _activePeers.Remove(peerConnection.IPEndPoint, out _);
+            _activePeers.Remove(peerConnection.PeerEndpoint, out _);
 
             await peerConnection.DisposeAsync();
 

@@ -45,6 +45,7 @@ internal class PeerConnection(
     public Bitfield PeerBitField { get; private set; } = new(myBitField.Length);
     public PeerRequestWindow PeerRequestWindow { get; } = new(FileManager.BlockSize);
     public IObservable<PeerConnection> StateChanged => _stateChanged;
+    public PeerEndpoint PeerEndpoint => new(IPEndPoint, PeerId!.Value);
 
     public int RequestedBlocksCount
     {
