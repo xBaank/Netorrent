@@ -5,32 +5,36 @@ namespace Netorrent.Other;
 
 internal class RentedArray<T>(T[] array, int length, int start = 0) : IDisposable
 {
-    public readonly Memory<T> Memory = array.AsMemory(start, length);
-    private readonly T[] _array = array;
+    private readonly Memory<T> memory = array.AsMemory(start, length);
+    public Memory<T> Memory =>
+        _disposed ? throw new ObjectDisposedException(nameof(RentedArray<>)) : memory;
     private bool _disposed;
 
-    public int Length { get; } = length;
-    public int Start { get; } = start;
+#if DEBUG
+    private readonly string _allocationSite = Environment.StackTrace;
+#endif
 
-    //TODO fix this cases where rented array is not disposed
+    public int Length { get; } = length;
+
     ~RentedArray()
     {
         if (!_disposed)
         {
-            ArrayPool<T>.Shared.Return(_array);
 #if DEBUG
-            Debug.Fail("RentedArray was not disposed!");
+            Debug.Fail($"RentedArray was not disposed! Allocated at {_allocationSite}");
 #endif
         }
+
+        Debug.WriteLine($"RentedArray was not disposed!");
     }
 
     public void Dispose()
     {
         if (!_disposed)
         {
-            ArrayPool<T>.Shared.Return(_array);
+            ArrayPool<T>.Shared.Return(array);
             _disposed = true;
-            GC.SuppressFinalize(this); // prevent finalizer from running
+            GC.SuppressFinalize(this);
         }
     }
 }

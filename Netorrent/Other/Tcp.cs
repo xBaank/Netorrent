@@ -9,7 +9,7 @@ internal static class Tcp
     {
         var listener = new TcpListener(IPAddress.IPv6Any, 0);
         listener.Server.DualMode = true;
-        listener.Start(); // Try to bind — this reserves the port
+        listener.Start();
         return listener;
     }
 }

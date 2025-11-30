@@ -16,7 +16,6 @@ namespace Netorrent.Tests.P2P;
 public class PeerConectionTests
 {
     //These test cases simulate other peer sending data through a channel.
-    //TODO Test send cases
     [Test]
     public async Task Should_Receive_Unchoke(CancellationToken token)
     {
@@ -26,8 +25,11 @@ public class PeerConectionTests
         _ = ctx.StartAsync(token);
 
         await ctx.WriteAsync(Message.CreateUnchoke(), token);
+        using var bitfieldMessage = await ctx.ReadAsync(token);
+
         await stateChanged;
 
+        bitfieldMessage.Id.ShouldBe(Message.Bitfield);
         ctx.Peer.PeerChocking.ShouldBeFalse();
         await ctx
             .RequestMock.Received()
@@ -275,15 +277,13 @@ public class PeerConectionTests
             async i => await i.ReceiveBlockAsync(Arg.Any<Block>(), Arg.Any<CancellationToken>()),
             token
         );
+        using var rentedArray = new RentedArray<byte>(ArrayPool<byte>.Shared.Rent(1), 1);
 
         _ = ctx.StartAsync(token);
 
         await ctx.WriteAsync(Message.CreateBitfield(peerBitfield.ToRentedArray()), token);
         await ctx.WriteAsync(Message.CreateUnchoke(), token);
-        await ctx.WriteAsync(
-            Message.CreatePiece(0, 0, new RentedArray<byte>(ArrayPool<byte>.Shared.Rent(1), 1)),
-            token
-        );
+        await ctx.WriteAsync(Message.CreatePiece(0, 0, rentedArray), token);
 
         using var bitfieldMessage = await ctx.ReadAsync(token);
         using var intersetedMessage = await ctx.ReadAsync(token);

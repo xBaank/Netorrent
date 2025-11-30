@@ -81,7 +81,7 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
         while (!cancellationToken.IsCancellationRequested)
         {
             var message = await ReceiveMessageAsync(cancellationToken);
-            await _incomingMessages.Writer.WriteAsync(message, cancellationToken);
+            await _incomingMessages.Writer.WriteOrDisposeAsync(message, cancellationToken);
         }
     }
 
@@ -113,9 +113,17 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
             return Message.CreateKeepAlive();
 
         var array = ArrayPool<byte>.Shared.Rent(messageLength);
-        await stream.ReadExactlyAsync(_idBuffer, cts.Token);
-        await stream.ReadExactlyAsync(array, 0, payloadLength, cts.Token);
-        return Message.From(array, payloadLength, _idBuffer[0]);
+        try
+        {
+            await stream.ReadExactlyAsync(_idBuffer, cts.Token);
+            await stream.ReadExactlyAsync(array, 0, payloadLength, cts.Token);
+            return Message.From(array, payloadLength, _idBuffer[0]);
+        }
+        catch
+        {
+            ArrayPool<byte>.Shared.Return(array);
+            throw;
+        }
     }
 
     private async ValueTask<Handshake> ReceiveHandshakeAsync(CancellationToken cancellationToken)

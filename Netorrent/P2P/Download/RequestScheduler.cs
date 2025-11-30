@@ -21,7 +21,7 @@ internal class RequestScheduler(
     const int TimeoutSeconds = 10;
 
     private readonly Channel<Block> _receiveBlocksChannel = Channel.CreateBounded<Block>(
-        new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = false }
+        new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
     );
     private readonly Channel<PeerConnection> _scheduleChannel =
         Channel.CreateBounded<PeerConnection>(
@@ -37,7 +37,7 @@ internal class RequestScheduler(
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _cancellationTokenSource ??= CancellationTokenSource.CreateLinkedTokenSource(
+        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
         List<Task> tasks =
@@ -47,7 +47,8 @@ internal class RequestScheduler(
             SchedulePiecesAsync(_cancellationTokenSource.Token),
         ];
         var finishedTask = await Task.WhenAny(tasks);
-        _cancellationTokenSource?.Cancel();
+        _receiveBlocksChannel.Writer.TryComplete();
+        _cancellationTokenSource.Cancel();
         await Task.WhenAll(tasks);
         await finishedTask;
     }
@@ -137,9 +138,13 @@ internal class RequestScheduler(
         }
         finally
         {
-            while (_receiveBlocksChannel.Reader.TryRead(out var item))
+            foreach (var item in _pieceBuffers.Values)
             {
                 item.Dispose();
+            }
+            while (_receiveBlocksChannel.Reader.TryRead(out var leftover))
+            {
+                leftover.Dispose();
             }
         }
     }
@@ -343,7 +348,7 @@ internal class RequestScheduler(
 
     public async ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken)
     {
-        await _receiveBlocksChannel.Writer.WriteAsync(block, cancellationToken);
+        await _receiveBlocksChannel.Writer.WriteOrDisposeAsync(block, cancellationToken);
     }
 
     public async ValueTask DisposeAsync()
@@ -351,17 +356,5 @@ internal class RequestScheduler(
         _cancellationTokenSource?.Cancel();
         _receiveBlocksChannel.Writer.TryComplete();
         _scheduleChannel.Writer.TryComplete();
-
-        foreach (var item in _pieceBuffers.Values)
-        {
-            item.Dispose();
-        }
-
-        while (_receiveBlocksChannel.Reader.TryRead(out var block))
-        {
-            block.Dispose();
-        }
-
-        _cancellationTokenSource?.Dispose();
     }
 }

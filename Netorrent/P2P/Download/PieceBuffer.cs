@@ -38,7 +38,7 @@ internal class PieceBuffer : IDisposable
 
     public async ValueTask<bool> WritePieceAsync(CancellationToken cancellationToken)
     {
-        if (_buffer.Count != _blocksCount)
+        if (!IsComplete)
         {
             return false;
         }
