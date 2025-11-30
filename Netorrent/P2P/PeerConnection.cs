@@ -77,8 +77,8 @@ internal class PeerConnection(
             CheckTimeoutAsync(_cancellationTokenSource.Token),
         ];
         var finishedTask = await Task.WhenAny(tasks);
-        _cancellationTokenSource.Cancel();
         MyBitField.OnHavePieceAsync -= SendHaveAsync;
+        _cancellationTokenSource.Cancel();
         await Task.WhenAll(tasks);
         await finishedTask;
     }

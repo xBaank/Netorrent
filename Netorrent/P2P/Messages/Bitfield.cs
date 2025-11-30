@@ -9,7 +9,6 @@ public class Bitfield
 {
     internal event Func<int, CancellationToken, Task>? OnHavePieceAsync;
 
-    private readonly TaskCompletionSource _completedTask = new();
     private readonly BitArray _bits;
 
     internal Bitfield(int pieceCount, bool isInitialized = false)

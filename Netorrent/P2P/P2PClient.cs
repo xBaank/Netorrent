@@ -33,7 +33,6 @@ internal class P2PClient : IAsyncDisposable
     private readonly Func<IPAddress, IPAddress>? _peerIpProxy;
     private readonly SemaphoreSlim _semaphoreSlim = new(1);
     private readonly List<Task> _peerTasks = [];
-    private CancellationTokenSource? _cancellationTokenSource;
 
     public FileManager FileManager { get; }
     public DownloadInfo DownloadInfo { get; }
@@ -63,18 +62,16 @@ internal class P2PClient : IAsyncDisposable
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken
-        );
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         List<Task> tasks =
         [
-            _requestManager.StartAsync(_cancellationTokenSource.Token),
-            _uploadScheduler.StartAsync(_cancellationTokenSource.Token),
-            ProcessPeersAsync(_cancellationTokenSource.Token),
-            ListenToPeersAsync(_cancellationTokenSource.Token),
+            _requestManager.StartAsync(cts.Token),
+            _uploadScheduler.StartAsync(cts.Token),
+            ProcessPeersAsync(cts.Token),
+            ListenToPeersAsync(cts.Token),
         ];
         var finishedTask = await Task.WhenAny(tasks);
-        _cancellationTokenSource?.Cancel();
+        cts.Cancel();
         await Task.WhenAll([.. tasks, .. _peerTasks]);
         await finishedTask;
     }
@@ -293,6 +290,5 @@ internal class P2PClient : IAsyncDisposable
         await _requestManager.DisposeAsync();
         await _uploadScheduler.DisposeAsync();
         DownloadInfo.Dispose();
-        _cancellationTokenSource?.Dispose();
     }
 }

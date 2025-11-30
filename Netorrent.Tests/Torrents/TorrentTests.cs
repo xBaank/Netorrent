@@ -116,12 +116,12 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
         foreach (var seederTorrent in seedersTorrents)
         {
-            seederTorrent.Stop();
+            await seederTorrent.StopAsync();
         }
 
         foreach (var leecherTorrent in leechersTorrents)
         {
-            leecherTorrent.Stop();
+            await leecherTorrent.StopAsync();
         }
 
         foreach (var leecherTorrent in leechersTorrents)
@@ -179,12 +179,12 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
         foreach (var seederTorrent in seedersTorrents)
         {
-            seederTorrent.Stop();
+            await seederTorrent.StopAsync();
         }
 
         foreach (var leecherTorrent in leechersTorrents)
         {
-            leecherTorrent.Stop();
+            await leecherTorrent.StopAsync();
         }
 
         foreach (var leecherTorrent in leechersTorrents)

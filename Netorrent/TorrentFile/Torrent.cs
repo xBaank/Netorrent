@@ -94,7 +94,7 @@ public sealed class Torrent : IAsyncDisposable
                 _trackerClient.StartAsync(cancellationToken),
             ];
             var finishedTask = await Task.WhenAny(tasks);
-            Stop();
+            _cancellationTokenSource?.Cancel();
             await Task.WhenAll(tasks);
             await finishedTask;
         }
@@ -106,6 +106,13 @@ public sealed class Torrent : IAsyncDisposable
         {
             DownloadInfo.SetException(ex);
         }
+    }
+
+    public async Task StopAsync()
+    {
+        Stop();
+        if (TorrentTask is not null)
+            await TorrentTask;
     }
 
     public void Stop()
@@ -132,8 +139,6 @@ public sealed class Torrent : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _cancellationTokenSource?.Cancel();
-        if (TorrentTask is not null)
-            await TorrentTask;
         _fileManager.Dispose();
         await _p2pClient.DisposeAsync();
         await _trackerClient.DisposeAsync();

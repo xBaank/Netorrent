@@ -28,7 +28,6 @@ internal class RequestScheduler(
             new BoundedChannelOptions(256) { SingleReader = true, SingleWriter = false }
         );
 
-    private CancellationTokenSource? _cancellationTokenSource;
     private readonly Lock _rarityLock = new();
     private readonly int[] _pieceRarity = new int[myBitfield.Length];
     private readonly ConcurrentDictionary<int, RequestBlock?[]> _requestBlocksByPieceIndex = [];
@@ -37,17 +36,15 @@ internal class RequestScheduler(
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken
-        );
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         List<Task> tasks =
         [
-            ReceiveBlocksAsync(_cancellationTokenSource.Token),
-            ReScheduleTimeoutBlocksAsync(_cancellationTokenSource.Token),
-            SchedulePiecesAsync(_cancellationTokenSource.Token),
+            ReceiveBlocksAsync(cts.Token),
+            ReScheduleTimeoutBlocksAsync(cts.Token),
+            SchedulePiecesAsync(cts.Token),
         ];
         var finishedTask = await Task.WhenAny(tasks);
-        _cancellationTokenSource.Cancel();
+        cts.Cancel();
         await Task.WhenAll(tasks);
         await finishedTask;
     }
@@ -354,6 +351,5 @@ internal class RequestScheduler(
     {
         _receiveBlocksChannel.Writer.TryComplete();
         _scheduleChannel.Writer.TryComplete();
-        _cancellationTokenSource?.Dispose();
     }
 }

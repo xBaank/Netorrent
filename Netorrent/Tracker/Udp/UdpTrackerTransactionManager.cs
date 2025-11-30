@@ -16,17 +16,13 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
     private readonly ConcurrentDictionary<long, DateTime> _connectionCreationById = [];
     private readonly ConcurrentDictionary<Guid, long> _connectionIdByTracker = [];
 
-    private CancellationTokenSource _cancellationTokenSource = new();
     public Task? TrackerManagerTask { get; private set; }
 
     public void Start(CancellationToken cancellationToken)
     {
-        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken
-        );
         TrackerManagerTask = Task.WhenAll(
-            ReceiveLoopAsync(_cancellationTokenSource.Token),
-            RetryLoopAsync(_cancellationTokenSource.Token)
+            ReceiveLoopAsync(cancellationToken),
+            RetryLoopAsync(cancellationToken)
         );
     }
 
@@ -249,10 +245,8 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
 
     public void Dispose()
     {
-        _cancellationTokenSource.Cancel();
         _packetsByTransactionId.Clear();
         _connectionCreationById.Clear();
         _connectionIdByTracker.Clear();
-        _cancellationTokenSource.Dispose();
     }
 }
