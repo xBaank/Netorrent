@@ -7,7 +7,7 @@ namespace Netorrent.Tests.Torrents;
 public class TorrentFileTests
 {
     [Test]
-    public async Task Should_export_torrent_file(CancellationToken cancellationToken)
+    public async Task Should_Export_Torrent_File(CancellationToken cancellationToken)
     {
         var torrentClient = new TorrentClient();
         var torrent = await torrentClient.ImportTorrentAsync(
@@ -54,7 +54,7 @@ public class TorrentFileTests
     }
 
     [Test]
-    public async Task Should_create_torrent_file_from_directory(CancellationToken cancellationToken)
+    public async Task Should_Create_Torrent_File_From_Directory(CancellationToken cancellationToken)
     {
         var torrentClient = new TorrentClient();
         var torrent = await torrentClient.CreateTorrentAsync(
@@ -78,7 +78,7 @@ public class TorrentFileTests
     }
 
     [Test]
-    public async Task Should_create_torrent_file_from_file(CancellationToken cancellationToken)
+    public async Task Should_Create_Torrent_File_From_File(CancellationToken cancellationToken)
     {
         var torrentClient = new TorrentClient();
         var torrent = await torrentClient.CreateTorrentAsync(

@@ -21,7 +21,7 @@ public class BDecoderTests
     [Arguments("12:áéíóúñ", "áéíóúñ")]
     [Arguments("9:🙂emoji", "🙂emoji")]
     [Arguments("1:a", "a")]
-    public void Should_decode_BString(string input, string actual)
+    public void Should_Decode_BString(string input, string actual)
     {
         var bytes = Encoding.UTF8.GetBytes(input);
         var decoder = new BDecoder(bytes);
@@ -46,7 +46,7 @@ public class BDecoderTests
     [Arguments("i007e", 7)] // technically invalid in strict bencoding (leading zeros), but useful for tests
     [Arguments("i-0e", 0)] // another edge case: negative zero normalization
     [Arguments("i000000e", 0)] // leading zeros case
-    public void Should_decode_BInt(string input, long actual)
+    public void Should_Decode_BInt(string input, long actual)
     {
         var bytes = Encoding.UTF8.GetBytes(input);
         var decoder = new BDecoder(bytes);
@@ -59,7 +59,7 @@ public class BDecoderTests
     [Test]
     [MethodDataSource(typeof(BDictionaryData), nameof(BDictionaryData.GetTestData))]
     [MethodDataSource(typeof(BlistData), nameof(BlistData.GetTestData))]
-    public void Should_decode_collections(string input, IBencodingNode actual)
+    public void Should_Decode_Collections(string input, IBencodingNode actual)
     {
         var bytes = Encoding.UTF8.GetBytes(input);
         var decoder = new BDecoder(bytes);

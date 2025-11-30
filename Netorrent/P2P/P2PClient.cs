@@ -93,6 +93,7 @@ internal class P2PClient : IAsyncDisposable
                 await Task.WhenAll(connectTasks);
             }
         }
+        await Task.WhenAll(connectTasks);
     }
 
     private async Task ListenToPeersAsync(CancellationToken cancellationToken)

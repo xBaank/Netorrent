@@ -21,7 +21,7 @@ public class BEncoderTests
     [Arguments(9223372036854775807, "i9223372036854775807e")] // max 64-bit
     [Arguments(-9223372036854775808, "i-9223372036854775808e")] // min 64-bit
     [Arguments(7, "i7e")] // normalized leading zeros
-    public async Task Should_encode_BInt(long value, string expected)
+    public async Task Should_Encode_BInt(long value, string expected)
     {
         await using var encoder = new BEncoder();
         var bint = new BInt(value);
@@ -45,7 +45,7 @@ public class BEncoderTests
     [Arguments("12:áéíóúñ", "áéíóúñ")]
     [Arguments("9:🙂emoji", "🙂emoji")]
     [Arguments("1:a", "a")]
-    public async Task Should_encode_BString(string expectedEncoded, string value)
+    public async Task Should_Encode_BString(string expectedEncoded, string value)
     {
         await using var encoder = new BEncoder();
         var bstring = new BString(value);
@@ -59,7 +59,7 @@ public class BEncoderTests
     [Test]
     [MethodDataSource(typeof(BDictionaryData), nameof(BDictionaryData.GetTestData))]
     [MethodDataSource(typeof(BlistData), nameof(BlistData.GetTestData))]
-    public async Task Shoud_encode_collections(string expectedEncoded, IBencodingNode node)
+    public async Task Shoud_Encode_Collections(string expectedEncoded, IBencodingNode node)
     {
         await using var encoder = new BEncoder();
 

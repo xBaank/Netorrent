@@ -15,7 +15,13 @@ public class SpeedTracker(double alpha = 0.3)
     public ByteSize TotalBytes => Interlocked.Read(ref _totalBytes);
     public DownloadSpeed CurrentBps => _currentBps;
 
-    public void AddBytes(int count)
+    internal Timer StartSampling(TimeSpan period)
+    {
+        // Timer callback should be non-blocking; it calls Sample().
+        return new Timer(_ => Sample(), null, TimeSpan.Zero, period);
+    }
+
+    internal void AddBytes(int count)
     {
         if (count <= 0)
             return;
@@ -37,11 +43,5 @@ public class SpeedTracker(double alpha = 0.3)
 
         double instant = bytes / elapsedSec;
         _currentBps = _alpha * instant + (1 - _alpha) * _currentBps;
-    }
-
-    public Timer StartSampling(TimeSpan period)
-    {
-        // Timer callback should be non-blocking; it calls Sample().
-        return new Timer(_ => Sample(), null, TimeSpan.Zero, period);
     }
 }

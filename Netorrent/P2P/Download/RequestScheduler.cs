@@ -54,74 +54,92 @@ internal class RequestScheduler(
 
     private async Task ReceiveBlocksAsync(CancellationToken cancellationToken)
     {
-        await foreach (
-            var receiveBlock in _receiveBlocksChannel.Reader.ReadAllAsync(cancellationToken)
-        )
+        try
         {
-            if (!_pieceBuffers.TryGetValue(receiveBlock.Index, out var pieceBuffer))
+            await foreach (
+                var receiveBlock in _receiveBlocksChannel.Reader.ReadAllAsync(cancellationToken)
+            )
             {
-                pieceBuffer = new PieceBuffer(receiveBlock.Index, fileManager);
-                _pieceBuffers[receiveBlock.Index] = pieceBuffer;
-            }
+                if (!_pieceBuffers.TryGetValue(receiveBlock.Index, out var pieceBuffer))
+                {
+                    pieceBuffer = new PieceBuffer(receiveBlock.Index, fileManager);
+                    _pieceBuffers[receiveBlock.Index] = pieceBuffer;
+                }
 
-            pieceBuffer.AddBlock(receiveBlock);
+                pieceBuffer.AddBlock(receiveBlock);
 
-            if (_requestBlocksByPieceIndex.TryGetValue(receiveBlock.Index, out var requestBlocks))
-            {
-                var requestBlock = requestBlocks.FirstOrDefault(i =>
-                    i?.Begin == receiveBlock.Begin
-                );
                 if (
-                    requestBlock is not null
-                    && requestBlock.RequestedFrom.Contains(receiveBlock.FromPeer)
+                    _requestBlocksByPieceIndex.TryGetValue(
+                        receiveBlock.Index,
+                        out var requestBlocks
+                    )
                 )
                 {
-                    var rtt = requestBlock.RequestedAt.HasValue
-                        ? receiveBlock.ReceivedAt - requestBlock.RequestedAt.Value
-                        : TimeoutSeconds.Seconds;
-                    receiveBlock.FromPeer.PeerRequestWindow.CalculateWindow(
-                        (long)receiveBlock.FromPeer.DownloadSpeedTracker.CurrentBps.Bps,
-                        rtt
+                    var requestBlock = requestBlocks.FirstOrDefault(i =>
+                        i?.Begin == receiveBlock.Begin
                     );
-                }
-
-                receiveBlock.FromPeer.RequestedBlocksCount--;
-                requestBlock?.State = RequestBlockState.Completed;
-                requestBlock?.RequestedAt = null;
-                requestBlock?.RequestedFrom.Clear();
-                await _scheduleChannel.Writer.WriteAsync(receiveBlock.FromPeer, cancellationToken);
-            }
-
-            if (!pieceBuffer.IsComplete)
-                continue;
-
-            try
-            {
-                var isWritten = await pieceBuffer.WritePieceAsync(cancellationToken);
-                _pieceBuffers.TryRemove(receiveBlock.Index, out _);
-
-                if (!isWritten)
-                {
-                    _pieceBuffers[receiveBlock.Index] = new PieceBuffer(
-                        receiveBlock.Index,
-                        fileManager
-                    );
-                    _requestBlocksByPieceIndex.TryRemove(receiveBlock.Index, out _);
-                }
-                else
-                {
-                    lock (_rarityLock)
+                    if (
+                        requestBlock is not null
+                        && requestBlock.RequestedFrom.Contains(receiveBlock.FromPeer)
+                    )
                     {
-                        _currentRarestPieces.Remove(receiveBlock.Index);
+                        var rtt = requestBlock.RequestedAt.HasValue
+                            ? receiveBlock.ReceivedAt - requestBlock.RequestedAt.Value
+                            : TimeoutSeconds.Seconds;
+                        receiveBlock.FromPeer.PeerRequestWindow.CalculateWindow(
+                            (long)receiveBlock.FromPeer.DownloadSpeedTracker.CurrentBps.Bps,
+                            rtt
+                        );
                     }
-                    _requestBlocksByPieceIndex.TryRemove(receiveBlock.Index, out _);
-                    myBitfield.SetPiece(receiveBlock.Index, cancellationToken);
+
+                    receiveBlock.FromPeer.RequestedBlocksCount--;
+                    requestBlock?.State = RequestBlockState.Completed;
+                    requestBlock?.RequestedAt = null;
+                    requestBlock?.RequestedFrom.Clear();
+                    await _scheduleChannel.Writer.WriteAsync(
+                        receiveBlock.FromPeer,
+                        cancellationToken
+                    );
+                }
+
+                if (!pieceBuffer.IsComplete)
+                    continue;
+
+                try
+                {
+                    var isWritten = await pieceBuffer.WritePieceAsync(cancellationToken);
+                    _pieceBuffers.TryRemove(receiveBlock.Index, out _);
+
+                    if (!isWritten)
+                    {
+                        _pieceBuffers[receiveBlock.Index] = new PieceBuffer(
+                            receiveBlock.Index,
+                            fileManager
+                        );
+                        _requestBlocksByPieceIndex.TryRemove(receiveBlock.Index, out _);
+                    }
+                    else
+                    {
+                        lock (_rarityLock)
+                        {
+                            _currentRarestPieces.Remove(receiveBlock.Index);
+                        }
+                        _requestBlocksByPieceIndex.TryRemove(receiveBlock.Index, out _);
+                        myBitfield.SetPiece(receiveBlock.Index, cancellationToken);
+                    }
+                }
+                finally
+                {
+                    pieceBuffer.Dispose();
+                    _pieceBuffers.TryRemove(receiveBlock.Index, out _);
                 }
             }
-            finally
+        }
+        finally
+        {
+            while (_receiveBlocksChannel.Reader.TryRead(out var item))
             {
-                pieceBuffer.Dispose();
-                _pieceBuffers.TryRemove(receiveBlock.Index, out _);
+                item.Dispose();
             }
         }
     }
