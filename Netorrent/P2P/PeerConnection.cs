@@ -274,8 +274,8 @@ internal class PeerConnection(
         );
         span[8..].CopyTo(rented.Memory.Span);
         var block = new Block(index, begin, rented, this);
-        DownloadSpeedTracker.AddBytes(payloadLength);
         await _requestScheduler.ReceiveBlockAsync(block, cancellationToken);
+        DownloadSpeedTracker.AddBytes(payloadLength);
     }
 
     private void ReceiveCancel(Message message)

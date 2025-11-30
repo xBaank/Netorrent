@@ -44,6 +44,8 @@ internal class RequestScheduler(
             SchedulePiecesAsync(cts.Token),
         ];
         var finishedTask = await Task.WhenAny(tasks);
+        _scheduleChannel.Writer.TryComplete(finishedTask.Exception);
+        _scheduleChannel.Writer.TryComplete(finishedTask.Exception);
         cts.Cancel();
         await Task.WhenAll(tasks);
         await finishedTask;
@@ -51,96 +53,74 @@ internal class RequestScheduler(
 
     private async Task ReceiveBlocksAsync(CancellationToken cancellationToken)
     {
-        try
+        await foreach (
+            var receiveBlock in _receiveBlocksChannel.Reader.ReadAllAsync(cancellationToken)
+        )
         {
-            await foreach (
-                var receiveBlock in _receiveBlocksChannel.Reader.ReadAllAsync(cancellationToken)
-            )
+            if (!_pieceBuffers.TryGetValue(receiveBlock.Index, out var pieceBuffer))
             {
-                if (!_pieceBuffers.TryGetValue(receiveBlock.Index, out var pieceBuffer))
-                {
-                    pieceBuffer = new PieceBuffer(receiveBlock.Index, fileManager);
-                    _pieceBuffers[receiveBlock.Index] = pieceBuffer;
-                }
+                pieceBuffer = new PieceBuffer(receiveBlock.Index, fileManager);
+                _pieceBuffers[receiveBlock.Index] = pieceBuffer;
+            }
 
-                pieceBuffer.AddBlock(receiveBlock);
+            pieceBuffer.AddBlock(receiveBlock);
 
+            if (_requestBlocksByPieceIndex.TryGetValue(receiveBlock.Index, out var requestBlocks))
+            {
+                var requestBlock = requestBlocks.FirstOrDefault(i =>
+                    i?.Begin == receiveBlock.Begin
+                );
                 if (
-                    _requestBlocksByPieceIndex.TryGetValue(
-                        receiveBlock.Index,
-                        out var requestBlocks
-                    )
+                    requestBlock is not null
+                    && requestBlock.RequestedFrom.Contains(receiveBlock.FromPeer)
                 )
                 {
-                    var requestBlock = requestBlocks.FirstOrDefault(i =>
-                        i?.Begin == receiveBlock.Begin
-                    );
-                    if (
-                        requestBlock is not null
-                        && requestBlock.RequestedFrom.Contains(receiveBlock.FromPeer)
-                    )
-                    {
-                        var rtt = requestBlock.RequestedAt.HasValue
-                            ? receiveBlock.ReceivedAt - requestBlock.RequestedAt.Value
-                            : TimeoutSeconds.Seconds;
-                        receiveBlock.FromPeer.PeerRequestWindow.CalculateWindow(
-                            (long)receiveBlock.FromPeer.DownloadSpeedTracker.CurrentBps.Bps,
-                            rtt
-                        );
-                    }
-
-                    receiveBlock.FromPeer.RequestedBlocksCount--;
-                    requestBlock?.State = RequestBlockState.Completed;
-                    requestBlock?.RequestedAt = null;
-                    requestBlock?.RequestedFrom.Clear();
-                    await _scheduleChannel.Writer.WriteAsync(
-                        receiveBlock.FromPeer,
-                        cancellationToken
+                    var rtt = requestBlock.RequestedAt.HasValue
+                        ? receiveBlock.ReceivedAt - requestBlock.RequestedAt.Value
+                        : TimeoutSeconds.Seconds;
+                    receiveBlock.FromPeer.PeerRequestWindow.CalculateWindow(
+                        (long)receiveBlock.FromPeer.DownloadSpeedTracker.CurrentBps.Bps,
+                        rtt
                     );
                 }
 
-                if (!pieceBuffer.IsComplete)
-                    continue;
+                receiveBlock.FromPeer.RequestedBlocksCount--;
+                requestBlock?.State = RequestBlockState.Completed;
+                requestBlock?.RequestedAt = null;
+                requestBlock?.RequestedFrom.Clear();
+                await _scheduleChannel.Writer.WriteAsync(receiveBlock.FromPeer, cancellationToken);
+            }
 
-                try
+            if (!pieceBuffer.IsComplete)
+                continue;
+
+            try
+            {
+                var isWritten = await pieceBuffer.WritePieceAsync(cancellationToken);
+                _pieceBuffers.TryRemove(receiveBlock.Index, out _);
+
+                if (!isWritten)
                 {
-                    var isWritten = await pieceBuffer.WritePieceAsync(cancellationToken);
-                    _pieceBuffers.TryRemove(receiveBlock.Index, out _);
-
-                    if (!isWritten)
-                    {
-                        _pieceBuffers[receiveBlock.Index] = new PieceBuffer(
-                            receiveBlock.Index,
-                            fileManager
-                        );
-                        _requestBlocksByPieceIndex.TryRemove(receiveBlock.Index, out _);
-                    }
-                    else
-                    {
-                        lock (_rarityLock)
-                        {
-                            _currentRarestPieces.Remove(receiveBlock.Index);
-                        }
-                        _requestBlocksByPieceIndex.TryRemove(receiveBlock.Index, out _);
-                        myBitfield.SetPiece(receiveBlock.Index, cancellationToken);
-                    }
+                    _pieceBuffers[receiveBlock.Index] = new PieceBuffer(
+                        receiveBlock.Index,
+                        fileManager
+                    );
+                    _requestBlocksByPieceIndex.TryRemove(receiveBlock.Index, out _);
                 }
-                finally
+                else
                 {
-                    pieceBuffer.Dispose();
-                    _pieceBuffers.TryRemove(receiveBlock.Index, out _);
+                    lock (_rarityLock)
+                    {
+                        _currentRarestPieces.Remove(receiveBlock.Index);
+                    }
+                    _requestBlocksByPieceIndex.TryRemove(receiveBlock.Index, out _);
+                    myBitfield.SetPiece(receiveBlock.Index, cancellationToken);
                 }
             }
-        }
-        finally
-        {
-            foreach (var item in _pieceBuffers.Values)
+            finally
             {
-                item.Dispose();
-            }
-            while (_receiveBlocksChannel.Reader.TryRead(out var leftover))
-            {
-                leftover.Dispose();
+                pieceBuffer.Dispose();
+                _pieceBuffers.TryRemove(receiveBlock.Index, out _);
             }
         }
     }
@@ -351,5 +331,17 @@ internal class RequestScheduler(
     {
         _receiveBlocksChannel.Writer.TryComplete();
         _scheduleChannel.Writer.TryComplete();
+
+        foreach (var item in _pieceBuffers.Values)
+        {
+            item.Dispose();
+        }
+
+        while (_scheduleChannel.Reader.TryRead(out var leftover)) { }
+
+        while (_receiveBlocksChannel.Reader.TryRead(out var leftover))
+        {
+            leftover.Dispose();
+        }
     }
 }

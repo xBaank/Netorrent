@@ -135,7 +135,7 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
 
             var newConnectionResponse = await ConnectAsync(
                 udpTrackerRequest.IPEndPoint,
-                transaction.trackerId,
+                transaction.TrackerId,
                 cancellationToken
             );
             var newPacket = udpTrackerRequest with

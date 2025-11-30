@@ -10,7 +10,6 @@ namespace Netorrent.IO;
 
 internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
 {
-    private CancellationTokenSource? _cancellationTokenSource;
     private readonly Channel<Message> _incomingMessages = Channel.CreateBounded<Message>(
         new BoundedChannelOptions(256) { SingleWriter = true, SingleReader = true }
     );
@@ -26,16 +25,10 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken
-        );
-        List<Task> tasks =
-        [
-            ReadLoopAsync(_cancellationTokenSource.Token),
-            WriteLoopAsync(_cancellationTokenSource.Token),
-        ];
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        List<Task> tasks = [ReadLoopAsync(cts.Token), WriteLoopAsync(cts.Token)];
         var finishedTask = await Task.WhenAny(tasks);
-        _cancellationTokenSource.Cancel();
+        cts.Cancel();
         _incomingMessages.Writer.TryComplete(finishedTask.Exception);
         _outgoingMessages.Writer.TryComplete(finishedTask.Exception);
         await Task.WhenAll(tasks);
@@ -162,7 +155,6 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
 
     public void Dispose()
     {
-        _cancellationTokenSource?.Cancel();
         stream.Dispose();
         _incomingMessages.Writer.TryComplete();
         _outgoingMessages.Writer.TryComplete();
@@ -175,7 +167,5 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
         {
             message.Dispose();
         }
-
-        _cancellationTokenSource?.Dispose();
     }
 }

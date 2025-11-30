@@ -3,7 +3,7 @@
 internal record TrackerTransaction(
     IUdpTrackerSendPacket Packet,
     TaskCompletionSource<IUdpTrackerReceivePacket> Response,
-    Guid trackerId
+    Guid TrackerId
 )
 {
     public int RetryCount { get; set; }
