@@ -23,9 +23,8 @@ internal class RentedArray<T>(T[] array, int length, int start = 0) : IDisposabl
 #if DEBUG
             Debug.Fail($"RentedArray was not disposed! Allocated at {_allocationSite}");
 #endif
+            Debug.WriteLine($"RentedArray was not disposed!");
         }
-
-        Debug.WriteLine($"RentedArray was not disposed!");
     }
 
     public void Dispose()
