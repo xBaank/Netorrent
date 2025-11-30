@@ -53,13 +53,10 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
             cancellationToken,
             timeoutCts.Token
         );
-        using var bytesRented = await SendHandHandshake(infoHash, peerId, linkedCts.Token);
-        var (pool, receivedHandshake) = await ReceiveHandshakeAsync(linkedCts.Token);
+        await SendHandHandshake(infoHash, peerId, linkedCts.Token);
+        var receivedHandshake = await ReceiveHandshakeAsync(linkedCts.Token);
 
-        using (pool)
-        {
-            return ValidateHandshake(infoHash, receivedHandshake);
-        }
+        return ValidateHandshake(infoHash, receivedHandshake);
     }
 
     public async ValueTask<PeerId> ReceiveHandshakeAsync(
@@ -74,13 +71,9 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
             timeoutCts.Token
         );
 
-        var (pool, receivedHandshake) = await ReceiveHandshakeAsync(linkedCts.Token);
-
-        using (pool)
-        {
-            using var bytesRented = await SendHandHandshake(infoHash, peerId, linkedCts.Token);
-            return ValidateHandshake(infoHash, receivedHandshake);
-        }
+        var receivedHandshake = await ReceiveHandshakeAsync(linkedCts.Token);
+        await SendHandHandshake(infoHash, peerId, linkedCts.Token);
+        return ValidateHandshake(infoHash, receivedHandshake);
     }
 
     private async Task ReadLoopAsync(CancellationToken cancellationToken)
@@ -125,20 +118,17 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
         return Message.From(array, payloadLength, _idBuffer[0]);
     }
 
-    private async ValueTask<(
-        IMemoryOwner<byte> pool,
-        Handshake receivedHandshake
-    )> ReceiveHandshakeAsync(CancellationToken cancellationToken)
+    private async ValueTask<Handshake> ReceiveHandshakeAsync(CancellationToken cancellationToken)
     {
         using var cts = cancellationToken.WithTimeout(timeout);
         using var pool = MemoryPool<byte>.Shared.Rent(Handshake.TotalLength);
         var buffer = pool.Memory[..Handshake.TotalLength];
         await stream.ReadExactlyAsync(buffer, cts.Token);
         var receivedHandshake = Handshake.FromBytes(buffer.Span);
-        return (pool, receivedHandshake);
+        return receivedHandshake;
     }
 
-    private async ValueTask<RentedArray<byte>> SendHandHandshake(
+    private async ValueTask SendHandHandshake(
         ReadOnlyMemory<byte> infoHash,
         PeerId peerId,
         CancellationToken cancellationToken
@@ -146,10 +136,9 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
     {
         using var cts = cancellationToken.WithTimeout(timeout);
         var handshake = Handshake.Create(infoHash.ToArray(), peerId.ToBytes());
-        var bytesRented = handshake.ToBytes();
+        using var bytesRented = handshake.ToBytes();
         await stream.WriteAsync(bytesRented.Memory, cts.Token);
         await stream.FlushAsync(cts.Token);
-        return bytesRented;
     }
 
     private static PeerId ValidateHandshake(
