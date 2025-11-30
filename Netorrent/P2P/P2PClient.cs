@@ -122,7 +122,8 @@ internal class P2PClient : IAsyncDisposable
 
             try
             {
-                await client.ConnectAsync(iPEndPoint, cancellationToken);
+                using var cts = cancellationToken.WithTimeout(10.Seconds);
+                await client.ConnectAsync(iPEndPoint, cts.Token);
             }
             catch (Exception ex)
             {

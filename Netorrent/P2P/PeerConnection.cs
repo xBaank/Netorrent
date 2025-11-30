@@ -68,28 +68,18 @@ internal class PeerConnection(
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
+        await using var downloadTimer = DownloadSpeedTracker.StartSampling(500.Milliseconds);
+        await using var uploadTimer = UploadSpeedTracker.StartSampling(500.Milliseconds);
         List<Task> tasks =
         [
             messageStream.StartAsync(_cancellationTokenSource.Token),
             ProcessIncomingMessagesAsync(_cancellationTokenSource.Token),
             CheckTimeoutAsync(_cancellationTokenSource.Token),
-            TrackSpeedAsync(_cancellationTokenSource.Token),
         ];
         var finishedTask = await Task.WhenAny(tasks);
         _cancellationTokenSource.Cancel();
         await Task.WhenAll(tasks);
         await finishedTask;
-    }
-
-    public async Task TrackSpeedAsync(CancellationToken cancellationToken)
-    {
-        var waitTime = 250.Milliseconds;
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            DownloadSpeedTracker.Sample();
-            UploadSpeedTracker.Sample();
-            await Task.Delay(waitTime, cancellationToken);
-        }
     }
 
     public async Task CheckTimeoutAsync(CancellationToken cancellationToken)

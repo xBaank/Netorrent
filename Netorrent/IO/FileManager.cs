@@ -147,44 +147,6 @@ internal class FileManager : IDisposable
         return expectedHash.SequenceEqual(actualHash);
     }
 
-    public async ValueTask ClearPieceAsync(int pieceIndex, CancellationToken ct)
-    {
-        // Calculate where the piece starts in the torrent
-        long globalOffset = (long)pieceIndex * _pieceLength;
-        long remaining = _pieceLength;
-
-        // Reuse a shared zero buffer instead of allocating new arrays per write
-        byte[] zeroBuffer = [];
-
-        foreach (var file in _files)
-        {
-            if (globalOffset >= file.EndOffset)
-                continue;
-
-            long fileOffset = Math.Max(0, globalOffset - file.StartOffset);
-            long writable = Math.Min(remaining, file.Length - fileOffset);
-
-            // lazily allocate a zero buffer large enough for current write
-            if (zeroBuffer.Length < writable)
-                zeroBuffer = new byte[writable];
-
-            Directory.CreateDirectory(Path.GetDirectoryName(file.FullPath)!);
-
-            await RandomAccess.WriteAsync(
-                file.SafeHandle,
-                zeroBuffer.AsMemory(0, (int)writable),
-                fileOffset,
-                ct
-            );
-
-            globalOffset += writable;
-            remaining -= writable;
-
-            if (remaining <= 0)
-                break;
-        }
-    }
-
     private async ValueTask WriteAsync(
         long globalOffset,
         ReadOnlyMemory<byte> data,

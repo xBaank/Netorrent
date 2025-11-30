@@ -23,7 +23,7 @@ public class SpeedTracker(double alpha = 0.3)
         Interlocked.Add(ref _totalBytes, count);
     }
 
-    internal void Sample()
+    private void Sample()
     {
         long now = Stopwatch.GetTimestamp();
         long prev = _lastTimestamp;
@@ -36,7 +36,12 @@ public class SpeedTracker(double alpha = 0.3)
             return;
 
         double instant = bytes / elapsedSec;
-
         _currentBps = _alpha * instant + (1 - _alpha) * _currentBps;
+    }
+
+    public Timer StartSampling(TimeSpan period)
+    {
+        // Timer callback should be non-blocking; it calls Sample().
+        return new Timer(_ => Sample(), null, TimeSpan.Zero, period);
     }
 }
