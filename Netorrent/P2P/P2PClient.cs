@@ -63,15 +63,17 @@ internal class P2PClient : IAsyncDisposable
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _cancellationTokenSource ??= new CancellationTokenSource();
+        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken
+        );
         List<Task> tasks =
         [
-            _requestManager.StartAsync(cancellationToken),
-            _uploadScheduler.StartAsync(cancellationToken),
-            ProcessPeersAsync(cancellationToken),
-            ListenToPeersAsync(cancellationToken),
+            _requestManager.StartAsync(_cancellationTokenSource.Token),
+            _uploadScheduler.StartAsync(_cancellationTokenSource.Token),
+            ProcessPeersAsync(_cancellationTokenSource.Token),
+            ListenToPeersAsync(_cancellationTokenSource.Token),
         ];
-        var finishedTask = Task.WhenAny(tasks);
+        var finishedTask = await Task.WhenAny(tasks);
         _cancellationTokenSource?.Cancel();
         await Task.WhenAll([.. tasks, .. _peerTasks]);
         await finishedTask;
@@ -283,7 +285,6 @@ internal class P2PClient : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        _cancellationTokenSource?.Cancel();
         _listener.Stop();
         foreach (var item in _activePeers)
         {
@@ -292,5 +293,6 @@ internal class P2PClient : IAsyncDisposable
         await _requestManager.DisposeAsync();
         await _uploadScheduler.DisposeAsync();
         DownloadInfo.Dispose();
+        _cancellationTokenSource?.Dispose();
     }
 }

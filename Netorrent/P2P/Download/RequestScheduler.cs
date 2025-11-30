@@ -47,7 +47,6 @@ internal class RequestScheduler(
             SchedulePiecesAsync(_cancellationTokenSource.Token),
         ];
         var finishedTask = await Task.WhenAny(tasks);
-        _receiveBlocksChannel.Writer.TryComplete();
         _cancellationTokenSource.Cancel();
         await Task.WhenAll(tasks);
         await finishedTask;
@@ -353,8 +352,8 @@ internal class RequestScheduler(
 
     public async ValueTask DisposeAsync()
     {
-        _cancellationTokenSource?.Cancel();
         _receiveBlocksChannel.Writer.TryComplete();
         _scheduleChannel.Writer.TryComplete();
+        _cancellationTokenSource?.Dispose();
     }
 }

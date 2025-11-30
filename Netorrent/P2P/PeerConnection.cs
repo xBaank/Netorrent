@@ -365,7 +365,6 @@ internal class PeerConnection(
 
     public async ValueTask DisposeAsync()
     {
-        _cancellationTokenSource?.Cancel();
         MyBitField.OnHavePieceAsync -= SendHaveAsync;
         foreach (var (index, hasPiece) in PeerBitField.Pieces.AsValueEnumerable().Index())
         {
@@ -374,5 +373,6 @@ internal class PeerConnection(
         }
         _uploadScheduler.RemoveChokedSlot();
         messageStream.Dispose();
+        _cancellationTokenSource?.Dispose();
     }
 }

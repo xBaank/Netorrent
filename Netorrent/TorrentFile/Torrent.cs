@@ -132,6 +132,8 @@ public sealed class Torrent : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _cancellationTokenSource?.Cancel();
+        if (TorrentTask is not null)
+            await TorrentTask;
         _fileManager.Dispose();
         await _p2pClient.DisposeAsync();
         await _trackerClient.DisposeAsync();
