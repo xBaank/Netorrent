@@ -72,18 +72,6 @@ public sealed class Torrent : IAsyncDisposable
         );
     }
 
-    public void Start()
-    {
-        if (State == State.Started)
-            return;
-
-        DownloadInfo.Reset();
-        _cancellationTokenSource = new();
-        _cancellationTokenSource.Token.Register(_p2pClient.DownloadInfo.SetCanceled);
-        TorrentTask = StartAsync(_cancellationTokenSource.Token);
-        State = State.Started;
-    }
-
     private async Task StartAsync(CancellationToken cancellationToken)
     {
         try
@@ -108,6 +96,28 @@ public sealed class Torrent : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Starts the download process if it is not already running.
+    /// </summary>
+    /// <remarks>If the download is already started, this method has no effect. Once started, the download
+    /// process can be canceled using the appropriate cancellation mechanism.</remarks>
+    public void Start()
+    {
+        if (State == State.Started)
+            return;
+
+        DownloadInfo.Reset();
+        _cancellationTokenSource = new();
+        _cancellationTokenSource.Token.Register(_p2pClient.DownloadInfo.SetCanceled);
+        TorrentTask = StartAsync(_cancellationTokenSource.Token);
+        State = State.Started;
+    }
+
+    /// <summary>
+    /// Asynchronously stops the torrent operation and waits for any ongoing tasks to complete.
+    /// </summary>
+    /// <returns>A task that represents the asynchronous stop operation. The task completes when all related operations have
+    /// finished.</returns>
     public async Task StopAsync()
     {
         Stop();
@@ -115,6 +125,11 @@ public sealed class Torrent : IAsyncDisposable
             await TorrentTask;
     }
 
+    /// <summary>
+    /// Stops the operation if it is currently running.
+    /// </summary>
+    /// <remarks>Calling this method has no effect if the operation is not in the started state. After calling
+    /// <c>Stop</c>, the state transitions to stopped and any ongoing work is cancelled if possible.</remarks>
     public void Stop()
     {
         if (State != State.Started)
@@ -124,6 +139,15 @@ public sealed class Torrent : IAsyncDisposable
         State = State.Stopped;
     }
 
+    /// <summary>
+    /// Asynchronously exports the current metadata to a file at the specified path in encoded format.
+    /// </summary>
+    /// <remarks>If the specified directory in the output path does not exist, it is created before writing
+    /// the file. The method overwrites the file if it already exists.</remarks>
+    /// <param name="outputPath">The file path where the exported metadata will be saved. If the directory does not exist, it will be created.
+    /// Cannot be null or empty.</param>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the export operation.</param>
+    /// <returns></returns>
     public async Task ExportAsync(string outputPath, CancellationToken cancellationToken = default)
     {
         var folder = Path.GetDirectoryName(outputPath);

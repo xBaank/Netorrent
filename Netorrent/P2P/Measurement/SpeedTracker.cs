@@ -2,7 +2,17 @@
 
 namespace Netorrent.P2P.Measurement;
 
-public class SpeedTracker(double alpha = 0.3)
+/// <summary>
+/// Tracks the total number of bytes processed and calculates the current download speed using an exponential moving
+/// average.
+/// </summary>
+/// <remarks>This class is intended for use in scenarios where download or data transfer speed needs to be
+/// monitored over time. The speed calculation is updated by sampling at regular intervals, and the accuracy of the
+/// reported speed depends on the frequency of sampling and the chosen smoothing factor. This class is not thread-safe
+/// for all operations; callers should ensure that sampling and byte addition are coordinated appropriately.</remarks>
+/// <param name="alpha">The smoothing factor for the exponential moving average calculation. Must be between 0 and 1. Higher values make the
+/// speed estimate respond more quickly to changes.</param>
+public sealed class SpeedTracker(double alpha = 0.3)
 {
     private long _bytesSinceLast;
     private long _totalBytes;
