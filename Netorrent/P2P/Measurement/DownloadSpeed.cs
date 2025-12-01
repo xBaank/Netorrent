@@ -1,5 +1,12 @@
 ﻿namespace Netorrent.P2P.Measurement;
 
+/// <summary>
+/// Represents a download speed measurement in bits per second (bps) and provides conversions to common units.
+/// </summary>
+/// <remarks>Use this struct to represent and manipulate download speeds in various units, such as bps, Kbps,
+/// Mbps, and Gbps. The struct supports arithmetic operations and implicit conversion from a double value representing
+/// bits per second.</remarks>
+/// <param name="bps">The download speed in bits per second (bps).</param>
 public readonly struct DownloadSpeed(double bps)
 {
     public double Bps => bps;

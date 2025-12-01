@@ -11,19 +11,20 @@ using Netorrent.Tracker.Udp;
 
 namespace Netorrent.TorrentFile;
 
-public class Torrent : IAsyncDisposable
+public sealed class Torrent : IAsyncDisposable
 {
     public MetaInfo MetaInfo { get; init; }
     public Bitfield Bitfield => _myBitfield;
     public DownloadInfo DownloadInfo => _p2pClient.DownloadInfo;
+    public string OutputDirectory => _fileManager.OutputDirectory;
 
     public State State { get; private set; } = State.None;
+    public Task? TorrentTask { get; private set; }
 
     private readonly P2PClient _p2pClient;
     private readonly TrackerClient _trackerClient;
     private readonly FileManager _fileManager;
     private readonly Bitfield _myBitfield;
-    private readonly Func<IPAddress, IPAddress>? PeerIpProxy;
     private CancellationTokenSource? _cancellationTokenSource;
 
     internal Torrent(
@@ -69,9 +70,37 @@ public class Torrent : IAsyncDisposable
             logger,
             forcedIp
         );
-        PeerIpProxy = peerIpProxy;
     }
 
+    private async Task StartAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            List<Task> tasks =
+            [
+                _p2pClient.StartAsync(cancellationToken),
+                _trackerClient.StartAsync(cancellationToken),
+            ];
+            var finishedTask = await Task.WhenAny(tasks);
+            _cancellationTokenSource?.Cancel();
+            await Task.WhenAll(tasks);
+            await finishedTask;
+        }
+        catch (OperationCanceledException)
+        {
+            DownloadInfo.SetCanceled();
+        }
+        catch (Exception ex)
+        {
+            DownloadInfo.SetException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Starts the download process if it is not already running.
+    /// </summary>
+    /// <remarks>If the download is already started, this method has no effect. Once started, the download
+    /// process can be canceled using the appropriate cancellation mechanism.</remarks>
     public void Start()
     {
         if (State == State.Started)
@@ -79,49 +108,28 @@ public class Torrent : IAsyncDisposable
 
         DownloadInfo.Reset();
         _cancellationTokenSource = new();
-        var cancellationToken = _cancellationTokenSource.Token;
-
-        _p2pClient.ListenForPeers(cancellationToken);
-        _p2pClient.ProcessPeers(cancellationToken);
-        _p2pClient.ListenerTask?.ContinueWith(
-            task =>
-            {
-                if (task.IsCanceled)
-                {
-                    DownloadInfo.SetCanceled();
-                }
-                else if (task.IsFaulted)
-                {
-                    DownloadInfo.SetException(task.Exception);
-                }
-            },
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default
-        );
-        _p2pClient.PeersTask?.ContinueWith(
-            task =>
-            {
-                if (task.IsCanceled)
-                {
-                    DownloadInfo.SetCanceled();
-                }
-                else if (task.IsFaulted)
-                {
-                    DownloadInfo.SetException(task.Exception);
-                }
-            },
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default
-        );
-
-        cancellationToken.Register(_p2pClient.DownloadInfo.SetCanceled);
-        _trackerClient.Start(cancellationToken);
-
+        _cancellationTokenSource.Token.Register(_p2pClient.DownloadInfo.SetCanceled);
+        TorrentTask = StartAsync(_cancellationTokenSource.Token);
         State = State.Started;
     }
 
+    /// <summary>
+    /// Asynchronously stops the torrent operation and waits for any ongoing tasks to complete.
+    /// </summary>
+    /// <returns>A task that represents the asynchronous stop operation. The task completes when all related operations have
+    /// finished.</returns>
+    public async ValueTask StopAsync()
+    {
+        Stop();
+        if (TorrentTask is not null)
+            await TorrentTask;
+    }
+
+    /// <summary>
+    /// Stops the operation if it is currently running.
+    /// </summary>
+    /// <remarks>Calling this method has no effect if the operation is not in the started state. After calling
+    /// <c>Stop</c>, the state transitions to stopped and any ongoing work is cancelled if possible.</remarks>
     public void Stop()
     {
         if (State != State.Started)
@@ -131,6 +139,15 @@ public class Torrent : IAsyncDisposable
         State = State.Stopped;
     }
 
+    /// <summary>
+    /// Asynchronously exports the current metadata to a file at the specified path in encoded format.
+    /// </summary>
+    /// <remarks>If the specified directory in the output path does not exist, it is created before writing
+    /// the file. The method overwrites the file if it already exists.</remarks>
+    /// <param name="outputPath">The file path where the exported metadata will be saved. If the directory does not exist, it will be created.
+    /// Cannot be null or empty.</param>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the export operation.</param>
+    /// <returns></returns>
     public async Task ExportAsync(string outputPath, CancellationToken cancellationToken = default)
     {
         var folder = Path.GetDirectoryName(outputPath);
@@ -148,5 +165,6 @@ public class Torrent : IAsyncDisposable
         _fileManager.Dispose();
         await _p2pClient.DisposeAsync();
         await _trackerClient.DisposeAsync();
+        _cancellationTokenSource?.Dispose();
     }
 }

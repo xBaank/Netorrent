@@ -1,9 +1,7 @@
 ﻿using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using System.Threading.Channels;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.P2P;
@@ -24,9 +22,9 @@ internal class TrackerClient(
     IPAddress? forcedIp
 ) : IAsyncDisposable
 {
-    private List<ITracker> _trackers = [];
+    private readonly List<ITracker> _trackers = [];
 
-    public async Task Start(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         List<string> announceList = [metaInfo.Announce, .. metaInfo.AnnounceList ?? []];
         var urls =
@@ -35,27 +33,13 @@ internal class TrackerClient(
                 .Distinct(StringComparer.OrdinalIgnoreCase)
             ?? [];
 
-        await foreach (var tracker in CreateTrackers(urls, cancellationToken))
-        {
-            tracker.Start(cancellationToken);
-            tracker.TrackerTask?.ContinueWith(
-                async task =>
-                {
-                    if (task.IsCanceled)
-                    {
-                        p2PClient.DownloadInfo.SetCanceled();
-                    }
-                    else if (task.IsFaulted)
-                    {
-                        p2PClient.DownloadInfo.SetException(task.Exception);
-                    }
-                    await tracker.DisposeAsync();
-                },
-                CancellationToken.None,
-                TaskContinuationOptions.RunContinuationsAsynchronously,
-                TaskScheduler.Default
-            );
-        }
+        //The trackers should not fail by them self
+        //They finish successfully because of dns problems, udp timeouts, etc.
+        var tasks = await CreateTrackers(urls, cancellationToken)
+            .Select(i => i.StartAsync(cancellationToken).AsTask())
+            .ToListAsync(cancellationToken: cancellationToken);
+
+        await Task.WhenAll(tasks);
     }
 
     private async IAsyncEnumerable<ITracker> CreateTrackers(
@@ -140,7 +124,7 @@ internal class TrackerClient(
             udpTrackers.Add(trackerv6);
         }
 
-        return udpTrackers.ToArray();
+        return [.. udpTrackers];
     }
 
     private ITracker[] LogUnknownTracker(string scheme)

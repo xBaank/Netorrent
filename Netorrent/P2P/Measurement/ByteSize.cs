@@ -1,5 +1,13 @@
 ﻿namespace Netorrent.P2P.Measurement;
 
+/// <summary>
+/// Represents a size in bytes and provides convenient conversions to common data size units such as kilobytes,
+/// megabytes, gigabytes, and terabytes.
+/// </summary>
+/// <remarks>The ByteSize struct supports arithmetic and comparison operations, as well as implicit conversion
+/// from a long value representing bytes. All unit conversions use binary (base-1024) multiples. This type is immutable
+/// and thread-safe.</remarks>
+/// <param name="bytes">The number of bytes to represent. Can be positive or negative.</param>
 public readonly struct ByteSize(long bytes)
 {
     public long Bytes { get; } = bytes;

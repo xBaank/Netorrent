@@ -1,14 +1,12 @@
 ﻿using System.Buffers;
 using System.Security.Cryptography;
-using Microsoft.Win32.SafeHandles;
 using Netorrent.Other;
-using Netorrent.P2P.Managers.Request;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.IO;
 
-internal class FileManager : IDisposable
+internal partial class FileManager : IDisposable
 {
     private readonly string _outputDirectory;
     private readonly List<TorrentFileEntry> _files = [];
@@ -20,6 +18,7 @@ internal class FileManager : IDisposable
 
     public long TotalSize { get; }
     public int MaxBlocksByPiece { get; }
+    public string OutputDirectory => _outputDirectory;
 
     public FileManager(
         string outputDirectory,
@@ -58,33 +57,45 @@ internal class FileManager : IDisposable
         MaxBlocksByPiece = _pieceLength / BlockSize;
     }
 
-    public List<RequestBlock> GetBlocksByPieceIndex(int pieceIndex)
+    public int GetBlockCountByPieceIndex(int pieceIndex)
+    {
+        var pieceSize = GetPieceSize(pieceIndex);
+        int blockCount = (int)((pieceSize + BlockSize - 1) / BlockSize);
+        return blockCount;
+    }
+
+    public int GetPieceSize(int pieceIndex)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(pieceIndex);
 
-        // total number of pieces
         var pieceCount = (TotalSize + _pieceLength - 1) / _pieceLength;
         if (pieceIndex >= pieceCount)
             throw new ArgumentOutOfRangeException(nameof(pieceIndex));
 
-        // compute actual piece length (last piece may be smaller)
         var pieceLength =
             (pieceIndex == pieceCount - 1)
                 ? TotalSize - (long)pieceIndex * _pieceLength
                 : _pieceLength;
 
-        // number of blocks in this piece (ceiling division)
+        return (int)pieceLength;
+    }
+
+    public RequestBlock GetRequestBlockByBlockIndex(int pieceIndex, int blockIndex)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(pieceIndex);
+        ArgumentOutOfRangeException.ThrowIfNegative(blockIndex);
+        var pieceCount = (TotalSize + _pieceLength - 1) / _pieceLength;
+        if (pieceIndex >= pieceCount)
+            throw new ArgumentOutOfRangeException(nameof(pieceIndex));
+        var pieceLength =
+            (pieceIndex == pieceCount - 1)
+                ? TotalSize - (long)pieceIndex * _pieceLength
+                : _pieceLength;
         int blockCount = (int)((pieceLength + BlockSize - 1) / BlockSize);
-        var requests = new RequestBlock[blockCount];
-
-        for (int i = 0; i < blockCount; i++)
-        {
-            var begin = (int)(i * BlockSize);
-            var length = (int)Math.Min(BlockSize, pieceLength - begin);
-            requests[i] = new RequestBlock(pieceIndex, begin, length);
-        }
-
-        return [.. requests];
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(blockIndex, blockCount);
+        int begin = blockIndex * BlockSize;
+        int length = (int)Math.Min(BlockSize, pieceLength - begin);
+        return new RequestBlock(pieceIndex, begin, length);
     }
 
     public ulong GetWrittenBytes()
@@ -140,44 +151,6 @@ internal class FileManager : IDisposable
         return expectedHash.SequenceEqual(actualHash);
     }
 
-    public async ValueTask ClearPieceAsync(int pieceIndex, CancellationToken ct)
-    {
-        // Calculate where the piece starts in the torrent
-        long globalOffset = (long)pieceIndex * _pieceLength;
-        long remaining = _pieceLength;
-
-        // Reuse a shared zero buffer instead of allocating new arrays per write
-        byte[] zeroBuffer = [];
-
-        foreach (var file in _files)
-        {
-            if (globalOffset >= file.EndOffset)
-                continue;
-
-            long fileOffset = Math.Max(0, globalOffset - file.StartOffset);
-            long writable = Math.Min(remaining, file.Length - fileOffset);
-
-            // lazily allocate a zero buffer large enough for current write
-            if (zeroBuffer.Length < writable)
-                zeroBuffer = new byte[writable];
-
-            Directory.CreateDirectory(Path.GetDirectoryName(file.FullPath)!);
-
-            await RandomAccess.WriteAsync(
-                file.SafeHandle,
-                zeroBuffer.AsMemory(0, (int)writable),
-                fileOffset,
-                ct
-            );
-
-            globalOffset += writable;
-            remaining -= writable;
-
-            if (remaining <= 0)
-                break;
-        }
-    }
-
     private async ValueTask WriteAsync(
         long globalOffset,
         ReadOnlyMemory<byte> data,
@@ -195,10 +168,10 @@ internal class FileManager : IDisposable
             long fileOffset = Math.Max(0, globalOffset - file.StartOffset);
             long writable = Math.Min(remaining, file.Length - fileOffset);
 
-            if (!file.isDirectoryCreated)
+            if (!file.IsDirectoryCreated)
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(file.FullPath)!);
-                file.isDirectoryCreated = true;
+                file.IsDirectoryCreated = true;
             }
 
             await RandomAccess.WriteAsync(
@@ -280,16 +253,5 @@ internal class FileManager : IDisposable
                 item.SafeHandle.Dispose();
             }
         }
-    }
-
-    private sealed record TorrentFileEntry(
-        string FullPath,
-        long StartOffset,
-        long Length,
-        SafeFileHandle SafeHandle
-    )
-    {
-        public long EndOffset => StartOffset + Length;
-        public bool isDirectoryCreated { get; set; } = false;
     }
 }

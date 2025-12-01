@@ -5,7 +5,6 @@ using Netorrent.Extensions;
 using Netorrent.P2P;
 using Netorrent.Tracker.Udp.Request;
 using Netorrent.Tracker.Udp.Response;
-using TimeSpanXt;
 
 namespace Netorrent.Tracker.Udp;
 
@@ -21,27 +20,18 @@ internal class UdpTracker(
     IPAddress? forcedIp
 ) : ITracker
 {
-    public Task? TrackerTask { get; private set; }
-    private CancellationTokenSource? _cancellationTokenSource;
     private UdpTrackerResponse? _lastResponse;
     private readonly Guid _trackerId = Guid.CreateVersion7();
 
-    public void Start(CancellationToken cancellationToken) =>
-        TrackerTask ??= ProcessLoop(cancellationToken);
-
-    public async Task ProcessLoop(CancellationToken cancellationToken)
+    public async ValueTask StartAsync(CancellationToken cancellationToken)
     {
-        _cancellationTokenSource ??= CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken
-        );
-
-        if (await TryConnectAsync(iPEndPoint, _cancellationTokenSource.Token) is null)
+        if (await TryConnectAsync(iPEndPoint, cancellationToken) is null)
             return;
 
         _lastResponse = await TryAnnounceAsync(
             iPEndPoint,
             @event: Events.Started,
-            cancellationToken: _cancellationTokenSource.Token
+            cancellationToken: cancellationToken
         );
 
         if (_lastResponse is null)
@@ -52,20 +42,16 @@ internal class UdpTracker(
             await channelWriter.WriteAsync(peer, cancellationToken);
         }
 
-        while (!_cancellationTokenSource.Token.IsCancellationRequested)
+        while (!cancellationToken.IsCancellationRequested)
         {
-            await Task.Delay(_lastResponse.Interval.Seconds(), _cancellationTokenSource.Token);
+            await Task.Delay(_lastResponse.Interval.Seconds, cancellationToken);
 
-            var interval = _lastResponse.Interval.Seconds();
+            var interval = _lastResponse.Interval.Seconds;
 
             if (logger.IsEnabled(LogLevel.Trace))
                 logger.LogTrace("Waiting {seconds} seconds", interval.TotalSeconds);
 
-            var newResponse = await TryAnnounceAsync(
-                iPEndPoint,
-                null,
-                _cancellationTokenSource.Token
-            );
+            var newResponse = await TryAnnounceAsync(iPEndPoint, null, cancellationToken);
 
             if (newResponse is null)
                 continue;
@@ -153,7 +139,6 @@ internal class UdpTracker(
 
     public async ValueTask DisposeAsync()
     {
-        _cancellationTokenSource?.Cancel();
         if (iPEndPoint is not null && _lastResponse is not null)
             await TryAnnounceAsync(iPEndPoint, Events.Stopped, default);
     }

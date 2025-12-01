@@ -7,23 +7,23 @@ namespace Netorrent.P2P;
 
 public class DownloadInfo
 {
-    private readonly IReadOnlyDictionary<IPEndPoint, PeerConnection> _peers;
+    private readonly IReadOnlyDictionary<PeerEndpoint, PeerConnection> _peers;
     private readonly FileManager _fileManager;
     private readonly Bitfield _bitfield;
     private TaskCompletionSource _downloadTaskCompletitionSource = new();
 
-    //TODO Fix this, if peers are removed then downloaded bytes can be reduced?
     private IEnumerable<PeerConnection> PeersNotChocking =>
         _peers.Values.Where(i => !i.PeerChocking && i.AmInterested);
     public int ActivePeers => PeersNotChocking.Count();
     public int TotalPeers => _peers.Values.Count();
-    public DownloadSpeed DownloadSpeed => PeersNotChocking.Sum(p => p.SpeedTracker.CurrentBps.Bps);
+    public DownloadSpeed DownloadSpeed =>
+        PeersNotChocking.Sum(p => p.DownloadSpeedTracker.CurrentBps.Bps);
     public ByteSize DownloadedBytes => (long)_fileManager.GetWrittenBytes();
     public ByteSize TotalBytes => _fileManager.TotalSize;
     public Task DownloadTask => _downloadTaskCompletitionSource.Task;
 
     internal DownloadInfo(
-        IReadOnlyDictionary<IPEndPoint, PeerConnection> peers,
+        IReadOnlyDictionary<PeerEndpoint, PeerConnection> peers,
         FileManager fileManager,
         Bitfield bitfield
     )

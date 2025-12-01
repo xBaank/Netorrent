@@ -3,9 +3,9 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
+using Netorrent.Extensions;
 using Netorrent.Tracker.Udp.Request;
 using Netorrent.Tracker.Udp.Response;
-using TimeSpanXt;
 
 namespace Netorrent.Tracker.Udp;
 
@@ -16,17 +16,13 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
     private readonly ConcurrentDictionary<long, DateTime> _connectionCreationById = [];
     private readonly ConcurrentDictionary<Guid, long> _connectionIdByTracker = [];
 
-    private CancellationTokenSource _cancellationTokenSource = new();
     public Task? TrackerManagerTask { get; private set; }
 
     public void Start(CancellationToken cancellationToken)
     {
-        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken
-        );
         TrackerManagerTask = Task.WhenAll(
-            ReceiveLoopAsync(_cancellationTokenSource.Token),
-            RetryLoopAsync(_cancellationTokenSource.Token)
+            ReceiveLoopAsync(cancellationToken),
+            RetryLoopAsync(cancellationToken)
         );
     }
 
@@ -119,11 +115,11 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
                     );
                     transaction.RetryCount++;
                     var seconds = 15 * (transaction.RetryCount + 1);
-                    transaction.NextRetryTime = DateTime.UtcNow + seconds.Seconds();
+                    transaction.NextRetryTime = DateTime.UtcNow + seconds.Seconds;
                 }
             }
 
-            await Task.Delay(1.Seconds(), cancellationToken);
+            await Task.Delay(1.Seconds, cancellationToken);
         }
     }
 
@@ -139,7 +135,7 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
 
             var newConnectionResponse = await ConnectAsync(
                 udpTrackerRequest.IPEndPoint,
-                transaction.trackerId,
+                transaction.TrackerId,
                 cancellationToken
             );
             var newPacket = udpTrackerRequest with
@@ -186,7 +182,7 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
         if (_connectionCreationById.TryGetValue(connectionId, out var creationTime))
         {
             var diff = DateTime.UtcNow - creationTime;
-            return diff > 1.Minutes();
+            return diff > 1.Minutes;
         }
         return true;
     }
@@ -207,7 +203,7 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
 
         using var payload = packet.ToMemoryRented();
         var seconds = 15 * (transaction.RetryCount + 1);
-        transaction.NextRetryTime = DateTime.UtcNow + seconds.Seconds();
+        transaction.NextRetryTime = DateTime.UtcNow + seconds.Seconds;
 
         await udpClient.SendAsync(payload.Memory, packet.IPEndPoint, cancellationToken);
 
@@ -252,6 +248,5 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
         _packetsByTransactionId.Clear();
         _connectionCreationById.Clear();
         _connectionIdByTracker.Clear();
-        _cancellationTokenSource.Cancel();
     }
 }

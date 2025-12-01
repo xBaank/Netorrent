@@ -1,40 +1,42 @@
 ﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
+using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.Other;
-using Netorrent.P2P.Managers.Piece;
-using Netorrent.P2P.Managers.Request;
+using Netorrent.P2P.Download;
 using Netorrent.P2P.Messages;
+using Netorrent.P2P.Upload;
 using Netorrent.TorrentFile.FileStructure;
-using TimeSpanXt;
 using ZLinq;
 
 namespace Netorrent.P2P;
 
 internal class P2PClient : IAsyncDisposable
 {
-    private const int MAX_ACTIVE_PEER_COUNT = 50;
-    private readonly TcpListener _listener = Tcp.GetFreeTcpListenerInRange(6881, 6899);
+    const int MAX_ACTIVE_PEER_COUNT = 50;
+    const int PEER_TIMEOUT_SECONDS = 120;
+
+    private readonly TcpListener _listener = Tcp.GetFreeTcpListener();
     private readonly MetaInfo _metaInfo;
     private readonly ILogger _logger;
-    private readonly ConcurrentDictionary<IPEndPoint, PeerConnection> _activePeers = [];
+    private readonly ConcurrentDictionary<PeerEndpoint, PeerConnection> _activePeers = [];
     private readonly ConcurrentQueue<IPEndPoint> _knownPeers = [];
     private readonly PeerId _peerId;
     private readonly Bitfield _bitField;
-    private readonly PieceSelector _pieceSelector;
+    private readonly RequestScheduler _requestManager;
+    private readonly UploadScheduler _uploadScheduler;
     private readonly ChannelReader<IPEndPoint> _trackersChannel;
-    private Task? _listenerTask;
-    private Task? _peersTask;
-    private Func<IPAddress, IPAddress>? _peerIpProxy;
+    private readonly Func<IPAddress, IPAddress>? _peerIpProxy;
+    private readonly SemaphoreSlim _semaphoreSlim = new(1);
+    private readonly List<Task> _peerTasks = [];
 
     public FileManager FileManager { get; }
     public DownloadInfo DownloadInfo { get; }
     public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
-    public Task? ListenerTask => _listenerTask;
-    public Task? PeersTask => _peersTask;
 
     public P2PClient(
         MetaInfo metaInfo,
@@ -54,91 +56,109 @@ internal class P2PClient : IAsyncDisposable
         FileManager = fileManager;
         DownloadInfo = new DownloadInfo(_activePeers, fileManager, bitField);
         _peerIpProxy = peerIpProxy;
-        _pieceSelector = new PieceSelector(_activePeers, _bitField);
+        _requestManager = new RequestScheduler(_activePeers, _bitField, fileManager, logger);
+        _uploadScheduler = new UploadScheduler(fileManager, logger);
     }
 
-    public void ProcessPeers(CancellationToken cancellationToken) =>
-        _peersTask ??= ProcessPeersTask(cancellationToken);
-
-    public void ListenForPeers(CancellationToken cancellationToken) =>
-        _listenerTask ??= ListenTask(cancellationToken);
-
-    private async Task ProcessPeersTask(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
-        var connectTasks = new List<Task>();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        List<Task> tasks =
+        [
+            _requestManager.StartAsync(cts.Token),
+            _uploadScheduler.StartAsync(cts.Token),
+            ProcessPeersAsync(cts.Token),
+            ListenToPeersAsync(cts.Token),
+        ];
+        var finishedTask = await Task.WhenAny(tasks);
+        cts.Cancel();
+        await Task.WhenAll([.. tasks, .. _peerTasks]);
+        await finishedTask;
+    }
 
+    private async Task ProcessPeersAsync(CancellationToken cancellationToken)
+    {
+        List<Task> connectTasks = new(100);
         await foreach (var iPEndPoint in _trackersChannel.ReadAllAsync(cancellationToken))
         {
             var targetEndPoint = new IPEndPoint(
                 _peerIpProxy?.Invoke(iPEndPoint.Address) ?? iPEndPoint.Address,
                 iPEndPoint.Port
             );
-
-            var task = ConnectToPeerAsync(targetEndPoint, cancellationToken);
-            connectTasks.Add(task);
+            connectTasks.Add(ConnectToPeerAsync(null, targetEndPoint, cancellationToken));
 
             if (connectTasks.Count >= 100)
             {
                 await Task.WhenAll(connectTasks);
-                connectTasks.Clear();
             }
+        }
+        await Task.WhenAll(connectTasks);
+    }
+
+    private async Task ListenToPeersAsync(CancellationToken cancellationToken)
+    {
+        _listener.Start();
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var tcpClient = await _listener.AcceptTcpClientAsync(cancellationToken);
+            var remoteEndPoint = (IPEndPoint)tcpClient.Client.RemoteEndPoint!;
+
+            await ConnectToPeerAsync(tcpClient, remoteEndPoint, cancellationToken);
         }
     }
 
     private async Task ConnectToPeerAsync(
+        TcpClient? client,
         IPEndPoint iPEndPoint,
         CancellationToken cancellationToken = default
     )
     {
-        if (_activePeers.ContainsKey(iPEndPoint))
-            return;
+        var amInitiating = client is null;
 
-        if (_activePeers.Count >= MAX_ACTIVE_PEER_COUNT)
+        //If im initiaing the connection
+        if (amInitiating)
         {
-            var worstPeer = GetWorstPeer();
-            if (worstPeer is not null)
+            client = new TcpClient();
+
+            try
             {
-                _activePeers.Remove(worstPeer.IPEndPoint, out _);
-                await worstPeer.DisposeAsync();
+                using var cts = cancellationToken.WithTimeout(10.Seconds);
+                await client.ConnectAsync(iPEndPoint, cts.Token);
             }
-            else
+            catch (Exception ex)
             {
-                _knownPeers.Enqueue(iPEndPoint);
+                if (_logger.IsEnabled(LogLevel.Debug))
+                    _logger.LogDebug(ex, "Error conecting to {ip}", iPEndPoint);
                 return;
             }
         }
 
-        var client = new TcpClient();
-
-        try
-        {
-            await client.ConnectAsync(iPEndPoint, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            if (_logger.IsEnabled(LogLevel.Debug))
-                _logger.LogDebug(ex, "Error conecting to {ip}", iPEndPoint);
-            return;
-        }
-
         var peerConnection = new PeerConnection(
-            client,
             iPEndPoint,
             _bitField,
-            FileManager,
-            new RequestManager(),
-            new PieceManager(FileManager.MaxBlocksByPiece),
-            _pieceSelector,
-            _logger
+            _uploadScheduler,
+            _requestManager,
+            new MessageStream(client!.GetStream(), PEER_TIMEOUT_SECONDS.Seconds)
         );
 
         try
         {
-            await peerConnection.PerformHandshakeAsync(
-                _metaInfo.Info.InfoHash,
-                _peerId,
-                cancellationToken
-            );
+            if (amInitiating)
+            {
+                await peerConnection.PerformHandshakeAsync(
+                    _metaInfo.Info.InfoHash,
+                    _peerId,
+                    cancellationToken
+                );
+            }
+            else
+            {
+                await peerConnection.ReceiveHandshakeAsync(
+                    _metaInfo.Info.InfoHash,
+                    _peerId,
+                    cancellationToken
+                );
+            }
         }
         catch (Exception ex)
         {
@@ -147,93 +167,55 @@ internal class P2PClient : IAsyncDisposable
             return;
         }
 
-        if (peerConnection.PeerId == _peerId)
+        await _semaphoreSlim.WaitAsync(cancellationToken);
+        try
         {
-            if (_logger.IsEnabled(LogLevel.Information))
-                _logger.LogInformation(
-                    "Ignored self connection to {EndPoint}",
-                    peerConnection.IPEndPoint
-                );
-            await peerConnection.DisposeAsync();
-            return;
-        }
+            if (peerConnection.PeerId == _peerId)
+            {
+                if (_logger.IsEnabled(LogLevel.Information))
+                    _logger.LogInformation(
+                        "Ignored self connection to {EndPoint}",
+                        peerConnection.IPEndPoint
+                    );
+                await peerConnection.DisposeAsync();
+                return;
+            }
 
-        if (_logger.IsEnabled(LogLevel.Information))
-            _logger.LogInformation("Connected to peer {PeerId}", peerConnection.PeerId);
-
-        _activePeers[iPEndPoint] = peerConnection;
-        await HandlePeer(peerConnection, cancellationToken);
-    }
-
-    private async Task ListenTask(CancellationToken cancellationToken)
-    {
-        _listener.Start();
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            var tcpClient = await _listener.AcceptTcpClientAsync(cancellationToken);
-            var remoteEndPoint = (IPEndPoint)tcpClient.Client.RemoteEndPoint!;
-
-            if (_activePeers.ContainsKey(remoteEndPoint))
-                continue;
+            if (_activePeers.ContainsKey(peerConnection.PeerEndpoint))
+            {
+                if (_logger.IsEnabled(LogLevel.Information))
+                    _logger.LogInformation(
+                        "Ignored active peer from {EndPoint}",
+                        peerConnection.IPEndPoint
+                    );
+                await peerConnection.DisposeAsync();
+                return;
+            }
 
             if (_activePeers.Count >= MAX_ACTIVE_PEER_COUNT)
             {
                 var worstPeer = GetWorstPeer();
                 if (worstPeer is not null)
                 {
-                    _activePeers.Remove(worstPeer.IPEndPoint, out _);
+                    _activePeers.Remove(worstPeer.PeerEndpoint, out _);
                     await worstPeer.DisposeAsync();
                 }
                 else
                 {
-                    _knownPeers.Enqueue(remoteEndPoint);
-                    continue;
+                    _knownPeers.Enqueue(iPEndPoint);
+                    return;
                 }
             }
 
-            var peerConnection = new PeerConnection(
-                tcpClient,
-                remoteEndPoint,
-                _bitField,
-                FileManager,
-                new RequestManager(),
-                new PieceManager(FileManager.MaxBlocksByPiece),
-                _pieceSelector,
-                _logger
-            );
-
-            try
-            {
-                await peerConnection.ReceiveHandshakeAsync(
-                    _metaInfo.Info.InfoHash,
-                    _peerId,
-                    cancellationToken
-                );
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsEnabled(LogLevel.Debug))
-                    _logger.LogDebug(ex, "Error handshaking to {ip}", peerConnection.IPEndPoint);
-                await peerConnection.DisposeAsync();
-                continue;
-            }
-
-            if (peerConnection.PeerId == _peerId)
-            {
-                if (_logger.IsEnabled(LogLevel.Information))
-                    _logger.LogInformation(
-                        "Ignored self connection from {EndPoint}",
-                        peerConnection.IPEndPoint
-                    );
-                await peerConnection.DisposeAsync();
-                continue;
-            }
-
             if (_logger.IsEnabled(LogLevel.Information))
-                _logger.LogInformation("Connected from peer {PeerId}", peerConnection.PeerId);
+                _logger.LogInformation("Connected to peer {PeerId}", peerConnection.PeerId);
 
-            _activePeers[remoteEndPoint] = peerConnection;
-            await HandlePeer(peerConnection, cancellationToken);
+            _activePeers[peerConnection.PeerEndpoint] = peerConnection;
+            _peerTasks.Add(HandlePeer(peerConnection, cancellationToken));
+        }
+        finally
+        {
+            _semaphoreSlim.Release();
         }
     }
 
@@ -242,44 +224,40 @@ internal class P2PClient : IAsyncDisposable
         CancellationToken cancellationToken
     )
     {
-        peerConnection.Start(cancellationToken);
-        peerConnection.WaitTask?.ContinueWith(
-            async task =>
+        try
+        {
+            await peerConnection.StartAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsEnabled(LogLevel.Debug))
             {
-                if (task.IsFaulted)
-                {
-                    if (_logger.IsEnabled(LogLevel.Debug))
-                        _logger.LogDebug(
-                            task.Exception,
-                            "Exception on peer {peerId}",
-                            peerConnection.PeerId
-                        );
-                }
+                _logger.LogDebug(ex, "Exception on peer {peerId}", peerConnection.PeerId);
+            }
+        }
+        finally
+        {
+            _activePeers.Remove(peerConnection.PeerEndpoint, out _);
+            await peerConnection.DisposeAsync();
 
-                _activePeers.Remove(peerConnection.IPEndPoint, out _);
-                await _pieceSelector.OnPeerDisconnected(cancellationToken);
-                await peerConnection.DisposeAsync();
-
-                if (_knownPeers.TryDequeue(out var iPEndPoint))
-                {
-                    await ConnectToPeerAsync(iPEndPoint);
-                }
-            },
-            CancellationToken.None,
-            TaskContinuationOptions.RunContinuationsAsynchronously,
-            TaskScheduler.Default
-        );
+            if (_knownPeers.TryDequeue(out var nextEndpoint))
+            {
+                await ConnectToPeerAsync(null, nextEndpoint, cancellationToken);
+            }
+        }
     }
 
     private PeerConnection? GetWorstPeer()
     {
-        var minAge = 30.Seconds();
+        //TODO if im downloading then i should get rid of peers that chock me first and then the slowest ones
+        //TODO if im uploading then i should get rid of peers that i chock first and then the slowest ones
+        var minAge = 30.Seconds;
 
         if (_activePeers.IsEmpty)
             return null;
 
         var avgSpeedKbps = _activePeers
-            .Values.Select(p => p.SpeedTracker.CurrentBps.Kbps)
+            .Values.Select(p => p.DownloadSpeedTracker.CurrentBps.Kbps)
             .DefaultIfEmpty(0.0)
             .Average();
 
@@ -292,14 +270,14 @@ internal class P2PClient : IAsyncDisposable
             .Values.AsValueEnumerable()
             .Where(p =>
                 p.ConnectionDuration > minAge
-                && (p.SpeedTracker.CurrentBps.Kbps < minAcceptableSpeed || p.PeerChocking)
+                && (p.DownloadSpeedTracker.CurrentBps.Kbps < minAcceptableSpeed || p.PeerChocking)
             )
             .ToList();
 
         if (candidates.Count == 0)
             return null;
 
-        return candidates.MinBy(p => p.SpeedTracker.CurrentBps.Bps);
+        return candidates.MinBy(p => p.DownloadSpeedTracker.CurrentBps.Bps);
     }
 
     public async ValueTask DisposeAsync()
@@ -309,6 +287,8 @@ internal class P2PClient : IAsyncDisposable
         {
             await item.Value.DisposeAsync();
         }
+        await _requestManager.DisposeAsync();
+        await _uploadScheduler.DisposeAsync();
         DownloadInfo.Dispose();
     }
 }

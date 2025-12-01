@@ -1,17 +1,27 @@
-﻿namespace Netorrent.P2P.Managers.Request;
+﻿namespace Netorrent.P2P.Messages;
 
-internal struct RequestBlock(int index, int begin, int length)
+enum RequestBlockState
+{
+    Pending,
+    Requested,
+    Cancelled,
+    Completed,
+}
+
+internal class RequestBlock(int index, int begin, int length)
 {
     public readonly int Index = index;
     public readonly int Begin = begin;
     public readonly int Length = length;
-    public bool IsCancelled = false;
+    public RequestBlockState State { get; set; } = RequestBlockState.Pending;
+    public List<PeerConnection> RequestedFrom { get; set; } = [];
+    public DateTimeOffset? RequestedAt { get; set; }
 
     public static bool operator ==(RequestBlock left, RequestBlock right) => left.Equals(right);
 
     public static bool operator !=(RequestBlock left, RequestBlock right) => !(left == right);
 
-    public override readonly bool Equals(object? obj)
+    public override bool Equals(object? obj)
     {
         return obj is RequestBlock request
             && Index == request.Index
@@ -19,7 +29,7 @@ internal struct RequestBlock(int index, int begin, int length)
             && Length == request.Length;
     }
 
-    public override readonly int GetHashCode()
+    public override int GetHashCode()
     {
         return HashCode.Combine(Index, Begin, Length);
     }

@@ -9,7 +9,6 @@ public class Bitfield
 {
     internal event Func<int, CancellationToken, Task>? OnHavePieceAsync;
 
-    private readonly TaskCompletionSource _completedTask = new();
     private readonly BitArray _bits;
 
     internal Bitfield(int pieceCount, bool isInitialized = false)
@@ -42,21 +41,20 @@ public class Bitfield
     }
 
     public bool IsComplete => _bits.HasAllSet();
-    public IReadOnlySet<int> PiecesIndexes =>
-        Enumerable.Range(0, _bits.Length).AsValueEnumerable().Where(i => _bits[i]).ToHashSet();
+    public IReadOnlyList<bool> Pieces =>
+        Enumerable.Range(0, _bits.Length).AsValueEnumerable().Select(i => _bits[i]).ToList();
 
-    internal async Task AddPiece(int index, CancellationToken cancellationToken)
+    internal void SetPiece(int index, CancellationToken cancellationToken)
     {
         if (index >= _bits.Length)
             return;
 
         _bits[index] = true;
 
-        if (OnHavePieceAsync is not null)
-            await OnHavePieceAsync(index, cancellationToken);
+        OnHavePieceAsync?.Invoke(index, cancellationToken);
     }
 
-    internal bool HasPiece(int index) => _bits[index];
+    internal bool HasPiece(int index) => index < _bits.Length && _bits[index];
 
     internal bool HasAnyMissingPiece(Bitfield other)
     {
@@ -73,12 +71,12 @@ public class Bitfield
         return false;
     }
 
-    internal RentedArray<byte> ToMemoryRented()
+    internal RentedArray<byte> ToRentedArray()
     {
         int byteCount = (_bits.Length + 7) / 8;
         var array = ArrayPool<byte>.Shared.Rent(byteCount);
-        var memory = array.AsMemory()[..byteCount];
-        PackBitsBigEndian(memory.Span);
+        var memory = array.AsSpan()[..byteCount];
+        PackBitsBigEndian(memory);
 
         return new RentedArray<byte>(array, byteCount);
     }

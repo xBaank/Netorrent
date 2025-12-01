@@ -1,10 +1,11 @@
 ﻿using System.Net;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.Tests.Fixtures;
 using Netorrent.TorrentFile;
+using Netorrent.TorrentFile.FileStructure;
 using Shouldly;
-using TimeSpanXt;
 
 namespace Netorrent.Tests.Torrents;
 
@@ -14,134 +15,31 @@ public enum AnnounceType
     Udp,
 }
 
-public class TorrentTests(OpenTrackerFixture fixture, ITestOutputHelper outputHelper)
-    : IClassFixture<OpenTrackerFixture>,
-        IAsyncDisposable
+[ClassDataSource<OpenTrackerFixture>(Shared = SharedType.PerClass)]
+[Timeout(120_000)]
+public class TorrentTests(OpenTrackerFixture fixture)
 {
     private readonly OpenTrackerFixture _fixture = fixture;
 
-    [Theory]
-    [InlineData(AnnounceType.Http)]
-    [InlineData(AnnounceType.Udp)]
-    public async Task Should_download_torrent(AnnounceType announceType)
-    {
-        var loggerFactory = LoggerFactory.Create(builder =>
-            builder.AddXUnit(outputHelper).SetMinimumLevel(LogLevel.Trace)
-        );
-        var announceUrl = announceType switch
-        {
-            AnnounceType.Http => _fixture.AnnounceUrl,
-            AnnounceType.Udp => _fixture.UdpAnnounceUrl,
-            _ => throw new Exception($"Unknown type {announceType}"),
-        };
-
-        var logger = loggerFactory.CreateLogger("Torrent");
-
-        var seeder = new TorrentClient(o =>
-            o with
-            {
-                Logger = logger,
-                PeerIpProxy = FixDockerAdress,
-            }
-        );
-        var leecher = new TorrentClient(o =>
-            o with
-            {
-                Logger = logger,
-                PeerIpProxy = FixDockerAdress,
-            }
-        );
-
-        await using var seederTorrent = await seeder.CreateTorrentAsync(
-            "Data/test.txt",
-            announceUrl,
-            [announceUrl],
-            cancellationToken: TestContext.Current.CancellationToken
-        );
-        await using var leecherTorrent = leecher.ImportTorrent(seederTorrent.MetaInfo, "Output");
-
-        using var cts = TestContext.Current.CancellationToken.WithTimeout(1.Minutes());
-        cts.Token.Register(seederTorrent.Stop);
-        cts.Token.Register(leecherTorrent.Stop);
-
-        seederTorrent.Start();
-        await Task.Delay(5.Seconds(), TestContext.Current.CancellationToken);
-        leecherTorrent.Start();
-
-        await leecherTorrent.DownloadInfo.DownloadTask.ShouldNotThrowAsync();
-        seederTorrent.Stop();
-        leecherTorrent.Stop();
-
-        var originalFile = await ReadAllBytesAsync(
-            "Data/test.txt",
-            TestContext.Current.CancellationToken
-        );
-
-        var downloadedFile = await ReadAllBytesAsync(
-            "Output/test.txt",
-            TestContext.Current.CancellationToken
-        );
-
-        originalFile.SequenceEqual(downloadedFile).ShouldBeTrue();
-    }
-
-    [Theory]
-    [InlineData(AnnounceType.Http)]
-    [InlineData(AnnounceType.Udp)]
-    public async Task Should_cancel_torrent(AnnounceType announceType)
-    {
-        var loggerFactory = LoggerFactory.Create(builder =>
-            builder.AddXUnit(outputHelper).SetMinimumLevel(LogLevel.Trace)
-        );
-        var announceUrl = announceType switch
-        {
-            AnnounceType.Http => _fixture.AnnounceUrl,
-            AnnounceType.Udp => _fixture.UdpAnnounceUrl,
-            _ => throw new Exception($"Unknown type {announceType}"),
-        };
-
-        var logger = loggerFactory.CreateLogger("Torrent");
-
-        var seeder = new TorrentClient(o =>
-            o with
-            {
-                Logger = logger,
-                PeerIpProxy = FixDockerAdress,
-            }
-        );
-        var leecher = new TorrentClient(o =>
-            o with
-            {
-                Logger = logger,
-                PeerIpProxy = FixDockerAdress,
-            }
-        );
-
-        await using var seederTorrent = await seeder.CreateTorrentAsync(
-            "Data/test.txt",
-            announceUrl,
-            [announceUrl],
-            cancellationToken: TestContext.Current.CancellationToken
-        );
-        await using var leecherTorrent = leecher.ImportTorrent(seederTorrent.MetaInfo, "Output");
-
-        seederTorrent.Start();
-        leecherTorrent.Start();
-        seederTorrent.Stop();
-        leecherTorrent.Stop();
-
-        await leecherTorrent.DownloadInfo.DownloadTask.ShouldThrowAsync<TaskCanceledException>();
-    }
-
     private static IPAddress FixDockerAdress(IPAddress iPAddress) =>
         iPAddress.ToString().StartsWith("172.") ? IPAddress.Loopback : iPAddress;
+
+    [Before(Class)]
+    public static Task Setup(CancellationToken _)
+    {
+        if (Directory.Exists("Output"))
+            Directory.Delete("Output", true);
+        if (Directory.Exists("Input"))
+            Directory.Delete("Input", true);
+        return Task.CompletedTask;
+    }
 
     private static async Task<byte[]> ReadAllBytesAsync(
         string path,
         CancellationToken cancellationToken = default
     )
     {
-        using var stream = new FileStream(
+        await using var stream = new FileStream(
             path,
             FileMode.Open,
             FileAccess.Read,
@@ -166,10 +64,202 @@ public class TorrentTests(OpenTrackerFixture fixture, ITestOutputHelper outputHe
         return buffer;
     }
 
-    public ValueTask DisposeAsync()
+    private static async ValueTask<string> CreateRandomFileAsync(string folder)
     {
-        if (File.Exists("Output/test.txt"))
-            File.Delete("Output/test.txt");
-        return ValueTask.CompletedTask;
+        var guid = Guid.NewGuid().ToString();
+        var path = Path.Combine(folder, $"Test_{guid}");
+        if (!Directory.Exists(folder))
+            Directory.CreateDirectory(folder);
+        await using var stream = new FileStream(
+            path,
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None,
+            bufferSize: 81920,
+            options: FileOptions.Asynchronous | FileOptions.SequentialScan
+        );
+
+        long size = 10L * 1024 * 1024; // 100 MB
+        for (long i = 0; i < size; i++)
+        {
+            stream.WriteByte((byte)Random.Shared.Next());
+        }
+        return path;
+    }
+
+    [Test]
+    [MatrixDataSource]
+    public async Task Should_Download_Torrent(
+        [MatrixRange<int>(1, 5)] int seedersCount,
+        [MatrixRange<int>(1, 5)] int leechersCount,
+        CancellationToken cancellationToken
+    )
+    {
+        var path = await CreateRandomFileAsync("Input");
+
+        var seeders = await GetSeedersAsync(seedersCount, path, cancellationToken)
+            .ToListAsync(cancellationToken: cancellationToken);
+        var seedersTorrents = seeders.Select(i => i.Item1).ToList();
+
+        var leechers = await GetLeechersAsync(
+                leechersCount,
+                seedersTorrents[0].MetaInfo,
+                cancellationToken
+            )
+            .ToListAsync(cancellationToken: cancellationToken);
+        var leechersTorrents = leechers.Select(i => i.Item1).ToList();
+
+        try
+        {
+            foreach (var seederTorrent in seedersTorrents)
+            {
+                seederTorrent.Start();
+            }
+
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                leecherTorrent.Start();
+            }
+
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                await leecherTorrent.DownloadInfo.DownloadTask.ShouldNotThrowAsync();
+            }
+
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                var originalFile = await ReadAllBytesAsync(path, cancellationToken);
+                var downloadedFile = await ReadAllBytesAsync(
+                    $"{leecherTorrent.OutputDirectory}/{leecherTorrent.MetaInfo.Info.Name}",
+                    cancellationToken
+                );
+                originalFile.SequenceEqual(downloadedFile).ShouldBeTrue();
+            }
+        }
+        finally
+        {
+            foreach (var seederTorrent in seedersTorrents)
+            {
+                await seederTorrent.StopAsync();
+            }
+
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                await leecherTorrent.StopAsync();
+            }
+
+            foreach (var (_, client) in seeders)
+            {
+                await client.DisposeAsync();
+            }
+
+            foreach (var (_, client) in leechers)
+            {
+                await client.DisposeAsync();
+            }
+        }
+    }
+
+    [Test]
+    [MatrixDataSource]
+    public async Task Should_Stop_Torrent(
+        [MatrixRange<int>(1, 3)] int seedersCount,
+        [MatrixRange<int>(1, 3)] int leechersCount,
+        CancellationToken cancellationToken
+    )
+    {
+        var path = await CreateRandomFileAsync("Input");
+
+        var seeders = await GetSeedersAsync(seedersCount, path, cancellationToken)
+            .ToListAsync(cancellationToken: cancellationToken);
+        var seedersTorrents = seeders.Select(i => i.Item1).ToList();
+
+        var leechers = await GetLeechersAsync(
+                leechersCount,
+                seedersTorrents[0].MetaInfo,
+                cancellationToken
+            )
+            .ToListAsync(cancellationToken: cancellationToken);
+        var leechersTorrents = leechers.Select(i => i.Item1).ToList();
+
+        try
+        {
+            foreach (var seederTorrent in seedersTorrents)
+            {
+                seederTorrent.Start();
+            }
+
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                leecherTorrent.Start();
+            }
+
+            foreach (var seederTorrent in seedersTorrents)
+            {
+                await seederTorrent.StopAsync();
+            }
+
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                await leecherTorrent.StopAsync();
+            }
+
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                await leecherTorrent.DownloadInfo.DownloadTask.ShouldThrowAsync<TaskCanceledException>();
+            }
+        }
+        finally
+        {
+            foreach (var (_, client) in seeders)
+            {
+                await client.DisposeAsync();
+            }
+
+            foreach (var (_, client) in leechers)
+            {
+                await client.DisposeAsync();
+            }
+        }
+    }
+
+    private async IAsyncEnumerable<(Torrent, TorrentClient)> GetSeedersAsync(
+        int number,
+        string path,
+        [EnumeratorCancellation] CancellationToken cancellationToken
+    )
+    {
+        for (int i = 0; i < number; i++)
+        {
+            var seeder = new TorrentClient(o => o with { PeerIpProxy = FixDockerAdress });
+
+            var seederTorrent = await seeder.CreateTorrentAsync(
+                path,
+                _fixture.AnnounceUrl,
+                [.. _fixture.AnnounceUrls],
+                cancellationToken: cancellationToken
+            );
+            cancellationToken.Register(seederTorrent.Stop);
+
+            yield return (seederTorrent, seeder);
+        }
+    }
+
+    private static async IAsyncEnumerable<(Torrent, TorrentClient)> GetLeechersAsync(
+        int number,
+        MetaInfo metaInfo,
+        [EnumeratorCancellation] CancellationToken cancellationToken
+    )
+    {
+        for (int i = 0; i < number; i++)
+        {
+            var leecher = new TorrentClient(o => o with { PeerIpProxy = FixDockerAdress });
+
+            var pathName = Guid.NewGuid().ToString();
+            var leecherTorrent = leecher.ImportTorrent(metaInfo, $"Output/Test_{pathName}");
+            cancellationToken.Register(leecherTorrent.Stop);
+
+            yield return (leecherTorrent, leecher);
+        }
     }
 }

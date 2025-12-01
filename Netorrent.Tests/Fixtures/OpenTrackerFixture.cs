@@ -1,15 +1,18 @@
 ﻿using DotNet.Testcontainers.Builders;
+using TUnit.Core.Interfaces;
 using IContainer = DotNet.Testcontainers.Containers.IContainer;
 
 namespace Netorrent.Tests.Fixtures;
 
-public class OpenTrackerFixture : IAsyncLifetime
+public class OpenTrackerFixture : IAsyncInitializer, IAsyncDisposable
 {
     private IContainer? _container;
     public string AnnounceUrl { get; private set; } = "";
     public string UdpAnnounceUrl { get; private set; } = "";
 
-    public async ValueTask InitializeAsync()
+    public string[] AnnounceUrls => [AnnounceUrl, UdpAnnounceUrl];
+
+    public async Task InitializeAsync()
     {
         _container = new ContainerBuilder()
             .WithImage("xbank/opentracker-docker")

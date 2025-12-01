@@ -1,18 +1,17 @@
 ﻿using System.Buffers;
-using System.Net;
-using System.Net.Sockets;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging.Abstractions;
 using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
 using Netorrent.Extensions;
+using Netorrent.Other;
 using Netorrent.P2P;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker.Udp;
 
 namespace Netorrent.TorrentFile;
 
-public class TorrentClient : IAsyncDisposable
+public sealed class TorrentClient : IAsyncDisposable
 {
     private readonly PeerId _peerId = new();
     private readonly TorrentClientOptions _options;
@@ -24,13 +23,18 @@ public class TorrentClient : IAsyncDisposable
     {
         var options = new TorrentClientOptions(new(), NullLogger.Instance, null);
         _options = action?.Invoke(options) ?? options;
-        var udpClient = new UdpClient(AddressFamily.InterNetworkV6);
-        udpClient.Client.DualMode = true;
-        udpClient.Client.Bind(new IPEndPoint(IPAddress.IPv6Any, 0));
-        _trackerTransactionManager = new(udpClient, _options.Logger);
+        _trackerTransactionManager = new(Udp.GetFreeUdpClient(), _options.Logger);
         _trackerTransactionManager.Start(_cancellationTokenSource.Token);
     }
 
+    /// <summary>
+    /// Asynchronously imports a torrent from a file and adds it to the current session.
+    /// </summary>
+    /// <param name="path">The full path to the .torrent file to import. Cannot be null or empty.</param>
+    /// <param name="outputDirectory">The directory where downloaded files associated with the torrent will be stored. Must be a valid path.</param>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the import operation.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains the imported Torrent instance.</returns>
+    /// <exception cref="InvalidDataException">Thrown if the specified file does not contain a valid bencoded torrent dictionary.</exception>
     public async ValueTask<Torrent> ImportTorrentAsync(
         string path,
         string outputDirectory,
@@ -59,6 +63,12 @@ public class TorrentClient : IAsyncDisposable
         return torrent;
     }
 
+    /// <summary>
+    /// Imports a torrent from the specified metadata and adds it to the managed torrent collection.
+    /// </summary>
+    /// <param name="metaInfo">The metadata information describing the torrent to import. Cannot be null.</param>
+    /// <param name="outputDirectory">The path to the directory where the torrent's data will be stored. Must be a valid file system path.</param>
+    /// <returns>A Torrent instance representing the imported torrent.</returns>
     public Torrent ImportTorrent(MetaInfo metaInfo, string outputDirectory)
     {
         var torrent = new Torrent(
@@ -75,6 +85,20 @@ public class TorrentClient : IAsyncDisposable
         return torrent;
     }
 
+    /// <summary>
+    /// Asynchronously creates a new torrent from the specified file or directory path and registers it for management.
+    /// </summary>
+    /// <remarks>The created torrent is automatically added to the internal collection for management. The
+    /// method supports both single-file and multi-file torrents, depending on the specified path.</remarks>
+    /// <param name="path">The file or directory path to include in the torrent. Must refer to an existing file or directory.</param>
+    /// <param name="announceUrl">The primary tracker announce URL to include in the torrent metadata. Cannot be null or empty.</param>
+    /// <param name="announceUrls">An optional list of additional tracker announce URLs to include in the torrent metadata. May be null or empty if
+    /// no additional trackers are required.</param>
+    /// <param name="webUrls">An optional list of web seed URLs to include in the torrent metadata. May be null or empty if no web seeds are
+    /// needed.</param>
+    /// <param name="pieceLength">The length, in bytes, of each piece in the torrent. Must be a positive integer. The default is 262144 (256 KB).</param>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the asynchronous operation.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains the created Torrent instance.</returns>
     public async ValueTask<Torrent> CreateTorrentAsync(
         string path,
         string announceUrl,
@@ -410,11 +434,12 @@ public class TorrentClient : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _cancellationTokenSource.Cancel();
         foreach (var item in torrents)
         {
             await item.DisposeAsync();
         }
         _trackerTransactionManager.Dispose();
-        _cancellationTokenSource.Cancel();
+        _cancellationTokenSource.Dispose();
     }
 }
