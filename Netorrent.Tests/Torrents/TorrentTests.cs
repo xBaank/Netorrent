@@ -24,6 +24,16 @@ public class TorrentTests(OpenTrackerFixture fixture)
     private static IPAddress FixDockerAdress(IPAddress iPAddress) =>
         iPAddress.ToString().StartsWith("172.") ? IPAddress.Loopback : iPAddress;
 
+    [Before(Class)]
+    public static Task Setup(CancellationToken _)
+    {
+        if (Directory.Exists("Output"))
+            Directory.Delete("Output", true);
+        if (Directory.Exists("Input"))
+            Directory.Delete("Input", true);
+        return Task.CompletedTask;
+    }
+
     private static async Task<byte[]> ReadAllBytesAsync(
         string path,
         CancellationToken cancellationToken = default
@@ -99,49 +109,54 @@ public class TorrentTests(OpenTrackerFixture fixture)
             .ToListAsync(cancellationToken: cancellationToken);
         var leechersTorrents = leechers.Select(i => i.Item1).ToList();
 
-        foreach (var seederTorrent in seedersTorrents)
+        try
         {
-            seederTorrent.Start();
-        }
+            foreach (var seederTorrent in seedersTorrents)
+            {
+                seederTorrent.Start();
+            }
 
-        foreach (var leecherTorrent in leechersTorrents)
-        {
-            leecherTorrent.Start();
-        }
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                leecherTorrent.Start();
+            }
 
-        foreach (var leecherTorrent in leechersTorrents)
-        {
-            await leecherTorrent.DownloadInfo.DownloadTask.ShouldNotThrowAsync();
-        }
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                await leecherTorrent.DownloadInfo.DownloadTask.ShouldNotThrowAsync();
+            }
 
-        foreach (var seederTorrent in seedersTorrents)
-        {
-            await seederTorrent.StopAsync();
-        }
+            foreach (var seederTorrent in seedersTorrents)
+            {
+                await seederTorrent.StopAsync();
+            }
 
-        foreach (var leecherTorrent in leechersTorrents)
-        {
-            await leecherTorrent.StopAsync();
-        }
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                await leecherTorrent.StopAsync();
+            }
 
-        foreach (var leecherTorrent in leechersTorrents)
-        {
-            var originalFile = await ReadAllBytesAsync(path, cancellationToken);
-            var downloadedFile = await ReadAllBytesAsync(
-                $"{leecherTorrent.OutputDirectory}/{leecherTorrent.MetaInfo.Info.Name}",
-                cancellationToken
-            );
-            originalFile.SequenceEqual(downloadedFile).ShouldBeTrue();
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                var originalFile = await ReadAllBytesAsync(path, cancellationToken);
+                var downloadedFile = await ReadAllBytesAsync(
+                    $"{leecherTorrent.OutputDirectory}/{leecherTorrent.MetaInfo.Info.Name}",
+                    cancellationToken
+                );
+                originalFile.SequenceEqual(downloadedFile).ShouldBeTrue();
+            }
         }
-
-        foreach (var (_, client) in seeders)
+        finally
         {
-            await client.DisposeAsync();
-        }
+            foreach (var (_, client) in seeders)
+            {
+                await client.DisposeAsync();
+            }
 
-        foreach (var (_, client) in leechers)
-        {
-            await client.DisposeAsync();
+            foreach (var (_, client) in leechers)
+            {
+                await client.DisposeAsync();
+            }
         }
     }
 
@@ -167,39 +182,44 @@ public class TorrentTests(OpenTrackerFixture fixture)
             .ToListAsync(cancellationToken: cancellationToken);
         var leechersTorrents = leechers.Select(i => i.Item1).ToList();
 
-        foreach (var seederTorrent in seedersTorrents)
+        try
         {
-            seederTorrent.Start();
-        }
+            foreach (var seederTorrent in seedersTorrents)
+            {
+                seederTorrent.Start();
+            }
 
-        foreach (var leecherTorrent in leechersTorrents)
-        {
-            leecherTorrent.Start();
-        }
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                leecherTorrent.Start();
+            }
 
-        foreach (var seederTorrent in seedersTorrents)
-        {
-            await seederTorrent.StopAsync();
-        }
+            foreach (var seederTorrent in seedersTorrents)
+            {
+                await seederTorrent.StopAsync();
+            }
 
-        foreach (var leecherTorrent in leechersTorrents)
-        {
-            await leecherTorrent.StopAsync();
-        }
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                await leecherTorrent.StopAsync();
+            }
 
-        foreach (var leecherTorrent in leechersTorrents)
-        {
-            await leecherTorrent.DownloadInfo.DownloadTask.ShouldThrowAsync<TaskCanceledException>();
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                await leecherTorrent.DownloadInfo.DownloadTask.ShouldThrowAsync<TaskCanceledException>();
+            }
         }
-
-        foreach (var (_, client) in seeders)
+        finally
         {
-            await client.DisposeAsync();
-        }
+            foreach (var (_, client) in seeders)
+            {
+                await client.DisposeAsync();
+            }
 
-        foreach (var (_, client) in leechers)
-        {
-            await client.DisposeAsync();
+            foreach (var (_, client) in leechers)
+            {
+                await client.DisposeAsync();
+            }
         }
     }
 
@@ -241,15 +261,5 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
             yield return (leecherTorrent, leecher);
         }
-    }
-
-    [After(Class)]
-    public static Task DisposeAsync(CancellationToken _)
-    {
-        if (Directory.Exists("Output"))
-            Directory.Delete("Output", true);
-        if (Directory.Exists("Input"))
-            Directory.Delete("Input", true);
-        return Task.CompletedTask;
     }
 }

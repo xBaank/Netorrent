@@ -26,7 +26,6 @@ internal class TrackerClient(
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         List<string> announceList = [metaInfo.Announce, .. metaInfo.AnnounceList ?? []];
         var urls =
             announceList
@@ -34,14 +33,13 @@ internal class TrackerClient(
                 .Distinct(StringComparer.OrdinalIgnoreCase)
             ?? [];
 
-        var tasks = await CreateTrackers(urls, cts.Token)
-            .Select(i => i.StartAsync(cts.Token).AsTask())
-            .ToListAsync(cancellationToken: cts.Token);
+        //The trackers should not fail by them self
+        //They finish successfully because of dns problems, udp timeouts, etc.
+        var tasks = await CreateTrackers(urls, cancellationToken)
+            .Select(i => i.StartAsync(cancellationToken).AsTask())
+            .ToListAsync(cancellationToken: cancellationToken);
 
-        var finishedTask = await Task.WhenAny(tasks);
-        cts.Cancel();
         await Task.WhenAll(tasks);
-        await finishedTask;
     }
 
     private async IAsyncEnumerable<ITracker> CreateTrackers(

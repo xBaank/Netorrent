@@ -10,10 +10,6 @@ internal class RentedArray<T>(T[] array, int length, int start = 0) : IDisposabl
         _disposed ? throw new ObjectDisposedException(nameof(RentedArray<>)) : memory;
     private bool _disposed;
 
-#if DEBUG
-    private readonly string _allocationSite = Environment.StackTrace;
-#endif
-
     public int Length { get; } = length;
 
     ~RentedArray()
@@ -21,7 +17,7 @@ internal class RentedArray<T>(T[] array, int length, int start = 0) : IDisposabl
         if (!_disposed)
         {
 #if DEBUG
-            Debug.Fail($"RentedArray was not disposed! Allocated at {_allocationSite}");
+            Debug.Fail($"RentedArray was not disposed!");
 #endif
             Debug.WriteLine($"RentedArray was not disposed!");
         }

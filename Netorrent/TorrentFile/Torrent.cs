@@ -118,7 +118,7 @@ public sealed class Torrent : IAsyncDisposable
     /// </summary>
     /// <returns>A task that represents the asynchronous stop operation. The task completes when all related operations have
     /// finished.</returns>
-    public async Task StopAsync()
+    public async ValueTask StopAsync()
     {
         Stop();
         if (TorrentTask is not null)

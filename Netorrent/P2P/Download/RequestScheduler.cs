@@ -44,6 +44,8 @@ internal class RequestScheduler(
             SchedulePiecesAsync(cts.Token),
         ];
         var finishedTask = await Task.WhenAny(tasks);
+        _receiveBlocksChannel.Writer.TryComplete();
+        _scheduleChannel.Writer.TryComplete();
         cts.Cancel();
         await Task.WhenAll(tasks);
 
@@ -230,7 +232,7 @@ internal class RequestScheduler(
         } while (!warmupTask.IsCompletedSuccessfully && minPeersReady < MinPeersForRarity);
     }
 
-    private async Task ScheduleRequests(
+    private async ValueTask ScheduleRequests(
         PeerConnection peerConnection,
         CancellationToken cancellationToken
     )
