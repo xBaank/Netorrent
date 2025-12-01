@@ -10,7 +10,7 @@ namespace Netorrent.P2P.Download;
 internal class PieceBuffer : IDisposable
 {
     private readonly RentedArray<byte> _buffer;
-    private readonly bool[] _blockReceivedFlags;
+    private readonly bool[] _blockReceivedFlags; //TODO use bitarray or bitmask (long)?
     private readonly int _blocksCount;
     private readonly int _index;
     private readonly FileManager _fileManager;
