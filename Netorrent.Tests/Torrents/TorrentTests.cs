@@ -126,16 +126,6 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 await leecherTorrent.DownloadInfo.DownloadTask.ShouldNotThrowAsync();
             }
 
-            foreach (var seederTorrent in seedersTorrents)
-            {
-                await seederTorrent.StopAsync();
-            }
-
-            foreach (var leecherTorrent in leechersTorrents)
-            {
-                await leecherTorrent.StopAsync();
-            }
-
             foreach (var leecherTorrent in leechersTorrents)
             {
                 var originalFile = await ReadAllBytesAsync(path, cancellationToken);
@@ -148,6 +138,16 @@ public class TorrentTests(OpenTrackerFixture fixture)
         }
         finally
         {
+            foreach (var seederTorrent in seedersTorrents)
+            {
+                await seederTorrent.StopAsync();
+            }
+
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                await leecherTorrent.StopAsync();
+            }
+
             foreach (var (_, client) in seeders)
             {
                 await client.DisposeAsync();
