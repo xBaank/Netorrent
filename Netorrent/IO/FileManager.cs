@@ -1,13 +1,12 @@
 ﻿using System.Buffers;
 using System.Security.Cryptography;
-using Microsoft.Win32.SafeHandles;
 using Netorrent.Other;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.IO;
 
-internal class FileManager : IDisposable
+internal partial class FileManager : IDisposable
 {
     private readonly string _outputDirectory;
     private readonly List<TorrentFileEntry> _files = [];
@@ -60,10 +59,16 @@ internal class FileManager : IDisposable
 
     public int GetBlockCountByPieceIndex(int pieceIndex)
     {
+        var pieceSize = GetPieceSize(pieceIndex);
+        int blockCount = (int)((pieceSize + BlockSize - 1) / BlockSize);
+        return blockCount;
+    }
+
+    public int GetPieceSize(int pieceIndex)
+    {
         ArgumentOutOfRangeException.ThrowIfNegative(pieceIndex);
 
         var pieceCount = (TotalSize + _pieceLength - 1) / _pieceLength;
-
         if (pieceIndex >= pieceCount)
             throw new ArgumentOutOfRangeException(nameof(pieceIndex));
 
@@ -72,8 +77,7 @@ internal class FileManager : IDisposable
                 ? TotalSize - (long)pieceIndex * _pieceLength
                 : _pieceLength;
 
-        int blockCount = (int)((pieceLength + BlockSize - 1) / BlockSize);
-        return blockCount;
+        return (int)pieceLength;
     }
 
     public RequestBlock GetRequestBlockByBlockIndex(int pieceIndex, int blockIndex)
@@ -164,10 +168,10 @@ internal class FileManager : IDisposable
             long fileOffset = Math.Max(0, globalOffset - file.StartOffset);
             long writable = Math.Min(remaining, file.Length - fileOffset);
 
-            if (!file.isDirectoryCreated)
+            if (!file.IsDirectoryCreated)
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(file.FullPath)!);
-                file.isDirectoryCreated = true;
+                file.IsDirectoryCreated = true;
             }
 
             await RandomAccess.WriteAsync(
@@ -249,16 +253,5 @@ internal class FileManager : IDisposable
                 item.SafeHandle.Dispose();
             }
         }
-    }
-
-    private sealed record TorrentFileEntry(
-        string FullPath,
-        long StartOffset,
-        long Length,
-        SafeFileHandle SafeHandle
-    )
-    {
-        public long EndOffset => StartOffset + Length;
-        public bool isDirectoryCreated { get; set; } = false;
     }
 }

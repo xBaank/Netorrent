@@ -44,10 +44,19 @@ internal class RequestScheduler(
             SchedulePiecesAsync(cts.Token),
         ];
         var finishedTask = await Task.WhenAny(tasks);
-        _scheduleChannel.Writer.TryComplete(finishedTask.Exception);
-        _scheduleChannel.Writer.TryComplete(finishedTask.Exception);
         cts.Cancel();
         await Task.WhenAll(tasks);
+
+        while (_receiveBlocksChannel.Reader.TryRead(out var leftover))
+        {
+            leftover.Dispose();
+        }
+
+        foreach (var item in _pieceBuffers)
+        {
+            item.Value.Dispose();
+        }
+
         await finishedTask;
     }
 
@@ -57,6 +66,8 @@ internal class RequestScheduler(
             var receiveBlock in _receiveBlocksChannel.Reader.ReadAllAsync(cancellationToken)
         )
         {
+            using var unused = receiveBlock;
+
             if (!_pieceBuffers.TryGetValue(receiveBlock.Index, out var pieceBuffer))
             {
                 pieceBuffer = new PieceBuffer(receiveBlock.Index, fileManager);
@@ -331,17 +342,5 @@ internal class RequestScheduler(
     {
         _receiveBlocksChannel.Writer.TryComplete();
         _scheduleChannel.Writer.TryComplete();
-
-        foreach (var item in _pieceBuffers.Values)
-        {
-            item.Dispose();
-        }
-
-        while (_scheduleChannel.Reader.TryRead(out var leftover)) { }
-
-        while (_receiveBlocksChannel.Reader.TryRead(out var leftover))
-        {
-            leftover.Dispose();
-        }
     }
 }

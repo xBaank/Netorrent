@@ -27,7 +27,7 @@ internal class PeerConnection(
 {
     private readonly IUploadScheduler _uploadScheduler = uploadScheduler;
     private readonly IRequestScheduler _requestScheduler = requestScheduler;
-    private readonly Subject<PeerConnection> _stateChanged = new Subject<PeerConnection>();
+    private readonly Subject<PeerConnection> _stateChanged = new();
 
     private DateTime _lastKeepAlive;
     private CancellationTokenSource? _cancellationTokenSource;
