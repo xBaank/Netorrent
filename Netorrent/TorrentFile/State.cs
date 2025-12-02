@@ -2,7 +2,7 @@
 
 public enum State
 {
-    None,
     Started,
     Stopped,
+    Disposed,
 }

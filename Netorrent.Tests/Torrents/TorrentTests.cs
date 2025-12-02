@@ -141,18 +141,19 @@ public class TorrentTests(OpenTrackerFixture fixture)
             foreach (var seederTorrent in seedersTorrents)
             {
                 await seederTorrent.StopAsync();
+                await seederTorrent.DisposeAsync();
             }
 
             foreach (var leecherTorrent in leechersTorrents)
             {
                 await leecherTorrent.StopAsync();
+                await leecherTorrent.DisposeAsync();
             }
 
             foreach (var (_, client) in seeders)
             {
                 await client.DisposeAsync();
             }
-
             foreach (var (_, client) in leechers)
             {
                 await client.DisposeAsync();
