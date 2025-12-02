@@ -43,19 +43,6 @@ internal class RequestScheduler(
             ReScheduleTimeoutBlocksAsync(cts.Token),
             SchedulePiecesAsync(cts.Token),
         ]);
-
-        _receiveBlocksChannel.Writer.TryComplete();
-        _scheduleChannel.Writer.TryComplete();
-
-        while (_receiveBlocksChannel.Reader.TryRead(out var leftover))
-        {
-            leftover.Dispose();
-        }
-
-        foreach (var item in _pieceBuffers)
-        {
-            item.Value.Dispose();
-        }
     }
 
     private async Task ReceiveBlocksAsync(CancellationToken cancellationToken)
@@ -340,5 +327,15 @@ internal class RequestScheduler(
     {
         _receiveBlocksChannel.Writer.TryComplete();
         _scheduleChannel.Writer.TryComplete();
+
+        while (_receiveBlocksChannel.Reader.TryRead(out var leftover))
+        {
+            leftover.Dispose();
+        }
+
+        foreach (var item in _pieceBuffers)
+        {
+            item.Value.Dispose();
+        }
     }
 }
