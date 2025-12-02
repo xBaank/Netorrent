@@ -37,17 +37,15 @@ internal class RequestScheduler(
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        List<Task> tasks =
-        [
+
+        await cts.CancelOnFirstCompletionAndAwaitAllAsync([
             ReceiveBlocksAsync(cts.Token),
             ReScheduleTimeoutBlocksAsync(cts.Token),
             SchedulePiecesAsync(cts.Token),
-        ];
-        var finishedTask = await Task.WhenAny(tasks);
+        ]);
+
         _receiveBlocksChannel.Writer.TryComplete();
         _scheduleChannel.Writer.TryComplete();
-        cts.Cancel();
-        await Task.WhenAll(tasks);
 
         while (_receiveBlocksChannel.Reader.TryRead(out var leftover))
         {
@@ -58,8 +56,6 @@ internal class RequestScheduler(
         {
             item.Value.Dispose();
         }
-
-        await finishedTask;
     }
 
     private async Task ReceiveBlocksAsync(CancellationToken cancellationToken)

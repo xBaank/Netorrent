@@ -1,8 +1,10 @@
 ﻿using System.Net;
+using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Netorrent.Bencoding;
+using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.P2P;
 using Netorrent.P2P.Messages;
@@ -74,19 +76,14 @@ public sealed class Torrent : IAsyncDisposable
         );
     }
 
-    private async Task StartAndWaitToFinishAsync(CancellationToken cancellationToken)
+    private async Task StartAndWaitToFinishAsync(CancellationTokenSource cancellationTokenSource)
     {
         try
         {
-            List<Task> tasks =
-            [
-                _p2pClient.StartAsync(cancellationToken),
-                _trackerClient.StartAsync(cancellationToken),
-            ];
-            var finishedTask = await Task.WhenAny(tasks);
-            _cancellationTokenSource?.Cancel();
-            await Task.WhenAll(tasks);
-            await finishedTask;
+            await cancellationTokenSource!.CancelOnFirstCompletionAndAwaitAllAsync([
+                _p2pClient.StartAsync(cancellationTokenSource!.Token),
+                _trackerClient.StartAsync(cancellationTokenSource.Token),
+            ]);
         }
         catch (OperationCanceledException)
         {
@@ -120,7 +117,7 @@ public sealed class Torrent : IAsyncDisposable
         );
         _cancellationTokenSource.Token.Register(_p2pClient.DownloadInfo.SetCanceled);
         State = State.Started;
-        TorrentTask = StartAndWaitToFinishAsync(_cancellationTokenSource.Token);
+        TorrentTask = StartAndWaitToFinishAsync(_cancellationTokenSource);
     }
 
     /// <summary>
