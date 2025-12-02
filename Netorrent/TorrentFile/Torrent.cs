@@ -74,7 +74,7 @@ public sealed class Torrent : IAsyncDisposable
         );
     }
 
-    private async Task StartAsync(CancellationToken cancellationToken)
+    private async Task StartAndWaitToFinishAsync(CancellationToken cancellationToken)
     {
         try
         {
@@ -102,8 +102,8 @@ public sealed class Torrent : IAsyncDisposable
     /// Starts the download process if it is not already running.
     /// </summary>
     /// <remarks>If the download is already started, this method has no effect. Once started, the download
-    /// process can be canceled using the appropriate cancellation mechanism.</remarks>
-    public async ValueTask StartAsync()
+    /// process can be canceled using StopAsync.</remarks>
+    public async ValueTask StartAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -115,10 +115,12 @@ public sealed class Torrent : IAsyncDisposable
 
         DownloadInfo.Reset();
         _cancellationTokenSource?.Dispose();
-        _cancellationTokenSource = new();
+        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken
+        );
         _cancellationTokenSource.Token.Register(_p2pClient.DownloadInfo.SetCanceled);
         State = State.Started;
-        TorrentTask = StartAsync(_cancellationTokenSource.Token);
+        TorrentTask = StartAndWaitToFinishAsync(_cancellationTokenSource.Token);
     }
 
     /// <summary>
