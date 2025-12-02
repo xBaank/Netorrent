@@ -113,12 +113,12 @@ public class TorrentTests(OpenTrackerFixture fixture)
         {
             foreach (var seederTorrent in seedersTorrents)
             {
-                seederTorrent.Start();
+                await seederTorrent.StartAsync();
             }
 
             foreach (var leecherTorrent in leechersTorrents)
             {
-                leecherTorrent.Start();
+                await leecherTorrent.StartAsync();
             }
 
             foreach (var leecherTorrent in leechersTorrents)
@@ -140,13 +140,11 @@ public class TorrentTests(OpenTrackerFixture fixture)
         {
             foreach (var seederTorrent in seedersTorrents)
             {
-                await seederTorrent.StopAsync();
                 await seederTorrent.DisposeAsync();
             }
 
             foreach (var leecherTorrent in leechersTorrents)
             {
-                await leecherTorrent.StopAsync();
                 await leecherTorrent.DisposeAsync();
             }
 
@@ -187,12 +185,12 @@ public class TorrentTests(OpenTrackerFixture fixture)
         {
             foreach (var seederTorrent in seedersTorrents)
             {
-                seederTorrent.Start();
+                await seederTorrent.StartAsync();
             }
 
             foreach (var leecherTorrent in leechersTorrents)
             {
-                leecherTorrent.Start();
+                await leecherTorrent.StartAsync();
             }
 
             foreach (var seederTorrent in seedersTorrents)
@@ -240,7 +238,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 [.. _fixture.AnnounceUrls],
                 cancellationToken: cancellationToken
             );
-            cancellationToken.Register(seederTorrent.Stop);
+            cancellationToken.Register(async () => await seederTorrent.StopAsync());
 
             yield return (seederTorrent, seeder);
         }
@@ -258,7 +256,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
             var pathName = Guid.NewGuid().ToString();
             var leecherTorrent = leecher.ImportTorrent(metaInfo, $"Output/Test_{pathName}");
-            cancellationToken.Register(leecherTorrent.Stop);
+            cancellationToken.Register(async () => await leecherTorrent.StopAsync());
 
             yield return (leecherTorrent, leecher);
         }

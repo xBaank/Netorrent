@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Threading.Channels;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Netorrent.Bencoding;
 using Netorrent.IO;
@@ -102,12 +103,15 @@ public sealed class Torrent : IAsyncDisposable
     /// </summary>
     /// <remarks>If the download is already started, this method has no effect. Once started, the download
     /// process can be canceled using the appropriate cancellation mechanism.</remarks>
-    public void Start()
+    public async ValueTask StartAsync()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         if (State == State.Started)
             return;
+
+        _cancellationTokenSource?.Cancel();
+        await (TorrentTask ?? Task.CompletedTask);
 
         DownloadInfo.Reset();
         _cancellationTokenSource?.Dispose();
@@ -130,12 +134,7 @@ public sealed class Torrent : IAsyncDisposable
         await (TorrentTask ?? Task.CompletedTask);
     }
 
-    /// <summary>
-    /// Stops the operation if it is currently running.
-    /// </summary>
-    /// <remarks>Calling this method has no effect if the operation is not in the started state. After calling
-    /// <c>Stop</c>, the state transitions to stopped and any ongoing work is cancelled if possible.</remarks>
-    public void Stop()
+    private void Stop()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
