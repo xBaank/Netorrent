@@ -63,17 +63,15 @@ internal class P2PClient : IAsyncDisposable
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        List<Task> tasks =
-        [
+
+        await cts.CancelOnFirstCompletionAndAwaitAllAsync([
             _requestManager.StartAsync(cts.Token),
             _uploadScheduler.StartAsync(cts.Token),
             ProcessPeersAsync(cts.Token),
             ListenToPeersAsync(cts.Token),
-        ];
-        var finishedTask = await Task.WhenAny(tasks);
-        cts.Cancel();
-        await Task.WhenAll([.. tasks, .. _peerTasks]);
-        await finishedTask;
+        ]);
+
+        await Task.WhenAll(_peerTasks);
     }
 
     private async Task ProcessPeersAsync(CancellationToken cancellationToken)

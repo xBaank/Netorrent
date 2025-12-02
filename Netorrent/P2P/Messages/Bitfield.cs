@@ -1,5 +1,6 @@
 ﻿using System.Buffers;
 using System.Collections;
+using System.Runtime.CompilerServices;
 using Netorrent.Other;
 using ZLinq;
 
@@ -41,8 +42,6 @@ public class Bitfield
     }
 
     public bool IsComplete => _bits.HasAllSet();
-    public IReadOnlyList<bool> Pieces =>
-        Enumerable.Range(0, _bits.Length).AsValueEnumerable().Select(i => _bits[i]).ToList();
 
     internal void SetPiece(int index, CancellationToken cancellationToken)
     {

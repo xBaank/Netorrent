@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.Tracker.Udp.Request;
@@ -9,21 +10,33 @@ using Netorrent.Tracker.Udp.Response;
 
 namespace Netorrent.Tracker.Udp;
 
-internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger) : IDisposable
+internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger) : IAsyncDisposable
 {
     private const int MAX_RETRIES = 8;
     private readonly ConcurrentDictionary<int, TrackerTransaction> _packetsByTransactionId = [];
     private readonly ConcurrentDictionary<long, DateTime> _connectionCreationById = [];
     private readonly ConcurrentDictionary<Guid, long> _connectionIdByTracker = [];
-
+    private CancellationTokenSource? _cancellationTokenSource;
+    private bool _disposed;
     public Task? TrackerManagerTask { get; private set; }
 
-    public void Start(CancellationToken cancellationToken)
+    public void Start() => TrackerManagerTask = StartAsync();
+
+    private async Task StartAsync()
     {
-        TrackerManagerTask = Task.WhenAll(
-            ReceiveLoopAsync(cancellationToken),
-            RetryLoopAsync(cancellationToken)
-        );
+        try
+        {
+            _cancellationTokenSource = new();
+            await Task.WhenAll(
+                ReceiveLoopAsync(_cancellationTokenSource.Token),
+                RetryLoopAsync(_cancellationTokenSource.Token)
+            );
+        }
+        catch (TaskCanceledException ex)
+        {
+            if (logger.IsEnabled(LogLevel.Debug))
+                logger.LogDebug(ex, "Gracefully stopped transaction manager");
+        }
     }
 
     private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
@@ -243,10 +256,17 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
         return connectResponse;
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _packetsByTransactionId.Clear();
-        _connectionCreationById.Clear();
-        _connectionIdByTracker.Clear();
+        if (!_disposed)
+        {
+            _cancellationTokenSource?.Cancel();
+            await (TrackerManagerTask ?? Task.CompletedTask);
+            _packetsByTransactionId.Clear();
+            _connectionCreationById.Clear();
+            _connectionIdByTracker.Clear();
+            _cancellationTokenSource?.Dispose();
+            _disposed = true;
+        }
     }
 }

@@ -25,7 +25,7 @@ var task = Task.Run(async () =>
         await Task.Delay(1000);
     }
 });
-torrent.Start();
+await torrent.StartAsync();
 
 var taskFinished = await Task.WhenAny(torrent.DownloadInfo.DownloadTask, task);
 await taskFinished;

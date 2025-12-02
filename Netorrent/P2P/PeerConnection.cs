@@ -70,17 +70,12 @@ internal class PeerConnection(
         );
         await using var downloadTimer = DownloadSpeedTracker.StartSampling(500.Milliseconds);
         await using var uploadTimer = UploadSpeedTracker.StartSampling(500.Milliseconds);
-        List<Task> tasks =
-        [
+        await _cancellationTokenSource.CancelOnFirstCompletionAndAwaitAllAsync([
             messageStream.StartAsync(_cancellationTokenSource.Token),
             ProcessIncomingMessagesAsync(_cancellationTokenSource.Token),
             CheckTimeoutAsync(_cancellationTokenSource.Token),
-        ];
-        var finishedTask = await Task.WhenAny(tasks);
+        ]);
         MyBitField.OnHavePieceAsync -= SendHaveAsync;
-        _cancellationTokenSource.Cancel();
-        await Task.WhenAll(tasks);
-        await finishedTask;
     }
 
     public async Task CheckTimeoutAsync(CancellationToken cancellationToken)
@@ -115,10 +110,10 @@ internal class PeerConnection(
             {
                 var bitfieldBytes = message.Payload!.Memory;
                 PeerBitField = new Bitfield(bitfieldBytes.Span, MyBitField.Length);
-                foreach (var (index, hasPiece) in PeerBitField.Pieces.AsValueEnumerable().Index())
+                for (int i = 0; i < PeerBitField.Length; i++)
                 {
-                    if (hasPiece)
-                        _requestScheduler.IncreaseRarity(index);
+                    if (PeerBitField.HasPiece(i))
+                        _requestScheduler.IncreaseRarity(i);
                 }
                 await SendInterestAsync(cancellationToken);
                 continue;
@@ -366,10 +361,10 @@ internal class PeerConnection(
     public async ValueTask DisposeAsync()
     {
         MyBitField.OnHavePieceAsync -= SendHaveAsync;
-        foreach (var (index, hasPiece) in PeerBitField.Pieces.AsValueEnumerable().Index())
+        for (int i = 0; i < PeerBitField.Length; i++)
         {
-            if (hasPiece)
-                _requestScheduler.DecreaseRarity(index);
+            if (PeerBitField.HasPiece(i))
+                _requestScheduler.DecreaseRarity(i);
         }
         _uploadScheduler.RemoveChokedSlot();
         messageStream.Dispose();

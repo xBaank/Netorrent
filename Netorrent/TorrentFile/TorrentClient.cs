@@ -8,6 +8,7 @@ using Netorrent.Other;
 using Netorrent.P2P;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker.Udp;
+using ZLinq;
 
 namespace Netorrent.TorrentFile;
 
@@ -17,14 +18,13 @@ public sealed class TorrentClient : IAsyncDisposable
     private readonly TorrentClientOptions _options;
     private readonly List<Torrent> torrents = [];
     private readonly UdpTrackerTransactionManager _trackerTransactionManager;
-    private readonly CancellationTokenSource _cancellationTokenSource = new();
 
     public TorrentClient(Func<TorrentClientOptions, TorrentClientOptions>? action = null)
     {
         var options = new TorrentClientOptions(new(), NullLogger.Instance, null);
         _options = action?.Invoke(options) ?? options;
         _trackerTransactionManager = new(Udp.GetFreeUdpClient(), _options.Logger);
-        _trackerTransactionManager.Start(_cancellationTokenSource.Token);
+        _trackerTransactionManager.Start();
     }
 
     /// <summary>
@@ -434,12 +434,9 @@ public sealed class TorrentClient : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        _cancellationTokenSource.Cancel();
-        foreach (var item in torrents)
-        {
-            await item.DisposeAsync();
-        }
-        _trackerTransactionManager.Dispose();
-        _cancellationTokenSource.Dispose();
+        await _trackerTransactionManager.DisposeAsync();
+        await Task.WhenAll(
+            torrents.AsValueEnumerable().Select(i => i.DisposeAsync().AsTask()).ToArray()
+        );
     }
 }

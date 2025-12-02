@@ -1,7 +1,10 @@
 ﻿using System.Net;
+using System.Threading;
 using System.Threading.Channels;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Netorrent.Bencoding;
+using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.P2P;
 using Netorrent.P2P.Messages;
@@ -18,7 +21,7 @@ public sealed class Torrent : IAsyncDisposable
     public DownloadInfo DownloadInfo => _p2pClient.DownloadInfo;
     public string OutputDirectory => _fileManager.OutputDirectory;
 
-    public State State { get; private set; } = State.None;
+    public State State { get; private set; } = State.Stopped;
     public Task? TorrentTask { get; private set; }
 
     private readonly P2PClient _p2pClient;
@@ -26,6 +29,7 @@ public sealed class Torrent : IAsyncDisposable
     private readonly FileManager _fileManager;
     private readonly Bitfield _myBitfield;
     private CancellationTokenSource? _cancellationTokenSource;
+    private bool _disposed;
 
     internal Torrent(
         MetaInfo metaInfo,
@@ -72,19 +76,14 @@ public sealed class Torrent : IAsyncDisposable
         );
     }
 
-    private async Task StartAsync(CancellationToken cancellationToken)
+    private async Task StartAndWaitToFinishAsync(CancellationTokenSource cancellationTokenSource)
     {
         try
         {
-            List<Task> tasks =
-            [
-                _p2pClient.StartAsync(cancellationToken),
-                _trackerClient.StartAsync(cancellationToken),
-            ];
-            var finishedTask = await Task.WhenAny(tasks);
-            _cancellationTokenSource?.Cancel();
-            await Task.WhenAll(tasks);
-            await finishedTask;
+            await cancellationTokenSource!.CancelOnFirstCompletionAndAwaitAllAsync([
+                _p2pClient.StartAsync(cancellationTokenSource!.Token),
+                _trackerClient.StartAsync(cancellationTokenSource.Token),
+            ]);
         }
         catch (OperationCanceledException)
         {
@@ -100,17 +99,25 @@ public sealed class Torrent : IAsyncDisposable
     /// Starts the download process if it is not already running.
     /// </summary>
     /// <remarks>If the download is already started, this method has no effect. Once started, the download
-    /// process can be canceled using the appropriate cancellation mechanism.</remarks>
-    public void Start()
+    /// process can be canceled using StopAsync.</remarks>
+    public async ValueTask StartAsync(CancellationToken cancellationToken = default)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
         if (State == State.Started)
             return;
 
+        _cancellationTokenSource?.Cancel();
+        await (TorrentTask ?? Task.CompletedTask);
+
         DownloadInfo.Reset();
-        _cancellationTokenSource = new();
+        _cancellationTokenSource?.Dispose();
+        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken
+        );
         _cancellationTokenSource.Token.Register(_p2pClient.DownloadInfo.SetCanceled);
-        TorrentTask = StartAsync(_cancellationTokenSource.Token);
         State = State.Started;
+        TorrentTask = StartAndWaitToFinishAsync(_cancellationTokenSource);
     }
 
     /// <summary>
@@ -120,20 +127,15 @@ public sealed class Torrent : IAsyncDisposable
     /// finished.</returns>
     public async ValueTask StopAsync()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
         Stop();
-        if (TorrentTask is not null)
-            await TorrentTask;
+        await (TorrentTask ?? Task.CompletedTask);
     }
 
-    /// <summary>
-    /// Stops the operation if it is currently running.
-    /// </summary>
-    /// <remarks>Calling this method has no effect if the operation is not in the started state. After calling
-    /// <c>Stop</c>, the state transitions to stopped and any ongoing work is cancelled if possible.</remarks>
-    public void Stop()
+    private void Stop()
     {
-        if (State != State.Started)
-            return;
+        ObjectDisposedException.ThrowIf(_disposed, this);
 
         _cancellationTokenSource?.Cancel();
         State = State.Stopped;
@@ -162,9 +164,18 @@ public sealed class Torrent : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        _fileManager.Dispose();
-        await _p2pClient.DisposeAsync();
-        await _trackerClient.DisposeAsync();
-        _cancellationTokenSource?.Dispose();
+        if (!_disposed)
+        {
+            _cancellationTokenSource?.Cancel();
+            await (TorrentTask ?? Task.CompletedTask);
+            _fileManager.Dispose();
+            await _p2pClient.DisposeAsync();
+            await _trackerClient.DisposeAsync();
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = null;
+            TorrentTask = null;
+            State = State.Disposed;
+            _disposed = true;
+        }
     }
 }
