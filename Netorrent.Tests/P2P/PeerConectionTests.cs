@@ -56,9 +56,6 @@ public class PeerConectionTests
     public async Task Should_Receive_Interested_And_Unchoke(CancellationToken token)
     {
         var ctx = new PeerConnectionTestContext(amChocking: true, peerInterested: false);
-
-        ctx.UploadMock.AddChokedSlot().Returns(true);
-        ctx.UploadMock.RemoveChokedSlot().Returns(true);
         var state = ctx.Peer.NextStateAsync(2, token);
 
         _ = ctx.StartAsync(token);
@@ -76,8 +73,12 @@ public class PeerConectionTests
         bitfieldMessage.Id.ShouldBe(Message.Bitfield);
         unchokeMessage.Id.ShouldBe(Message.Unchoke);
 
-        ctx.UploadMock.Received().AddChokedSlot();
-        ctx.UploadMock.Received().RemoveChokedSlot();
+        await ctx
+            .UploadMock.Received()
+            .RequestSlotAsync(Arg.Any<PeerConnection>(), Arg.Any<CancellationToken>());
+        await ctx
+            .UploadMock.Received()
+            .FreeSlotAsync(Arg.Any<PeerConnection>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -227,8 +228,10 @@ public class PeerConectionTests
         // Configure upload scheduler behavior
         ctx.UploadMock.AddRequestAsync(Arg.Any<RequestBlock>(), Arg.Any<CancellationToken>())
             .Returns(true);
-        ctx.UploadMock.AddChokedSlot().Returns(true);
-        ctx.UploadMock.RemoveChokedSlot().Returns(true);
+        ctx.UploadMock.RequestSlotAsync(Arg.Any<PeerConnection>(), Arg.Any<CancellationToken>())
+            .Returns(ValueTask.CompletedTask);
+        ctx.UploadMock.FreeSlotAsync(Arg.Any<PeerConnection>(), Arg.Any<CancellationToken>())
+            .Returns(ValueTask.CompletedTask);
         var state = ctx.Peer.NextStateAsync(2, token);
         var addRequestCalled = ctx.UploadMock.WaitForCallAsync(
             async i =>
@@ -259,8 +262,12 @@ public class PeerConectionTests
         await ctx
             .UploadMock.Received(1)
             .AddRequestAsync(Arg.Any<RequestBlock>(), Arg.Any<CancellationToken>());
-        ctx.UploadMock.Received(1).AddChokedSlot();
-        ctx.UploadMock.Received(1).RemoveChokedSlot();
+        await ctx
+            .UploadMock.Received(1)
+            .RequestSlotAsync(Arg.Any<PeerConnection>(), Arg.Any<CancellationToken>());
+        await ctx
+            .UploadMock.Received(1)
+            .FreeSlotAsync(Arg.Any<PeerConnection>(), Arg.Any<CancellationToken>());
         ctx.Peer.UploadRequestedBlocksCount.ShouldBe(1);
     }
 

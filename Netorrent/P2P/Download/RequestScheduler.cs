@@ -272,7 +272,7 @@ internal class RequestScheduler(
                 if (myBitfield.HasPiece(index))
                     continue;
 
-                if (!peerConnection.PeerBitField.HasPiece(index))
+                if (peerConnection.PeerBitField?.HasPiece(index) == false)
                     continue;
 
                 if (!_requestBlocksByPieceIndex.TryGetValue(index, out var requestBlocks))

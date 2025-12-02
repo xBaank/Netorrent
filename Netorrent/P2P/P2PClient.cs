@@ -287,6 +287,7 @@ internal class P2PClient : IAsyncDisposable
         }
         await _requestManager.DisposeAsync();
         await _uploadScheduler.DisposeAsync();
+        _semaphoreSlim.Dispose();
         DownloadInfo.Dispose();
     }
 }
