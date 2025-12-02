@@ -97,15 +97,11 @@ public class TorrentTests(OpenTrackerFixture fixture)
     {
         var path = await CreateRandomFileAsync("Input");
 
-        var seeders = await GetSeedersAsync(seedersCount, path, cancellationToken)
+        var seeders = await GetSeedersAsync(seedersCount, path)
             .ToListAsync(cancellationToken: cancellationToken);
         var seedersTorrents = seeders.Select(i => i.Item1).ToList();
 
-        var leechers = await GetLeechersAsync(
-                leechersCount,
-                seedersTorrents[0].MetaInfo,
-                cancellationToken
-            )
+        var leechers = await GetLeechersAsync(leechersCount, seedersTorrents[0].MetaInfo)
             .ToListAsync(cancellationToken: cancellationToken);
         var leechersTorrents = leechers.Select(i => i.Item1).ToList();
 
@@ -113,12 +109,12 @@ public class TorrentTests(OpenTrackerFixture fixture)
         {
             foreach (var seederTorrent in seedersTorrents)
             {
-                await seederTorrent.StartAsync();
+                await seederTorrent.StartAsync(cancellationToken);
             }
 
             foreach (var leecherTorrent in leechersTorrents)
             {
-                await leecherTorrent.StartAsync();
+                await leecherTorrent.StartAsync(cancellationToken);
             }
 
             foreach (var leecherTorrent in leechersTorrents)
@@ -169,15 +165,11 @@ public class TorrentTests(OpenTrackerFixture fixture)
     {
         var path = await CreateRandomFileAsync("Input");
 
-        var seeders = await GetSeedersAsync(seedersCount, path, cancellationToken)
+        var seeders = await GetSeedersAsync(seedersCount, path)
             .ToListAsync(cancellationToken: cancellationToken);
         var seedersTorrents = seeders.Select(i => i.Item1).ToList();
 
-        var leechers = await GetLeechersAsync(
-                leechersCount,
-                seedersTorrents[0].MetaInfo,
-                cancellationToken
-            )
+        var leechers = await GetLeechersAsync(leechersCount, seedersTorrents[0].MetaInfo)
             .ToListAsync(cancellationToken: cancellationToken);
         var leechersTorrents = leechers.Select(i => i.Item1).ToList();
 
@@ -185,12 +177,12 @@ public class TorrentTests(OpenTrackerFixture fixture)
         {
             foreach (var seederTorrent in seedersTorrents)
             {
-                await seederTorrent.StartAsync();
+                await seederTorrent.StartAsync(cancellationToken);
             }
 
             foreach (var leecherTorrent in leechersTorrents)
             {
-                await leecherTorrent.StartAsync();
+                await leecherTorrent.StartAsync(cancellationToken);
             }
 
             foreach (var seederTorrent in seedersTorrents)
@@ -224,8 +216,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
     private async IAsyncEnumerable<(Torrent, TorrentClient)> GetSeedersAsync(
         int number,
-        string path,
-        [EnumeratorCancellation] CancellationToken cancellationToken
+        string path
     )
     {
         for (int i = 0; i < number; i++)
@@ -235,10 +226,8 @@ public class TorrentTests(OpenTrackerFixture fixture)
             var seederTorrent = await seeder.CreateTorrentAsync(
                 path,
                 _fixture.AnnounceUrl,
-                [.. _fixture.AnnounceUrls],
-                cancellationToken: cancellationToken
+                [.. _fixture.AnnounceUrls]
             );
-            cancellationToken.Register(async () => await seederTorrent.StopAsync());
 
             yield return (seederTorrent, seeder);
         }
@@ -246,8 +235,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
     private static async IAsyncEnumerable<(Torrent, TorrentClient)> GetLeechersAsync(
         int number,
-        MetaInfo metaInfo,
-        [EnumeratorCancellation] CancellationToken cancellationToken
+        MetaInfo metaInfo
     )
     {
         for (int i = 0; i < number; i++)
@@ -256,7 +244,6 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
             var pathName = Guid.NewGuid().ToString();
             var leecherTorrent = leecher.ImportTorrent(metaInfo, $"Output/Test_{pathName}");
-            cancellationToken.Register(async () => await leecherTorrent.StopAsync());
 
             yield return (leecherTorrent, leecher);
         }
