@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.Diagnostics;
+using System.Net;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
@@ -16,23 +17,13 @@ public enum AnnounceType
 }
 
 [ClassDataSource<OpenTrackerFixture>(Shared = SharedType.PerClass)]
-[Timeout(120_000)]
+[Timeout(180_000)]
 public class TorrentTests(OpenTrackerFixture fixture)
 {
     private readonly OpenTrackerFixture _fixture = fixture;
 
     private static IPAddress FixDockerAdress(IPAddress iPAddress) =>
         iPAddress.ToString().StartsWith("172.") ? IPAddress.Loopback : iPAddress;
-
-    [Before(Class)]
-    public static Task Setup(CancellationToken _)
-    {
-        if (Directory.Exists("Output"))
-            Directory.Delete("Output", true);
-        if (Directory.Exists("Input"))
-            Directory.Delete("Input", true);
-        return Task.CompletedTask;
-    }
 
     private static async Task<byte[]> ReadAllBytesAsync(
         string path,
@@ -90,8 +81,8 @@ public class TorrentTests(OpenTrackerFixture fixture)
     [Test]
     [MatrixDataSource]
     public async Task Should_Download_Torrent(
-        [MatrixRange<int>(1, 5)] int seedersCount,
-        [MatrixRange<int>(1, 5)] int leechersCount,
+        [MatrixRange<int>(1, 6)] int seedersCount,
+        [MatrixRange<int>(1, 6)] int leechersCount,
         CancellationToken cancellationToken
     )
     {
