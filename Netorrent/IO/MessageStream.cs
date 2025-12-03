@@ -26,13 +26,10 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        List<Task> tasks = [ReadLoopAsync(cts.Token), WriteLoopAsync(cts.Token)];
-        var finishedTask = await Task.WhenAny(tasks);
-        cts.Cancel();
-        _incomingMessages.Writer.TryComplete(finishedTask.Exception);
-        _outgoingMessages.Writer.TryComplete(finishedTask.Exception);
-        await Task.WhenAll(tasks);
-        await finishedTask;
+        await cts.CancelOnFirstCompletionAndAwaitAllAsync([
+            ReadLoopAsync(cts.Token),
+            WriteLoopAsync(cts.Token),
+        ]);
     }
 
     public async ValueTask<PeerId> PerformHandshakeAsync(
@@ -153,19 +150,23 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
         return new PeerId(receivedHandshake.PeerId);
     }
 
-    public void Dispose()
+    private async ValueTask DrainChannelsAsync()
+    {
+        await foreach (var item in _incomingMessages.Reader.ReadAllAsync())
+        {
+            item.Dispose();
+        }
+        await foreach (var item in _outgoingMessages.Reader.ReadAllAsync())
+        {
+            item.Dispose();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
     {
         stream.Dispose();
         _incomingMessages.Writer.TryComplete();
         _outgoingMessages.Writer.TryComplete();
-
-        while (_incomingMessages.Reader.TryRead(out var message))
-        {
-            message.Dispose();
-        }
-        while (_outgoingMessages.Reader.TryRead(out var message))
-        {
-            message.Dispose();
-        }
+        await DrainChannelsAsync();
     }
 }

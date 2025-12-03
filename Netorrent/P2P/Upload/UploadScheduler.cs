@@ -166,12 +166,11 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
         _requestByIBL.TryRemove(key, out _);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _pendingRequests.Writer.TryComplete();
         _slotsRequests.Writer.TryComplete();
         _unchokedSlotsSemahpore.Dispose();
         _requestByIBL.Clear();
-        return ValueTask.CompletedTask;
     }
 }

@@ -80,8 +80,8 @@ public sealed class Torrent : IAsyncDisposable
     {
         try
         {
-            await cancellationTokenSource!.CancelOnFirstCompletionAndAwaitAllAsync([
-                _p2pClient.StartAsync(cancellationTokenSource!.Token),
+            await cancellationTokenSource.CancelOnFirstCompletionAndAwaitAllAsync([
+                _p2pClient.StartAsync(cancellationTokenSource.Token),
                 _trackerClient.StartAsync(cancellationTokenSource.Token),
             ]);
         }

@@ -226,15 +226,18 @@ internal class P2PClient : IAsyncDisposable
         {
             await peerConnection.StartAsync(cancellationToken);
         }
+        catch (OperationCanceledException)
+        {
+            await peerConnection.DisposeAsync();
+            return;
+        }
         catch (Exception ex)
         {
             if (_logger.IsEnabled(LogLevel.Debug))
             {
                 _logger.LogDebug(ex, "Exception on peer {peerId}", peerConnection.PeerId);
             }
-        }
-        finally
-        {
+
             _activePeers.Remove(peerConnection.PeerEndpoint, out _);
             await peerConnection.DisposeAsync();
 

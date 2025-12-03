@@ -323,19 +323,23 @@ internal class RequestScheduler(
         await _receiveBlocksChannel.Writer.WriteOrDisposeAsync(block, cancellationToken);
     }
 
-    public async ValueTask DisposeAsync()
+    public async ValueTask DrainChannelsAsync()
     {
-        _receiveBlocksChannel.Writer.TryComplete();
-        _scheduleChannel.Writer.TryComplete();
-
-        while (_receiveBlocksChannel.Reader.TryRead(out var leftover))
-        {
-            leftover.Dispose();
-        }
-
         foreach (var item in _pieceBuffers)
         {
             item.Value.Dispose();
         }
+        await foreach (var item in _receiveBlocksChannel.Reader.ReadAllAsync())
+        {
+            item.Dispose();
+        }
+        await foreach (var item in _scheduleChannel.Reader.ReadAllAsync()) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _receiveBlocksChannel.Writer.TryComplete();
+        _scheduleChannel.Writer.TryComplete();
+        await DrainChannelsAsync();
     }
 }

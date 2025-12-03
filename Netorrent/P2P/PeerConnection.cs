@@ -391,7 +391,7 @@ internal class PeerConnection(
         if (PeerBitField is not null)
             UnregisterPieces(PeerBitField);
         await _uploadScheduler.FreeSlotAsync(this, default);
-        messageStream.Dispose();
+        await messageStream.DisposeAsync();
         _cancellationTokenSource?.Dispose();
     }
 }
