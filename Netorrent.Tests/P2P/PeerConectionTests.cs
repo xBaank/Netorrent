@@ -63,6 +63,7 @@ public class PeerConectionTests
         await ctx.WriteAsync(Message.CreateInterested(), token);
 
         using var bitfieldMessage = await ctx.ReadAsync(token);
+        await ctx.Peer.SendUnchokedAsync(token);
         using var unchokeMessage = await ctx.ReadAsync(token);
 
         await state;
@@ -245,6 +246,7 @@ public class PeerConectionTests
         await ctx.WriteAsync(Message.CreateInterested(), token);
 
         using var bitfieldMessage = await ctx.ReadAsync(token);
+        await ctx.Peer.SendUnchokedAsync(token);
         using var unchokeMessage = await ctx.ReadAsync(token);
 
         await ctx.WriteAsync(Message.CreateRequest(0, 0, FileManager.BlockSize), token);

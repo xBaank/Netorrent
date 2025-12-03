@@ -22,9 +22,8 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
     > _requestByIBL = [];
 
     private readonly List<PeerConnection> _interestedPeers = [];
-
+    private readonly List<PeerConnection> _unchokedPeers = [];
     private readonly SemaphoreSlim _unchokedSlotsSemahpore = new(1);
-    private int _unchokedSlots = 0;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -98,14 +97,14 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
         await _unchokedSlotsSemahpore.WaitAsync(cancellationToken);
         try
         {
-            if (_unchokedSlots >= 4)
+            if (_unchokedPeers.Count >= 4)
             {
                 _interestedPeers.Add(peerConnection);
                 return;
             }
 
             await _slotsRequests.Writer.WriteAsync(peerConnection, cancellationToken);
-            _unchokedSlots++;
+            _unchokedPeers.Add(peerConnection);
             return;
         }
         finally
@@ -122,10 +121,8 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
         await _unchokedSlotsSemahpore.WaitAsync(cancellationToken);
         try
         {
-            if (_unchokedSlots > 0)
-                _unchokedSlots--;
-
             _interestedPeers.Remove(peerConnection);
+            _unchokedPeers.Remove(peerConnection);
 
             var nextPeer = _interestedPeers.FirstOrDefault();
             if (nextPeer is not null)
