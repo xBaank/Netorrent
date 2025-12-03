@@ -31,6 +31,8 @@ internal class PeerConnection(
     private DateTime _lastKeepAlive;
     private CancellationTokenSource? _cancellationTokenSource;
     private DateTime _startedConnectionTime;
+    private Task? _runTask;
+    private bool _disposed;
 
     public SpeedTracker DownloadSpeedTracker { get; } = new();
     public SpeedTracker UploadSpeedTracker { get; } = new();
@@ -58,23 +60,43 @@ internal class PeerConnection(
     }
     public TimeSpan ConnectionDuration => DateTime.UtcNow - _startedConnectionTime;
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
         _startedConnectionTime = DateTime.Now;
         _lastKeepAlive = DateTime.UtcNow;
-        await SendBitfieldAsync(MyBitField, cancellationToken);
-        MyBitField.OnHavePieceAsync += SendHaveAsync;
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
+
+        // Kick off execution WITHOUT awaiting it
+        _runTask = RunAsync(_cancellationTokenSource);
+
+        return _runTask; // Optionally return it if caller wants to await connection exit
+    }
+
+    private async Task RunAsync(CancellationTokenSource cancellationTokenSource)
+    {
+        await SendBitfieldAsync(MyBitField, cancellationTokenSource.Token);
+        MyBitField.OnHavePieceAsync += SendHaveAsync;
+
         await using var downloadTimer = DownloadSpeedTracker.StartSampling(500.Milliseconds);
         await using var uploadTimer = UploadSpeedTracker.StartSampling(500.Milliseconds);
-        await _cancellationTokenSource.CancelOnFirstCompletionAndAwaitAllAsync([
-            messageStream.StartAsync(_cancellationTokenSource.Token),
-            ProcessIncomingMessagesAsync(_cancellationTokenSource.Token),
-            CheckTimeoutAsync(_cancellationTokenSource.Token),
-        ]);
-        MyBitField.OnHavePieceAsync -= SendHaveAsync;
+
+        try
+        {
+            await cancellationTokenSource.CancelOnFirstCompletionAndAwaitAllAsync([
+                messageStream.StartAsync(cancellationTokenSource.Token),
+                ProcessIncomingMessagesAsync(cancellationTokenSource.Token),
+                CheckTimeoutAsync(cancellationTokenSource.Token),
+            ]);
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            MyBitField.OnHavePieceAsync -= SendHaveAsync;
+        }
     }
 
     public async Task CheckTimeoutAsync(CancellationToken cancellationToken)
@@ -387,11 +409,29 @@ internal class PeerConnection(
 
     public async ValueTask DisposeAsync()
     {
-        MyBitField.OnHavePieceAsync -= SendHaveAsync;
-        if (PeerBitField is not null)
-            UnregisterPieces(PeerBitField);
-        await _uploadScheduler.FreeSlotAsync(this, default);
-        await messageStream.DisposeAsync();
-        _cancellationTokenSource?.Dispose();
+        if (!_disposed)
+        {
+            MyBitField.OnHavePieceAsync -= SendHaveAsync;
+
+            if (PeerBitField is not null)
+                UnregisterPieces(PeerBitField);
+
+            await _uploadScheduler.FreeSlotAsync(this, default);
+
+            _cancellationTokenSource?.Cancel(); // ⭐ STOP StartAsync children
+
+            if (_runTask is not null)
+            {
+                try
+                {
+                    await _runTask; // let channels drain / cleanup happen
+                }
+                catch { }
+            }
+
+            _cancellationTokenSource?.Dispose();
+            await messageStream.DisposeAsync();
+            _disposed = true;
+        }
     }
 }

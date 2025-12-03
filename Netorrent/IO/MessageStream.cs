@@ -168,5 +168,7 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
         _incomingMessages.Writer.TryComplete();
         _outgoingMessages.Writer.TryComplete();
         await DrainChannelsAsync();
+        await _incomingMessages.Reader.Completion;
+        await _outgoingMessages.Reader.Completion;
     }
 }

@@ -341,5 +341,7 @@ internal class RequestScheduler(
         _receiveBlocksChannel.Writer.TryComplete();
         _scheduleChannel.Writer.TryComplete();
         await DrainChannelsAsync();
+        await _receiveBlocksChannel.Reader.Completion;
+        await _scheduleChannel.Reader.Completion;
     }
 }
