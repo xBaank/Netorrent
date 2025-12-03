@@ -278,14 +278,23 @@ public class PeerConectionTests
     {
         var local = new Bitfield(5);
         var peerBitfield = new Bitfield(5, true);
+        Block? capturedBlock = null;
 
         var ctx = new PeerConnectionTestContext(local);
 
         var state = ctx.Peer.NextStateAsync(2, token);
+        ctx.RequestMock.When(async x =>
+                await x.ReceiveBlockAsync(Arg.Any<Block>(), Arg.Any<CancellationToken>())
+            )
+            .Do(callInfo =>
+            {
+                capturedBlock = callInfo.Arg<Block>();
+            });
         var receiveBlockCalled = ctx.RequestMock.WaitForCallAsync(
             async i => await i.ReceiveBlockAsync(Arg.Any<Block>(), Arg.Any<CancellationToken>()),
             token
         );
+
         using var rentedArray = new RentedArray<byte>(ArrayPool<byte>.Shared.Rent(1), 1);
 
         _ = ctx.StartAsync(token);
@@ -299,6 +308,7 @@ public class PeerConectionTests
 
         await state;
         await receiveBlockCalled;
+        capturedBlock?.Dispose();
         await ctx.DisposeAsync();
 
         ctx.Peer.AmInterested.ShouldBeTrue();
