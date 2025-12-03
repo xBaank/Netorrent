@@ -144,6 +144,9 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
     {
         var from = request.RequestedFrom[0];
 
+        if (!_unchokedPeers.Contains(from))
+            return false;
+
         if (from.UploadRequestedBlocksCount >= MaxInFlightUploadRequests)
             return false;
 
