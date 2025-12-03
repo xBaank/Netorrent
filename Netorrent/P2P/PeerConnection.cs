@@ -411,6 +411,7 @@ internal class PeerConnection(
     {
         if (!_disposed)
         {
+            _disposed = true;
             MyBitField.OnHavePieceAsync -= SendHaveAsync;
 
             if (PeerBitField is not null)
@@ -420,18 +421,15 @@ internal class PeerConnection(
 
             _cancellationTokenSource?.Cancel(); // ⭐ STOP StartAsync children
 
-            if (_runTask is not null)
+            try
             {
-                try
-                {
+                if (_runTask is not null)
                     await _runTask; // let channels drain / cleanup happen
-                }
-                catch { }
             }
+            catch { }
 
             _cancellationTokenSource?.Dispose();
             await messageStream.DisposeAsync();
-            _disposed = true;
         }
     }
 }

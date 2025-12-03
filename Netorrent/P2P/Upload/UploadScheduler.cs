@@ -14,7 +14,7 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
         new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
     );
     private readonly Channel<PeerConnection> _slotsRequests = Channel.CreateBounded<PeerConnection>(
-        new BoundedChannelOptions(16) { SingleWriter = true, SingleReader = true }
+        new BoundedChannelOptions(256) { SingleWriter = true, SingleReader = true }
     );
     private readonly ConcurrentDictionary<
         (int Index, int Begin, int Length),
