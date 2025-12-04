@@ -25,13 +25,20 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
     private readonly List<PeerConnection> _unchokedPeers = [];
     private readonly SemaphoreSlim _unchokedSlotsSemahpore = new(1);
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    private CancellationTokenSource? _cts;
+    private Task? _runningTask;
+    private bool _disposed;
+
+    public Task StartAsync(CancellationToken cancellationToken)
     {
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        await cts.CancelOnFirstCompletionAndAwaitAllAsync([
-            ProcessRequestsAsync(cts.Token),
-            ProcessSlotsAsync(cts.Token),
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _runningTask = _cts.CancelOnFirstCompletionAndAwaitAllAsync([
+            ProcessRequestsAsync(_cts.Token),
+            ProcessSlotsAsync(_cts.Token),
         ]);
+        return _runningTask;
     }
 
     public async Task ProcessSlotsAsync(CancellationToken cancellationToken)
@@ -166,11 +173,34 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
         _requestByIBL.TryRemove(key, out _);
     }
 
+    private async ValueTask DrainChannelsAsync()
+    {
+        await foreach (var _ in _pendingRequests.Reader.ReadAllAsync()) { }
+        await foreach (var _ in _slotsRequests.Reader.ReadAllAsync()) { }
+        await _pendingRequests.Reader.Completion;
+        await _slotsRequests.Reader.Completion;
+    }
+
     public async ValueTask DisposeAsync()
     {
-        _pendingRequests.Writer.TryComplete();
-        _slotsRequests.Writer.TryComplete();
-        _unchokedSlotsSemahpore.Dispose();
-        _requestByIBL.Clear();
+        if (!_disposed)
+        {
+            _disposed = true;
+            _cts?.Cancel();
+            _pendingRequests.Writer.TryComplete();
+            _slotsRequests.Writer.TryComplete();
+
+            try
+            {
+                if (_runningTask is not null)
+                    await _runningTask;
+            }
+            catch { }
+
+            _unchokedSlotsSemahpore.Dispose();
+            _requestByIBL.Clear();
+            await DrainChannelsAsync();
+            _cts?.Dispose();
+        }
     }
 }

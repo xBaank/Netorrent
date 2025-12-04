@@ -43,14 +43,11 @@ internal class RequestScheduler(
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-        // Save running task so we can await/cancel in DisposeAsync
         _runningTask = _cts.CancelOnFirstCompletionAndAwaitAllAsync([
             ReceiveBlocksAsync(_cts.Token),
             ReScheduleTimeoutBlocksAsync(_cts.Token),
             SchedulePiecesAsync(_cts.Token),
         ]);
-
         return _runningTask;
     }
 
@@ -332,6 +329,20 @@ internal class RequestScheduler(
         await _receiveBlocksChannel.Writer.WriteOrDisposeAsync(block, cancellationToken);
     }
 
+    private async ValueTask DrainChannelsAsync()
+    {
+        await foreach (var item in _receiveBlocksChannel.Reader.ReadAllAsync())
+            item.Dispose();
+
+        await foreach (var _ in _scheduleChannel.Reader.ReadAllAsync()) { }
+
+        foreach (var item in _pieceBuffers.Values)
+            item.Dispose();
+
+        await _receiveBlocksChannel.Reader.Completion;
+        await _scheduleChannel.Reader.Completion;
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (!_disposed)
@@ -348,13 +359,7 @@ internal class RequestScheduler(
             }
             catch { }
 
-            await foreach (var item in _receiveBlocksChannel.Reader.ReadAllAsync())
-                item.Dispose();
-
-            await foreach (var item in _scheduleChannel.Reader.ReadAllAsync()) { }
-
-            foreach (var item in _pieceBuffers.Values)
-                item.Dispose();
+            await DrainChannelsAsync();
 
             _cts?.Dispose();
         }
