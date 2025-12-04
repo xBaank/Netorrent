@@ -34,15 +34,24 @@ internal class RequestScheduler(
     private readonly ConcurrentDictionary<int, PieceBuffer> _pieceBuffers = [];
     private readonly HashSet<int> _currentRarestPieces = [];
 
-    public async Task StartAsync(CancellationToken cancellationToken)
-    {
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+    private CancellationTokenSource? _cts;
+    private Task? _runningTask;
+    private bool _disposed;
 
-        await cts.CancelOnFirstCompletionAndAwaitAllAsync([
-            ReceiveBlocksAsync(cts.Token),
-            ReScheduleTimeoutBlocksAsync(cts.Token),
-            SchedulePiecesAsync(cts.Token),
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        // Save running task so we can await/cancel in DisposeAsync
+        _runningTask = _cts.CancelOnFirstCompletionAndAwaitAllAsync([
+            ReceiveBlocksAsync(_cts.Token),
+            ReScheduleTimeoutBlocksAsync(_cts.Token),
+            SchedulePiecesAsync(_cts.Token),
         ]);
+
+        return _runningTask;
     }
 
     private async Task ReceiveBlocksAsync(CancellationToken cancellationToken)
@@ -272,7 +281,7 @@ internal class RequestScheduler(
                 if (myBitfield.HasPiece(index))
                     continue;
 
-                if (!peerConnection.PeerBitField.HasPiece(index))
+                if (peerConnection.PeerBitField?.HasPiece(index) == false)
                     continue;
 
                 if (!_requestBlocksByPieceIndex.TryGetValue(index, out var requestBlocks))
@@ -325,17 +334,29 @@ internal class RequestScheduler(
 
     public async ValueTask DisposeAsync()
     {
-        _receiveBlocksChannel.Writer.TryComplete();
-        _scheduleChannel.Writer.TryComplete();
-
-        while (_receiveBlocksChannel.Reader.TryRead(out var leftover))
+        if (!_disposed)
         {
-            leftover.Dispose();
-        }
+            _disposed = true;
+            _cts?.Cancel();
+            _receiveBlocksChannel.Writer.TryComplete();
+            _scheduleChannel.Writer.TryComplete();
 
-        foreach (var item in _pieceBuffers)
-        {
-            item.Value.Dispose();
+            try
+            {
+                if (_runningTask is not null)
+                    await _runningTask;
+            }
+            catch { }
+
+            await foreach (var item in _receiveBlocksChannel.Reader.ReadAllAsync())
+                item.Dispose();
+
+            await foreach (var item in _scheduleChannel.Reader.ReadAllAsync()) { }
+
+            foreach (var item in _pieceBuffers.Values)
+                item.Dispose();
+
+            _cts?.Dispose();
         }
     }
 }

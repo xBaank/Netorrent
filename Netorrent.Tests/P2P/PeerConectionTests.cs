@@ -56,9 +56,6 @@ public class PeerConectionTests
     public async Task Should_Receive_Interested_And_Unchoke(CancellationToken token)
     {
         var ctx = new PeerConnectionTestContext(amChocking: true, peerInterested: false);
-
-        ctx.UploadMock.AddChokedSlot().Returns(true);
-        ctx.UploadMock.RemoveChokedSlot().Returns(true);
         var state = ctx.Peer.NextStateAsync(2, token);
 
         _ = ctx.StartAsync(token);
@@ -66,6 +63,7 @@ public class PeerConectionTests
         await ctx.WriteAsync(Message.CreateInterested(), token);
 
         using var bitfieldMessage = await ctx.ReadAsync(token);
+        await ctx.Peer.SendUnchokedAsync(token);
         using var unchokeMessage = await ctx.ReadAsync(token);
 
         await state;
@@ -76,8 +74,12 @@ public class PeerConectionTests
         bitfieldMessage.Id.ShouldBe(Message.Bitfield);
         unchokeMessage.Id.ShouldBe(Message.Unchoke);
 
-        ctx.UploadMock.Received().AddChokedSlot();
-        ctx.UploadMock.Received().RemoveChokedSlot();
+        await ctx
+            .UploadMock.Received()
+            .RequestSlotAsync(Arg.Any<PeerConnection>(), Arg.Any<CancellationToken>());
+        await ctx
+            .UploadMock.Received()
+            .FreeSlotAsync(Arg.Any<PeerConnection>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -227,8 +229,10 @@ public class PeerConectionTests
         // Configure upload scheduler behavior
         ctx.UploadMock.AddRequestAsync(Arg.Any<RequestBlock>(), Arg.Any<CancellationToken>())
             .Returns(true);
-        ctx.UploadMock.AddChokedSlot().Returns(true);
-        ctx.UploadMock.RemoveChokedSlot().Returns(true);
+        ctx.UploadMock.RequestSlotAsync(Arg.Any<PeerConnection>(), Arg.Any<CancellationToken>())
+            .Returns(ValueTask.CompletedTask);
+        ctx.UploadMock.FreeSlotAsync(Arg.Any<PeerConnection>(), Arg.Any<CancellationToken>())
+            .Returns(ValueTask.CompletedTask);
         var state = ctx.Peer.NextStateAsync(2, token);
         var addRequestCalled = ctx.UploadMock.WaitForCallAsync(
             async i =>
@@ -242,6 +246,7 @@ public class PeerConectionTests
         await ctx.WriteAsync(Message.CreateInterested(), token);
 
         using var bitfieldMessage = await ctx.ReadAsync(token);
+        await ctx.Peer.SendUnchokedAsync(token);
         using var unchokeMessage = await ctx.ReadAsync(token);
 
         await ctx.WriteAsync(Message.CreateRequest(0, 0, FileManager.BlockSize), token);
@@ -259,8 +264,12 @@ public class PeerConectionTests
         await ctx
             .UploadMock.Received(1)
             .AddRequestAsync(Arg.Any<RequestBlock>(), Arg.Any<CancellationToken>());
-        ctx.UploadMock.Received(1).AddChokedSlot();
-        ctx.UploadMock.Received(1).RemoveChokedSlot();
+        await ctx
+            .UploadMock.Received(1)
+            .RequestSlotAsync(Arg.Any<PeerConnection>(), Arg.Any<CancellationToken>());
+        await ctx
+            .UploadMock.Received(1)
+            .FreeSlotAsync(Arg.Any<PeerConnection>(), Arg.Any<CancellationToken>());
         ctx.Peer.UploadRequestedBlocksCount.ShouldBe(1);
     }
 
@@ -269,14 +278,23 @@ public class PeerConectionTests
     {
         var local = new Bitfield(5);
         var peerBitfield = new Bitfield(5, true);
+        Block? capturedBlock = null;
 
         var ctx = new PeerConnectionTestContext(local);
 
         var state = ctx.Peer.NextStateAsync(2, token);
+        ctx.RequestMock.When(async x =>
+                await x.ReceiveBlockAsync(Arg.Any<Block>(), Arg.Any<CancellationToken>())
+            )
+            .Do(callInfo =>
+            {
+                capturedBlock = callInfo.Arg<Block>();
+            });
         var receiveBlockCalled = ctx.RequestMock.WaitForCallAsync(
             async i => await i.ReceiveBlockAsync(Arg.Any<Block>(), Arg.Any<CancellationToken>()),
             token
         );
+
         using var rentedArray = new RentedArray<byte>(ArrayPool<byte>.Shared.Rent(1), 1);
 
         _ = ctx.StartAsync(token);
@@ -290,6 +308,7 @@ public class PeerConectionTests
 
         await state;
         await receiveBlockCalled;
+        capturedBlock?.Dispose();
         await ctx.DisposeAsync();
 
         ctx.Peer.AmInterested.ShouldBeTrue();

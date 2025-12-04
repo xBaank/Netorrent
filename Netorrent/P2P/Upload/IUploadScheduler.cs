@@ -4,8 +4,8 @@ namespace Netorrent.P2P.Upload;
 
 internal interface IUploadScheduler : IAsyncDisposable
 {
-    bool AddChokedSlot();
+    ValueTask RequestSlotAsync(PeerConnection peerConnection, CancellationToken cancellationToken);
     ValueTask<bool> AddRequestAsync(RequestBlock request, CancellationToken cancellationToken);
     void CancelRequest(RequestBlock request);
-    bool RemoveChokedSlot();
+    ValueTask FreeSlotAsync(PeerConnection peerConnection, CancellationToken cancellationToken);
 }

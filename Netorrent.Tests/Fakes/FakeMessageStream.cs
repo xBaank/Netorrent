@@ -30,7 +30,7 @@ internal class FakeMessageStream(
     public Task StartAsync(CancellationToken cancellationToken) =>
         Task.Delay(-1, cancellationToken);
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         outgoingMessages.TryComplete();
     }

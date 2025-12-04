@@ -27,8 +27,8 @@ internal class RentedArray<T>(T[] array, int length, int start = 0) : IDisposabl
     {
         if (!_disposed)
         {
-            ArrayPool<T>.Shared.Return(array);
             _disposed = true;
+            ArrayPool<T>.Shared.Return(array);
             GC.SuppressFinalize(this);
         }
     }
