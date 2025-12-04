@@ -10,6 +10,8 @@ namespace Netorrent.P2P.Upload;
 internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploadScheduler
 {
     const int MaxInFlightUploadRequests = 4;
+    const int MaxUnchokedPeers = 4;
+
     private readonly Channel<RequestBlock> _pendingRequests = Channel.CreateBounded<RequestBlock>(
         new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
     );
@@ -104,7 +106,7 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
         await _unchokedSlotsSemahpore.WaitAsync(cancellationToken);
         try
         {
-            if (_unchokedPeers.Count >= 4)
+            if (_unchokedPeers.Count >= MaxUnchokedPeers)
             {
                 _interestedPeers.Add(peerConnection);
                 return;
