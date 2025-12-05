@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.P2P.Messages;
+using ZLinq;
 
 namespace Netorrent.P2P.Upload;
 
@@ -114,7 +115,6 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
 
             await _slotsRequests.Writer.WriteAsync(peerConnection, cancellationToken);
             _unchokedPeers.Add(peerConnection);
-            return;
         }
         finally
         {
@@ -133,7 +133,7 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
             _interestedPeers.Remove(peerConnection);
             _unchokedPeers.Remove(peerConnection);
 
-            var nextPeer = _interestedPeers.FirstOrDefault();
+            var nextPeer = _interestedPeers.AsValueEnumerable().FirstOrDefault();
             if (nextPeer is not null)
             {
                 await _slotsRequests.Writer.WriteAsync(nextPeer, cancellationToken);

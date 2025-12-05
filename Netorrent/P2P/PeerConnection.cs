@@ -177,7 +177,7 @@ internal class PeerConnection(
                 if (PeerChocking != false)
                 {
                     PeerChocking = false;
-                    await _requestScheduler.OnPeerUnchockedAsync(this, cancellationToken);
+                    await _requestScheduler.RequestSlotAsync(this, cancellationToken);
                     _stateChanged.OnNext(this);
                 }
                 continue;
@@ -333,7 +333,7 @@ internal class PeerConnection(
             throw new InvalidOperationException("PeerBitfield should not be null");
 
         var interest = MyBitField.HasAnyMissingPiece(PeerBitField);
-        if (interest != AmInterested)
+        if (interest && interest != AmInterested)
         {
             AmInterested = interest;
             var message = Message.CreateInterested();
@@ -348,11 +348,12 @@ internal class PeerConnection(
             throw new InvalidOperationException("PeerBitfield should not be null");
 
         var interest = MyBitField.HasAnyMissingPiece(PeerBitField);
-        if (interest != AmInterested)
+        if (!interest && interest != AmInterested)
         {
             AmInterested = interest;
             var message = Message.CreateNotInterested();
             await messageStream.OutgoingMessages.WriteOrDisposeAsync(message, cancellationToken);
+            await _requestScheduler.FreeSlotAsync(this, cancellationToken);
             _stateChanged.OnNext(this);
         }
     }
