@@ -1,5 +1,4 @@
-﻿using System.Collections.Concurrent;
-using Netorrent.P2P.Messages;
+﻿using Netorrent.P2P.Messages;
 using ZLinq;
 
 namespace Netorrent.P2P.Download;
@@ -7,7 +6,6 @@ namespace Netorrent.P2P.Download;
 internal class PiecePicker(Bitfield myBitfield)
 {
     private readonly int[] _pieceRarity = new int[myBitfield.Length];
-    private readonly ConcurrentDictionary<PeerConnection, int> _currentPieceIndexByPeer = [];
 
     public void IncreaseRarity(int index)
     {
@@ -19,12 +17,12 @@ internal class PiecePicker(Bitfield myBitfield)
         Interlocked.Decrement(ref _pieceRarity[index]);
     }
 
-    public int? GetRarestPiece(Bitfield peerBitfield, int[] excluded)
+    public int? GetRarestPiece(Bitfield peerBitfield, ICollection<int> excluded)
     {
         var posiblePieces = new List<int>(myBitfield.Length);
         for (int i = 0; i < peerBitfield.Length; i++)
         {
-            if (peerBitfield.HasPiece(i) && !myBitfield.HasPiece(i))
+            if (peerBitfield.HasPiece(i) && !myBitfield.HasPiece(i) && !excluded.Contains(i))
             {
                 posiblePieces.Add(i);
             }

@@ -108,7 +108,9 @@ public sealed class Torrent : IAsyncDisposable
             return;
 
         _cancellationTokenSource?.Cancel();
-        await (TorrentTask ?? Task.CompletedTask);
+
+        if (TorrentTask is not null)
+            await TorrentTask;
 
         DownloadInfo.Reset();
         _cancellationTokenSource?.Dispose();

@@ -180,9 +180,9 @@ internal class RequestScheduler(
                         _activePeersSemaphore.Release();
                     }
                 }
-
-                await Task.Delay(1.Seconds, cancellationToken);
             }
+
+            await Task.Delay(1.Seconds, cancellationToken);
         }
     }
 
@@ -217,11 +217,7 @@ internal class RequestScheduler(
             {
                 var possiblePieceIndex = piecePicker.GetRarestPiece(
                     peerConnection.PeerBitField,
-                    _requestBlocksByPieceIndex
-                        .AsValueEnumerable()
-                        .Where(i => i.Value.Any(x => x is null))
-                        .Select(i => i.Key)
-                        .ToArray()
+                    _requestBlocksByPieceIndex.Keys
                 );
 
                 //No piece can be downloaded
