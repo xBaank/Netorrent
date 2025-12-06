@@ -8,12 +8,8 @@ using ZLinq;
 
 namespace Netorrent.P2P.Download;
 
-internal class RequestScheduler(
-    Bitfield myBitfield,
-    FileManager fileManager,
-    PiecePicker piecePicker,
-    ILogger logger
-) : IRequestScheduler
+internal class RequestScheduler(Bitfield myBitfield, PiecePicker piecePicker, ILogger logger)
+    : IRequestScheduler
 {
     const int MinPeersForRarity = 6;
     const int WarmupTimeoutSecods = 8;
@@ -76,15 +72,14 @@ internal class RequestScheduler(
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            foreach (var requestBlock in piecePicker.GetTimeoutRequestBlocks())
+            foreach (var (requestBlock, passedTime) in piecePicker.GetTimeoutRequestBlocks())
             {
-                var passedTime = DateTimeOffset.UtcNow - requestBlock.RequestedAt;
                 var lastRequestedFrom = requestBlock.RequestedFrom[^1];
                 requestBlock.State = RequestBlockState.Pending;
                 requestBlock.RequestedAt = null;
                 lastRequestedFrom.PeerRequestWindow.CalculateWindow(
                     (long)lastRequestedFrom.DownloadSpeedTracker.CurrentBps.Bps,
-                    passedTime ?? 10.Seconds
+                    passedTime
                 );
 
                 await _activePeersSemaphore.WaitAsync(cancellationToken);
@@ -100,7 +95,7 @@ internal class RequestScheduler(
 
                     if (freePeer is not null)
                     {
-                        await ScheduleRequests(freePeer, cancellationToken);
+                        await _slotsChannel.Writer.WriteAsync(freePeer, cancellationToken);
                     }
                 }
                 finally
@@ -132,33 +127,25 @@ internal class RequestScheduler(
         CancellationToken cancellationToken
     )
     {
+        if (peerConnection.PeerBitField is null)
+            throw new InvalidOperationException("PeerBitfield should not be null");
+
+        var possiblePieceIndex = piecePicker.GetPiece(peerConnection.PeerBitField);
+
         while (
             peerConnection.RequestedBlocksCount
             < peerConnection.PeerRequestWindow.MaxInFlightRequests
         )
         {
-            if (peerConnection.PeerBitField is null)
-                throw new InvalidOperationException("PeerBitfield should not be null");
+            if (possiblePieceIndex is null)
+                return;
 
-            //TODO this is not ok, we should save the rarest piece index for this peer and recalculate only when all request blocks are created and sent
-            if (!_currentPieceIndexByPeer.TryGetValue(peerConnection, out var pieceIndex))
-            {
-                var possiblePieceIndex = piecePicker.GetRarestPiece(peerConnection.PeerBitField);
-
-                //No piece can be downloaded
-                if (possiblePieceIndex is null)
-                    return;
-
-                pieceIndex = possiblePieceIndex.Value;
-                _currentPieceIndexByPeer[peerConnection] = pieceIndex;
-            }
-
-            var requestBlock = SelectBlock(pieceIndex);
+            var requestBlock = piecePicker.SelectBlock(possiblePieceIndex.Value);
 
             //All requestBlocks are already created for this piece so we try to generate a new one
             if (requestBlock is null)
             {
-                _currentPieceIndexByPeer.Remove(peerConnection, out var _);
+                possiblePieceIndex = piecePicker.GetPiece(peerConnection.PeerBitField);
                 continue;
             }
 
@@ -190,34 +177,6 @@ internal class RequestScheduler(
                 break;
             }
         }
-    }
-
-    private RequestBlock? SelectBlock(int index)
-    {
-        if (!_requestBlocksByPieceIndex.TryGetValue(index, out var requestBlocks))
-        {
-            var blockCount = fileManager.GetBlockCountByPieceIndex(index);
-            requestBlocks = new RequestBlock[blockCount];
-            _requestBlocksByPieceIndex[index] = requestBlocks;
-        }
-
-        for (int i = 0; i < requestBlocks.Length; i++)
-        {
-            var currentRequestBlock = requestBlocks[i];
-
-            if (
-                currentRequestBlock is not null
-                && currentRequestBlock.State == RequestBlockState.Completed
-            )
-                continue;
-
-            if (currentRequestBlock is null or { State: RequestBlockState.Pending })
-            {
-                return requestBlocks[i] = fileManager.GetRequestBlockByBlockIndex(index, i);
-            }
-        }
-
-        return null;
     }
 
     public async ValueTask RequestSlotAsync(
@@ -276,11 +235,6 @@ internal class RequestScheduler(
 
     public void DecreaseRarity(int index) => piecePicker.DecreaseRarity(index);
 
-    public async ValueTask OnPeerUnchockedAsync(
-        PeerConnection peer,
-        CancellationToken cancellationToken
-    ) => await _slotsChannel.Writer.WriteAsync(peer, cancellationToken);
-
     public async ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken)
     {
         await _receiveBlocksChannel.Writer.WriteOrDisposeAsync(block, cancellationToken);
@@ -292,9 +246,6 @@ internal class RequestScheduler(
             item.Dispose();
 
         await foreach (var _ in _slotsChannel.Reader.ReadAllAsync()) { }
-
-        foreach (var item in _pieceBuffers.Values)
-            item.Dispose();
 
         await _receiveBlocksChannel.Reader.Completion;
         await _slotsChannel.Reader.Completion;
@@ -317,7 +268,7 @@ internal class RequestScheduler(
             catch { }
 
             await DrainChannelsAsync();
-
+            await piecePicker.DisposeAsync();
             _cts?.Dispose();
         }
     }

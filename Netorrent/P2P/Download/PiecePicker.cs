@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using Netorrent.Extensions;
 using Netorrent.IO;
@@ -7,9 +8,9 @@ using ZLinq;
 
 namespace Netorrent.P2P.Download;
 
-internal class PiecePicker(Bitfield myBitfield, FileManager fileManager)
+internal class PiecePicker(Bitfield myBitfield, FileManager fileManager) : IAsyncDisposable
 {
-    const int TimeoutSeconds = 10;
+    public const int TimeoutSeconds = 10;
 
     private readonly int[] _pieceRarity = new int[myBitfield.Length];
     private readonly ConcurrentDictionary<int, RequestBlock?[]> _requestBlocksByPieceIndex = [];
@@ -90,27 +91,90 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager)
         }
     }
 
-    public RequestBlock[] GetTimeoutRequestBlocks() =>
-        _requestBlocksByPieceIndex
-            .Values.AsValueEnumerable()
-            .SelectMany(i => i)
-            .Where(i =>
-                i is not null
-                && i.State == RequestBlockState.Pending
-                && (DateTimeOffset.UtcNow - i.RequestedAt) > TimeoutSeconds.Seconds
-            )
-            .Cast<RequestBlock>()
-            .ToArray();
-
-    public int? GetRarestPiece(Bitfield peerBitfield)
+    public RequestBlock? SelectBlock(int index)
     {
+        if (!_requestBlocksByPieceIndex.TryGetValue(index, out var requestBlocks))
+        {
+            var blockCount = fileManager.GetBlockCountByPieceIndex(index);
+            requestBlocks = new RequestBlock[blockCount];
+            _requestBlocksByPieceIndex[index] = requestBlocks;
+        }
+
+        for (int i = 0; i < requestBlocks.Length; i++)
+        {
+            var currentRequestBlock = requestBlocks[i];
+
+            if (
+                currentRequestBlock is not null
+                && currentRequestBlock.State == RequestBlockState.Completed
+            )
+                continue;
+
+            if (currentRequestBlock is null or { State: RequestBlockState.Pending })
+            {
+                return requestBlocks[i] = fileManager.GetRequestBlockByBlockIndex(index, i);
+            }
+        }
+
+        return null;
+    }
+
+    public IEnumerable<(RequestBlock requestBlock, TimeSpan passedTime)> GetTimeoutRequestBlocks()
+    {
+        var timeout = TimeoutSeconds.Seconds;
+        foreach (var requestBlock in _requestBlocksByPieceIndex.Values.SelectMany(i => i))
+        {
+            var now = DateTimeOffset.UtcNow;
+            if (
+                requestBlock is null
+                || requestBlock.State != RequestBlockState.Requested
+                || requestBlock.RequestedAt is null
+            )
+                continue;
+
+            var diff = now - requestBlock.RequestedAt.Value;
+
+            if (diff > timeout)
+                yield return (requestBlock, diff);
+        }
+    }
+
+    private IEnumerable<int> GetPriorityPieces(Bitfield peerBitfield)
+    {
+        foreach (var (pieceIndex, blocks) in _requestBlocksByPieceIndex)
+        {
+            // peer must have it + we don't already own it
+            if (!peerBitfield.HasPiece(pieceIndex) || myBitfield.HasPiece(pieceIndex))
+                continue;
+
+            // only return pieces that have pending/incomplete blocks
+            if (
+                blocks
+                    .AsValueEnumerable()
+                    .Any(b => b is null or { State: RequestBlockState.Pending })
+            )
+                yield return pieceIndex;
+        }
+    }
+
+    public int? GetPiece(Bitfield peerBitfield)
+    {
+        //Try to get pieces with priority (already started)
+        var priorityPieces = GetPriorityPieces(peerBitfield).AsValueEnumerable().ToArray();
+        if (priorityPieces.Length > 0)
+        {
+            // cheap shuffle/random pick
+            return priorityPieces.AsValueEnumerable().Shuffle().First();
+        }
+
+        //Fallback to rarest
         var posiblePieces = new List<int>(myBitfield.Length);
         for (int i = 0; i < peerBitfield.Length; i++)
         {
             if (
                 peerBitfield.HasPiece(i)
                 && !myBitfield.HasPiece(i)
-                && !_requestBlocksByPieceIndex.ContainsKey(i)
+                && !_requestBlocksByPieceIndex.ContainsKey(i) //If we didn't return any of these then we exclude them
             )
             {
                 posiblePieces.Add(i);
@@ -123,11 +187,12 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager)
         (int index, int rarity)[] posiblePiecesWithRarity = posiblePieces
             .AsValueEnumerable()
             .Select(index => (index, _pieceRarity[index]))
-            .OrderByDescending(i => i.Item2)
+            .OrderBy(i => i.Item2)
             .ToArray();
 
         //Get 10% or the first 500 of rarest -> shuffle -> take first
         var rarestCount = Math.Min(posiblePiecesWithRarity.Length / 10, 500);
+        rarestCount = rarestCount < 1 ? 1 : rarestCount;
 
         var selectedPiece = posiblePiecesWithRarity
             .AsValueEnumerable()
@@ -136,5 +201,13 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager)
             .First();
 
         return selectedPiece.index;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var item in _pieceBuffers)
+        {
+            item.Value.Dispose();
+        }
     }
 }

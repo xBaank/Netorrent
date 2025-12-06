@@ -8,6 +8,5 @@ internal interface IRequestScheduler : IAsyncDisposable
     void IncreaseRarity(int index);
     ValueTask RequestSlotAsync(PeerConnection peerConnection, CancellationToken cancellationToken);
     ValueTask FreeSlotAsync(PeerConnection peerConnection, CancellationToken cancellationToken);
-    ValueTask OnPeerUnchockedAsync(PeerConnection peer, CancellationToken cancellationToken);
     ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken);
 }

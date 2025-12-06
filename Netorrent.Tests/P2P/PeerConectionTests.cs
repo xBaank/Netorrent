@@ -31,9 +31,6 @@ public class PeerConectionTests
 
         bitfieldMessage.Id.ShouldBe(Message.Bitfield);
         ctx.Peer.PeerChocking.ShouldBeFalse();
-        await ctx
-            .RequestMock.Received()
-            .OnPeerUnchockedAsync(Arg.Any<PeerConnection>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
