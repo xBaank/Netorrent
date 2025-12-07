@@ -80,16 +80,23 @@ internal class RequestScheduler(Bitfield myBitfield, PiecePicker piecePicker, IL
                     passedTime
                 );
 
-                PeerConnection? freePeer;
+                PeerConnection? freePeer = null;
 
                 lock (_activePeersLock)
                 {
-                    freePeer = _activePeers
-                        .AsValueEnumerable()
-                        .Shuffle()
-                        .FirstOrDefault(i =>
-                            i.RequestedBlocksCount < i.PeerRequestWindow.MaxInFlightRequests
-                        );
+                    foreach (var peerConnection in _activePeers)
+                    {
+                        if (peerConnection == lastRequestedFrom)
+                            continue;
+                        if (
+                            peerConnection.RequestedBlocksCount
+                            < peerConnection.PeerRequestWindow.MaxInFlightRequests
+                        )
+                        {
+                            freePeer = peerConnection;
+                            break;
+                        }
+                    }
                 }
 
                 if (freePeer is not null)
@@ -115,7 +122,6 @@ internal class RequestScheduler(Bitfield myBitfield, PiecePicker piecePicker, IL
         } while (!warmupTask.IsCompleted && minPeersReady < MinPeersForRarity);
     }
 
-    //TODO maybe move this to piecePicker?
     private async ValueTask ScheduleRequests(
         PeerConnection peerConnection,
         CancellationToken cancellationToken
@@ -190,12 +196,6 @@ internal class RequestScheduler(Bitfield myBitfield, PiecePicker piecePicker, IL
 
         lock (_activePeersLock)
         {
-            if (
-                peerConnection.PeerBitField is null
-                || !myBitfield.HasAnyMissingPiece(peerConnection.PeerBitField)
-            )
-                return;
-
             if (_activePeers.Count >= _maxCurrentPeers)
             {
                 _interestedPeers.Add(peerConnection);
