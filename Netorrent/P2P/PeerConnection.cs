@@ -419,6 +419,7 @@ internal class PeerConnection(
                 UnregisterPieces(PeerBitField);
 
             await _uploadScheduler.FreeSlotAsync(this, default);
+            await _requestScheduler.FreeSlotAsync(this, default);
 
             _cancellationTokenSource?.Cancel(); // ⭐ STOP StartAsync children
 

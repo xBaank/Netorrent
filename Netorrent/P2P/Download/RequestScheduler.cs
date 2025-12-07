@@ -20,14 +20,12 @@ internal class RequestScheduler(Bitfield myBitfield, PiecePicker piecePicker, IL
         new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
     );
     private readonly Channel<PeerConnection> _slotsChannel = Channel.CreateBounded<PeerConnection>(
-        new BoundedChannelOptions(256) { SingleReader = true, SingleWriter = true }
+        new BoundedChannelOptions(256) { SingleReader = true, SingleWriter = false }
     );
-
-    private readonly ConcurrentDictionary<PeerConnection, int> _currentPieceIndexByPeer = [];
 
     private readonly List<PeerConnection> _activePeers = [];
     private readonly List<PeerConnection> _interestedPeers = [];
-    private readonly SemaphoreSlim _activePeersSemaphore = new(1);
+    private readonly Lock _activePeersLock = new();
 
     private int _maxCurrentPeers = MinPeers;
     private CancellationTokenSource? _cts;
@@ -82,25 +80,21 @@ internal class RequestScheduler(Bitfield myBitfield, PiecePicker piecePicker, IL
                     passedTime
                 );
 
-                await _activePeersSemaphore.WaitAsync(cancellationToken);
-                try
-                {
-                    var freePeer = _activePeers
-                        .AsValueEnumerable()
-                        .FirstOrDefault(i =>
-                            i.AmInterested
-                            && !i.PeerChocking
-                            && i.RequestedBlocksCount < i.PeerRequestWindow.MaxInFlightRequests
-                        );
+                PeerConnection? freePeer;
 
-                    if (freePeer is not null)
-                    {
-                        await _slotsChannel.Writer.WriteAsync(freePeer, cancellationToken);
-                    }
-                }
-                finally
+                lock (_activePeersLock)
                 {
-                    _activePeersSemaphore.Release();
+                    freePeer = _activePeers
+                        .AsValueEnumerable()
+                        .Shuffle()
+                        .FirstOrDefault(i =>
+                            i.RequestedBlocksCount < i.PeerRequestWindow.MaxInFlightRequests
+                        );
+                }
+
+                if (freePeer is not null)
+                {
+                    await _slotsChannel.Writer.WriteAsync(freePeer, cancellationToken);
                 }
             }
 
@@ -118,7 +112,7 @@ internal class RequestScheduler(Bitfield myBitfield, PiecePicker piecePicker, IL
             minPeersReady = _activePeers
                 .AsValueEnumerable()
                 .Count(i => i.AmInterested && !i.PeerChocking);
-        } while (!warmupTask.IsCompletedSuccessfully && minPeersReady < MinPeersForRarity);
+        } while (!warmupTask.IsCompleted && minPeersReady < MinPeersForRarity);
     }
 
     //TODO maybe move this to piecePicker?
@@ -145,7 +139,15 @@ internal class RequestScheduler(Bitfield myBitfield, PiecePicker piecePicker, IL
             //All requestBlocks are already created for this piece so we try to generate a new one
             if (requestBlock is null)
             {
-                possiblePieceIndex = piecePicker.GetPiece(peerConnection.PeerBitField);
+                // try to find another piece once; avoid hot spin if we get the same piece again
+                var newIndex = piecePicker.GetPiece(peerConnection.PeerBitField);
+
+                if (newIndex == possiblePieceIndex || newIndex is null)
+                {
+                    return;
+                }
+
+                possiblePieceIndex = newIndex;
                 continue;
             }
 
@@ -184,8 +186,9 @@ internal class RequestScheduler(Bitfield myBitfield, PiecePicker piecePicker, IL
         CancellationToken cancellationToken
     )
     {
-        await _activePeersSemaphore.WaitAsync(cancellationToken);
-        try
+        bool shouldEnqueue;
+
+        lock (_activePeersLock)
         {
             if (
                 peerConnection.PeerBitField is null
@@ -198,12 +201,14 @@ internal class RequestScheduler(Bitfield myBitfield, PiecePicker piecePicker, IL
                 _interestedPeers.Add(peerConnection);
                 return;
             }
-            await _slotsChannel.Writer.WriteAsync(peerConnection, cancellationToken);
+
             _activePeers.Add(peerConnection);
+            shouldEnqueue = true;
         }
-        finally
+
+        if (shouldEnqueue)
         {
-            _activePeersSemaphore.Release();
+            await _slotsChannel.Writer.WriteAsync(peerConnection, cancellationToken);
         }
     }
 
@@ -212,22 +217,24 @@ internal class RequestScheduler(Bitfield myBitfield, PiecePicker piecePicker, IL
         CancellationToken cancellationToken
     )
     {
-        await _activePeersSemaphore.WaitAsync(cancellationToken);
-        try
+        PeerConnection? nextPeer = null;
+
+        lock (_activePeersLock)
         {
             _interestedPeers.Remove(peerConnection);
             _activePeers.Remove(peerConnection);
 
-            var nextPeer = _interestedPeers.AsValueEnumerable().FirstOrDefault();
-            if (nextPeer is not null)
+            if (_interestedPeers.Count > 0)
             {
-                await _slotsChannel.Writer.WriteAsync(nextPeer, cancellationToken);
-                _interestedPeers.Remove(nextPeer);
+                nextPeer = _interestedPeers[0];
+                _interestedPeers.RemoveAt(0);
+                _activePeers.Add(nextPeer);
             }
         }
-        finally
+
+        if (nextPeer is not null)
         {
-            _activePeersSemaphore.Release();
+            await _slotsChannel.Writer.WriteAsync(nextPeer, cancellationToken);
         }
     }
 
