@@ -28,9 +28,9 @@ internal class PeerConnection(
     private readonly IRequestScheduler _requestScheduler = requestScheduler;
     private readonly Subject<PeerConnection> _stateChanged = new();
 
-    private DateTime _lastKeepAlive;
+    private DateTimeOffset _lastKeepAlive;
     private CancellationTokenSource? _cancellationTokenSource;
-    private DateTime _startedConnectionTime;
+    private DateTimeOffset _startedConnectionTime;
     private Task? _runTask;
     private bool _disposed;
 
@@ -48,15 +48,18 @@ internal class PeerConnection(
     public IObservable<PeerConnection> StateChanged => _stateChanged;
     public PeerEndpoint PeerEndpoint => new(IPEndPoint, PeerId!.Value);
 
+    private volatile int _requestedBlocksCount;
+    private volatile int _uploadRequestedCount;
+
     public int RequestedBlocksCount
     {
-        get => field;
-        set => Interlocked.Exchange(ref field, value);
+        get => _requestedBlocksCount;
+        set => Interlocked.Exchange(ref _requestedBlocksCount, value);
     }
     public int UploadRequestedBlocksCount
     {
-        get => field;
-        set => Interlocked.Exchange(ref field, value);
+        get => _uploadRequestedCount;
+        set => Interlocked.Exchange(ref _uploadRequestedCount, value);
     }
     public TimeSpan ConnectionDuration => DateTime.UtcNow - _startedConnectionTime;
 
@@ -64,8 +67,8 @@ internal class PeerConnection(
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        _startedConnectionTime = DateTime.Now;
-        _lastKeepAlive = DateTime.UtcNow;
+        _startedConnectionTime = DateTimeOffset.UtcNow;
+        _lastKeepAlive = DateTimeOffset.UtcNow;
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
@@ -106,7 +109,7 @@ internal class PeerConnection(
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            var timePassed = DateTime.UtcNow - _lastKeepAlive;
+            var timePassed = DateTimeOffset.UtcNow - _lastKeepAlive;
             if (timePassed > keepAliveThreshold)
             {
                 await messageStream.OutgoingMessages.WriteOrDisposeAsync(

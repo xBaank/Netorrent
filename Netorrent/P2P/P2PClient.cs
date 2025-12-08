@@ -56,7 +56,12 @@ internal class P2PClient : IAsyncDisposable
         FileManager = fileManager;
         DownloadInfo = new DownloadInfo(_activePeers, fileManager, bitField);
         _peerIpProxy = peerIpProxy;
-        _requestManager = new RequestScheduler(new PiecePicker(_bitField, fileManager), logger);
+        _requestManager = new RequestScheduler(
+            _activePeers,
+            _bitField,
+            new PiecePicker(_bitField, fileManager),
+            logger
+        );
         _uploadScheduler = new UploadScheduler(fileManager, logger);
     }
 
@@ -179,7 +184,10 @@ internal class P2PClient : IAsyncDisposable
                 return;
             }
 
-            if (_activePeers.ContainsKey(peerConnection.PeerEndpoint))
+            if (
+                _activePeers.ContainsKey(peerConnection.PeerEndpoint)
+                || _activePeers.Keys.AsValueEnumerable().Any(i => i.PeerId == peerConnection.PeerId)
+            )
             {
                 if (_logger.IsEnabled(LogLevel.Information))
                     _logger.LogInformation(

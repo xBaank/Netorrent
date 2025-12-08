@@ -103,7 +103,7 @@ internal partial class FileManager : IDisposable
         long total = 0;
         for (int i = 0; i < BitField.Length; i++)
         {
-            if (BitField[i])
+            if (BitField.HasPiece(i))
             {
                 long pieceSize = Math.Min(
                     _pieceLength,

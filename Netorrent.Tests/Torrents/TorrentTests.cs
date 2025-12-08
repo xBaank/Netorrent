@@ -1,6 +1,4 @@
-﻿using System.Diagnostics;
-using System.Net;
-using System.Runtime.CompilerServices;
+﻿using System.Net;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.Tests.Fixtures;
@@ -21,6 +19,7 @@ public enum AnnounceType
 public class TorrentTests(OpenTrackerFixture fixture)
 {
     private readonly OpenTrackerFixture _fixture = fixture;
+    private static ILogger Logger => new TUnitLogger(TestContext.Current!.GetDefaultLogger());
 
     private static IPAddress FixDockerAdress(IPAddress iPAddress) =>
         iPAddress.ToString().StartsWith("172.") ? IPAddress.Loopback : iPAddress;
@@ -88,11 +87,11 @@ public class TorrentTests(OpenTrackerFixture fixture)
     {
         var path = await CreateRandomFileAsync("Input");
 
-        var seeders = await GetSeedersAsync(seedersCount, path)
+        var seeders = await GetSeedersAsync(seedersCount, path, Logger)
             .ToListAsync(cancellationToken: cancellationToken);
         var seedersTorrents = seeders.Select(i => i.Item1).ToList();
 
-        var leechers = await GetLeechersAsync(leechersCount, seedersTorrents[0].MetaInfo)
+        var leechers = await GetLeechersAsync(leechersCount, seedersTorrents[0].MetaInfo, Logger)
             .ToListAsync(cancellationToken: cancellationToken);
         var leechersTorrents = leechers.Select(i => i.Item1).ToList();
 
@@ -156,11 +155,11 @@ public class TorrentTests(OpenTrackerFixture fixture)
     {
         var path = await CreateRandomFileAsync("Input");
 
-        var seeders = await GetSeedersAsync(seedersCount, path)
+        var seeders = await GetSeedersAsync(seedersCount, path, Logger)
             .ToListAsync(cancellationToken: cancellationToken);
         var seedersTorrents = seeders.Select(i => i.Item1).ToList();
 
-        var leechers = await GetLeechersAsync(leechersCount, seedersTorrents[0].MetaInfo)
+        var leechers = await GetLeechersAsync(leechersCount, seedersTorrents[0].MetaInfo, Logger)
             .ToListAsync(cancellationToken: cancellationToken);
         var leechersTorrents = leechers.Select(i => i.Item1).ToList();
 
@@ -207,12 +206,19 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
     private async IAsyncEnumerable<(Torrent, TorrentClient)> GetSeedersAsync(
         int number,
-        string path
+        string path,
+        ILogger logger
     )
     {
         for (int i = 0; i < number; i++)
         {
-            var seeder = new TorrentClient(o => o with { PeerIpProxy = FixDockerAdress });
+            var seeder = new TorrentClient(o =>
+                o with
+                {
+                    PeerIpProxy = FixDockerAdress,
+                    Logger = logger,
+                }
+            );
 
             var seederTorrent = await seeder.CreateTorrentAsync(
                 path,
@@ -226,12 +232,19 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
     private static async IAsyncEnumerable<(Torrent, TorrentClient)> GetLeechersAsync(
         int number,
-        MetaInfo metaInfo
+        MetaInfo metaInfo,
+        ILogger logger
     )
     {
         for (int i = 0; i < number; i++)
         {
-            var leecher = new TorrentClient(o => o with { PeerIpProxy = FixDockerAdress });
+            var leecher = new TorrentClient(o =>
+                o with
+                {
+                    PeerIpProxy = FixDockerAdress,
+                    Logger = logger,
+                }
+            );
 
             var pathName = Guid.NewGuid().ToString();
             var leecherTorrent = leecher.ImportTorrent(metaInfo, $"Output/Test_{pathName}");

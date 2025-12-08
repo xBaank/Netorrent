@@ -48,8 +48,8 @@ internal class UdpTracker(
 
             var interval = _lastResponse.Interval.Seconds;
 
-            if (logger.IsEnabled(LogLevel.Trace))
-                logger.LogTrace("Waiting {seconds} seconds", interval.TotalSeconds);
+            if (logger.IsEnabled(LogLevel.Information))
+                logger.LogInformation("Waiting {seconds} seconds", interval.TotalSeconds);
 
             var newResponse = await TryAnnounceAsync(iPEndPoint, null, cancellationToken);
 

@@ -8,27 +8,33 @@ internal class PeerRequestWindow(int blockSize)
 
     public int BlockSize { get; } = blockSize;
     private double _smoothedRttSeconds = 0.2;
+    private readonly Lock _windowLock = new();
+
+    private volatile int _maxInFlightRequests = MinRequests;
 
     public int MaxInFlightRequests
     {
-        get => field;
-        set => Interlocked.Exchange(ref field, value);
-    } = MinRequests;
+        get => _maxInFlightRequests;
+        private set => _maxInFlightRequests = value;
+    }
 
     public void CalculateWindow(long bytesPerSecond, TimeSpan rtt)
     {
-        _smoothedRttSeconds = 0.875 * _smoothedRttSeconds + 0.125 * rtt.TotalSeconds;
+        lock (_windowLock)
+        {
+            _smoothedRttSeconds = 0.875 * _smoothedRttSeconds + 0.125 * rtt.TotalSeconds;
 
-        if (bytesPerSecond <= 0 || _smoothedRttSeconds <= 0)
-            MaxInFlightRequests = MinRequests;
+            if (bytesPerSecond <= 0 || _smoothedRttSeconds <= 0)
+                MaxInFlightRequests = MinRequests;
 
-        double bdp = bytesPerSecond * _smoothedRttSeconds;
-        double neededBlocks = bdp / BlockSize;
+            double bdp = bytesPerSecond * _smoothedRttSeconds;
+            double neededBlocks = bdp / BlockSize;
 
-        neededBlocks *= SafetyFactor;
+            neededBlocks *= SafetyFactor;
 
-        int window = (int)Math.Ceiling(neededBlocks);
+            int window = (int)Math.Ceiling(neededBlocks);
 
-        MaxInFlightRequests = Math.Clamp(window, MinRequests, MaxRequests);
+            MaxInFlightRequests = Math.Clamp(window, MinRequests, MaxRequests);
+        }
     }
 }

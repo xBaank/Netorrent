@@ -8,7 +8,12 @@ using ZLinq;
 
 namespace Netorrent.P2P.Download;
 
-internal class RequestScheduler(PiecePicker piecePicker, ILogger logger) : IRequestScheduler
+internal class RequestScheduler(
+    IReadOnlyDictionary<PeerEndpoint, PeerConnection> peers,
+    Bitfield bitfield,
+    PiecePicker piecePicker,
+    ILogger logger
+) : IRequestScheduler
 {
     const int MinPeersForRarity = 6;
     const int WarmupTimeoutSecods = 8;
@@ -22,11 +27,10 @@ internal class RequestScheduler(PiecePicker piecePicker, ILogger logger) : IRequ
         new BoundedChannelOptions(256) { SingleReader = true, SingleWriter = false }
     );
 
-    private readonly List<PeerConnection> _activePeers = [];
+    private readonly HashSet<PeerConnection> _activePeers = [];
     private readonly List<PeerConnection> _interestedPeers = [];
     private readonly Lock _activePeersLock = new();
-    private int _peersActivated = 0;
-
+    private readonly IReadOnlyDictionary<PeerEndpoint, PeerConnection> peers = peers;
     private int _maxCurrentPeers = MinPeers;
     private CancellationTokenSource? _cts;
     private Task? _runningTask;
@@ -201,7 +205,6 @@ internal class RequestScheduler(PiecePicker piecePicker, ILogger logger) : IRequ
                 _interestedPeers.Add(peerConnection);
                 return;
             }
-            _peersActivated++;
             _activePeers.Add(peerConnection);
             shouldEnqueue = true;
         }
@@ -229,7 +232,6 @@ internal class RequestScheduler(PiecePicker piecePicker, ILogger logger) : IRequ
                 nextPeer = _interestedPeers[0];
                 _interestedPeers.RemoveAt(0);
                 _activePeers.Add(nextPeer);
-                _peersActivated++;
             }
         }
 
@@ -254,9 +256,6 @@ internal class RequestScheduler(PiecePicker piecePicker, ILogger logger) : IRequ
             item.Dispose();
 
         await foreach (var _ in _slotsChannel.Reader.ReadAllAsync()) { }
-
-        await _receiveBlocksChannel.Reader.Completion;
-        await _slotsChannel.Reader.Completion;
     }
 
     public async ValueTask DisposeAsync()

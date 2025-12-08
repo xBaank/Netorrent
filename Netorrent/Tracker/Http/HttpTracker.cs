@@ -33,8 +33,8 @@ internal class HttpTracker(
         {
             var interval = response.Interval.Seconds;
 
-            if (logger.IsEnabled(LogLevel.Trace))
-                logger.LogTrace("Waiting {seconds} seconds", interval.TotalSeconds);
+            if (logger.IsEnabled(LogLevel.Information))
+                logger.LogInformation("Waiting {seconds} seconds", interval.TotalSeconds);
 
             await Task.Delay(interval, cancellationToken);
 

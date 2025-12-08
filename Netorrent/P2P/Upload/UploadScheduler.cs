@@ -24,7 +24,7 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
     > _requestByIBL = [];
 
     private readonly List<PeerConnection> _interestedPeers = [];
-    private readonly List<PeerConnection> _unchokedPeers = [];
+    private readonly HashSet<PeerConnection> _unchokedPeers = [];
     private readonly Lock _unchokedSlotsLock = new();
 
     private CancellationTokenSource? _cts;
@@ -47,7 +47,17 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
     {
         await foreach (var peerConnection in _slotsRequests.Reader.ReadAllAsync(cancellationToken))
         {
-            await peerConnection.SendUnchokedAsync(cancellationToken);
+            try
+            {
+                await peerConnection.SendUnchokedAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                if (logger.IsEnabled(LogLevel.Error))
+                {
+                    logger.LogError(ex, "Error unchoking peer {peeid}", peerConnection.PeerId);
+                }
+            }
         }
     }
 
@@ -155,14 +165,22 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
     {
         var from = request.RequestedFrom[0];
 
-        if (!_unchokedPeers.Contains(from))
-            return false;
+        lock (_unchokedSlotsLock)
+        {
+            if (!_unchokedPeers.Contains(from))
+                return false;
 
-        if (from.UploadRequestedBlocksCount >= MaxInFlightUploadRequests)
-            return false;
+            if (from.UploadRequestedBlocksCount >= MaxInFlightUploadRequests)
+                return false;
+
+            // prevent duplicates if you want
+        }
 
         var key = (request.Index, request.Begin, request.Length);
-        _requestByIBL.TryAdd(key, request);
+        if (!_requestByIBL.TryAdd(key, request))
+            return false;
+
+        // write to channel *outside* lock
         await _pendingRequests.Writer.WriteAsync(request, cancellationToken);
         return true;
     }
@@ -181,8 +199,6 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
     {
         await foreach (var _ in _pendingRequests.Reader.ReadAllAsync()) { }
         await foreach (var _ in _slotsRequests.Reader.ReadAllAsync()) { }
-        await _pendingRequests.Reader.Completion;
-        await _slotsRequests.Reader.Completion;
     }
 
     public async ValueTask DisposeAsync()
