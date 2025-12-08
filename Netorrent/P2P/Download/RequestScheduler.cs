@@ -74,16 +74,10 @@ internal class RequestScheduler(
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            foreach (var (requestBlock, passedTime) in piecePicker.GetTimeoutRequestBlocks())
+            var blocks = piecePicker.GetTimeoutRequestBlocks().AsValueEnumerable().ToArray();
+            foreach (var (requestBlock, passedTime) in blocks)
             {
                 var lastRequestedFrom = requestBlock.RequestedFrom[^1];
-                requestBlock.State = RequestBlockState.Pending;
-                requestBlock.RequestedAt = null;
-                lastRequestedFrom.PeerRequestWindow.CalculateWindow(
-                    (long)lastRequestedFrom.DownloadSpeedTracker.CurrentBps.Bps,
-                    passedTime
-                );
-
                 PeerConnection? freePeer = null;
 
                 lock (_activePeersLock)
@@ -103,10 +97,30 @@ internal class RequestScheduler(
                     }
                 }
 
-                if (freePeer is not null)
-                {
-                    await _slotsChannel.Writer.WriteAsync(freePeer, cancellationToken);
-                }
+                //If we can't find a peer we just keep it as requested until we can find a free peer
+                if (freePeer is null)
+                    continue;
+
+                requestBlock.State = RequestBlockState.Pending;
+                requestBlock.RequestedAt = null;
+                lastRequestedFrom.PeerRequestWindow.CalculateWindow(
+                    (long)lastRequestedFrom.DownloadSpeedTracker.CurrentBps.Bps,
+                    passedTime
+                );
+
+                await _slotsChannel.Writer.WriteAsync(freePeer, cancellationToken);
+            }
+
+            logger.LogInformation("{blocks} number of blocks timedout", blocks.Length);
+
+            foreach (var peer in peers.Values)
+            {
+                if (!peer.MyBitField.IsComplete)
+                    logger.LogInformation("Bitfield uncompleted");
+                if (peer.AmInterested)
+                    logger.LogInformation("Im interested in peer {peer}", peer.PeerId);
+                if (!peer.PeerChocking)
+                    logger.LogInformation("peer unchoking {peer}", peer.PeerId);
             }
 
             await Task.Delay(1.Seconds, cancellationToken);
