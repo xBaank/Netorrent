@@ -8,8 +8,7 @@ using ZLinq;
 
 namespace Netorrent.P2P.Download;
 
-internal class RequestScheduler(Bitfield myBitfield, PiecePicker piecePicker, ILogger logger)
-    : IRequestScheduler
+internal class RequestScheduler(PiecePicker piecePicker, ILogger logger) : IRequestScheduler
 {
     const int MinPeersForRarity = 6;
     const int WarmupTimeoutSecods = 8;
@@ -26,6 +25,7 @@ internal class RequestScheduler(Bitfield myBitfield, PiecePicker piecePicker, IL
     private readonly List<PeerConnection> _activePeers = [];
     private readonly List<PeerConnection> _interestedPeers = [];
     private readonly Lock _activePeersLock = new();
+    private int _peersActivated = 0;
 
     private int _maxCurrentPeers = MinPeers;
     private CancellationTokenSource? _cts;
@@ -201,7 +201,7 @@ internal class RequestScheduler(Bitfield myBitfield, PiecePicker piecePicker, IL
                 _interestedPeers.Add(peerConnection);
                 return;
             }
-
+            _peersActivated++;
             _activePeers.Add(peerConnection);
             shouldEnqueue = true;
         }
@@ -229,6 +229,7 @@ internal class RequestScheduler(Bitfield myBitfield, PiecePicker piecePicker, IL
                 nextPeer = _interestedPeers[0];
                 _interestedPeers.RemoveAt(0);
                 _activePeers.Add(nextPeer);
+                _peersActivated++;
             }
         }
 

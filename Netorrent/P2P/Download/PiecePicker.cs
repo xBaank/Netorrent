@@ -41,7 +41,10 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager) : IAsyn
 
         if (_requestBlocksByPieceIndex.TryGetValue(receiveBlock.Index, out var requestBlocks))
         {
-            var requestBlock = requestBlocks.FirstOrDefault(i => i?.Begin == receiveBlock.Begin);
+            var requestBlock = requestBlocks
+                .AsValueEnumerable()
+                .FirstOrDefault(i => i?.Begin == receiveBlock.Begin);
+
             if (
                 requestBlock is not null
                 && requestBlock.RequestedFrom.Contains(receiveBlock.FromPeer)
@@ -124,7 +127,6 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager) : IAsyn
         var timeout = TimeoutSeconds.Seconds;
         foreach (var requestBlock in _requestBlocksByPieceIndex.Values.SelectMany(i => i))
         {
-            var now = DateTimeOffset.UtcNow;
             if (
                 requestBlock is null
                 || requestBlock.State != RequestBlockState.Requested
@@ -132,7 +134,7 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager) : IAsyn
             )
                 continue;
 
-            var diff = now - requestBlock.RequestedAt.Value;
+            var diff = DateTimeOffset.UtcNow - requestBlock.RequestedAt.Value;
 
             if (diff > timeout)
                 yield return (requestBlock, diff);

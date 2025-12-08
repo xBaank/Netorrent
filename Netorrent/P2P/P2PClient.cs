@@ -56,11 +56,7 @@ internal class P2PClient : IAsyncDisposable
         FileManager = fileManager;
         DownloadInfo = new DownloadInfo(_activePeers, fileManager, bitField);
         _peerIpProxy = peerIpProxy;
-        _requestManager = new RequestScheduler(
-            _bitField,
-            new PiecePicker(_bitField, fileManager),
-            logger
-        );
+        _requestManager = new RequestScheduler(new PiecePicker(_bitField, fileManager), logger);
         _uploadScheduler = new UploadScheduler(fileManager, logger);
     }
 

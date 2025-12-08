@@ -134,7 +134,7 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
         {
             _interestedPeers.Remove(peerConnection);
             _unchokedPeers.Remove(peerConnection);
-            if (_interestedPeers.Count > 0)
+            if (_interestedPeers.Count > 0 && _unchokedPeers.Count < MaxUnchokedPeers)
             {
                 nextPeer = _interestedPeers[0];
                 _interestedPeers.RemoveAt(0);
