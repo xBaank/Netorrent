@@ -78,9 +78,11 @@ internal class PeerConnection(
     {
         await SendBitfieldAsync(MyBitField, cancellationTokenSource.Token).ConfigureAwait(false);
 
-        using var stateChangedDisposable = MyBitField.StateChanged.Subscribe(async i =>
-            await SendHaveAsync(i, cancellationTokenSource.Token).ConfigureAwait(false)
-        );
+        using var stateChangedDisposable = MyBitField
+            .StateChanged.SelectMany(i =>
+                Observable.FromAsync(() => SendHaveAsync(i, cancellationTokenSource.Token))
+            )
+            .Subscribe();
 
         await using var downloadTimer = DownloadSpeedTracker
             .StartSampling(500.Milliseconds)
