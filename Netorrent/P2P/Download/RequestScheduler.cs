@@ -132,60 +132,60 @@ internal class RequestScheduler(
                 if (freePeer is not null)
                     await _slotsChannel.Writer.WriteAsync(freePeer, cancellationToken);
             }
-
-            logger.LogInformation("{blocks} number of blocks timedout", blocks.Length);
-
-            lock (_activePeersLock)
-            {
-                logger.LogInformation("---- ACTIVE PEERS ----");
-
-                foreach (var peer in _activePeers)
-                {
-                    logger.LogInformation(
-                        "peer {peer} unchoking {unchoke} interested {interest}",
-                        peer.PeerId,
-                        peer.PeerChoking,
-                        peer.AmInterested
-                    );
-                }
-                logger.LogInformation("---- INTERESTED PEERS ----");
-
-                foreach (var peer in _interestedPeers)
-                {
-                    logger.LogInformation(
-                        "peer {peer} unchoking {unchoke} interested {interest}",
-                        peer.PeerId,
-                        peer.PeerChoking,
-                        peer.AmInterested
-                    );
-                }
-
-                logger.LogInformation("---- REMAINING BLOCKS ----");
-
-                foreach (
-                    var item in piecePicker
-                        ._requestBlocksByPieceIndex.Values.SelectMany(i => i)
-                        .Where(i => i is null || i.State != RequestBlockState.Completed)
-                )
-                {
-                    logger.LogInformation(
-                        "Missing block with index {index} and state {state}",
-                        item?.Index,
-                        item?.State
-                    );
-                }
-
-                logger.LogInformation("---- REMAINING PIECES----");
-
-                for (int i = 0; i < bitfield.Length; i++)
-                {
-                    if (!bitfield.HasPiece(i))
-                    {
-                        logger.LogInformation("Missing piece {pieceIndex}", i);
-                    }
-                }
-            }
-
+            /**
+                        logger.LogInformation("{blocks} number of blocks timedout", blocks.Length);
+            
+                        lock (_activePeersLock)
+                        {
+                            logger.LogInformation("---- ACTIVE PEERS ----");
+            
+                            foreach (var peer in _activePeers)
+                            {
+                                logger.LogInformation(
+                                    "peer {peer} unchoking {unchoke} interested {interest}",
+                                    peer.PeerId,
+                                    peer.PeerChoking,
+                                    peer.AmInterested
+                                );
+                            }
+                            logger.LogInformation("---- INTERESTED PEERS ----");
+            
+                            foreach (var peer in _interestedPeers)
+                            {
+                                logger.LogInformation(
+                                    "peer {peer} unchoking {unchoke} interested {interest}",
+                                    peer.PeerId,
+                                    peer.PeerChoking,
+                                    peer.AmInterested
+                                );
+                            }
+            
+                            logger.LogInformation("---- REMAINING BLOCKS ----");
+            
+                            foreach (
+                                var item in piecePicker
+                                    ._requestBlocksByPieceIndex.Values.SelectMany(i => i)
+                                    .Where(i => i is null || i.State != RequestBlockState.Completed)
+                            )
+                            {
+                                logger.LogInformation(
+                                    "Missing block with index {index} and state {state}",
+                                    item?.Index,
+                                    item?.State
+                                );
+                            }
+            
+                            logger.LogInformation("---- REMAINING PIECES----");
+            
+                            for (int i = 0; i < bitfield.Length; i++)
+                            {
+                                if (!bitfield.HasPiece(i))
+                                {
+                                    logger.LogInformation("Missing piece {pieceIndex}", i);
+                                }
+                            }
+                        }
+                        **/
             await Task.Delay(1.Seconds, cancellationToken);
         }
     }
