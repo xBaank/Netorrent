@@ -274,8 +274,7 @@ internal class PeerConnection(
         };
         request.RequestedFrom.Add(this);
 
-        if (await _uploadScheduler.AddRequestAsync(request, cancellationToken))
-            IncrementUploadRequested();
+        await _uploadScheduler.AddRequestAsync(request, cancellationToken);
     }
 
     public async ValueTask SendRequestAsync(
@@ -303,15 +302,8 @@ internal class PeerConnection(
     public async ValueTask SendBlockAsync(Block block, CancellationToken cancellationToken)
     {
         var pieceMessage = Message.CreatePiece(block.Index, block.Begin, block.Payload);
-        try
-        {
-            await WriteMessageAsync(pieceMessage, cancellationToken);
-            UploadSpeedTracker.AddBytes(block.Payload.Length);
-        }
-        finally
-        {
-            DecrementUploadRequested();
-        }
+        await WriteMessageAsync(pieceMessage, cancellationToken);
+        UploadSpeedTracker.AddBytes(block.Payload.Length);
     }
 
     private async ValueTask ReceiveBlockAsync(Message message, CancellationToken cancellationToken)
@@ -340,7 +332,6 @@ internal class PeerConnection(
 
         var request = new RequestBlock(index, begin, length);
         _uploadScheduler.CancelRequest(request);
-        DecrementUploadRequested();
     }
 
     public async ValueTask PerformHandshakeAsync(

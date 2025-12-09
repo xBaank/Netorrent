@@ -225,7 +225,7 @@ public class PeerConectionTests
 
         // Configure upload scheduler behavior
         ctx.UploadMock.AddRequestAsync(Arg.Any<RequestBlock>(), Arg.Any<CancellationToken>())
-            .Returns(true);
+            .Returns(ValueTask.CompletedTask);
         ctx.UploadMock.RequestSlotAsync(Arg.Any<PeerConnection>(), Arg.Any<CancellationToken>())
             .Returns(ValueTask.CompletedTask);
         ctx.UploadMock.FreeSlotAsync(Arg.Any<PeerConnection>(), Arg.Any<CancellationToken>())

@@ -18,10 +18,6 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
     private readonly Channel<PeerConnection> _slotsRequests = Channel.CreateBounded<PeerConnection>(
         new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
     );
-    private readonly ConcurrentDictionary<
-        (int Index, int Begin, int Length, PeerConnection peer),
-        RequestBlock
-    > _requestByIBL = [];
 
     private readonly List<PeerConnection> _interestedPeers = [];
     private readonly HashSet<PeerConnection> _unchokedPeers = [];
@@ -73,11 +69,6 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
 
             var peer = requestBlock.RequestedFrom[0];
 
-            _requestByIBL.TryRemove(
-                (requestBlock.Index, requestBlock.Begin, requestBlock.Length, peer),
-                out _
-            );
-
             var pieceData = await fileManager.ReadPieceAsync(
                 requestBlock.Index,
                 requestBlock.Begin,
@@ -90,6 +81,7 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
             try
             {
                 await peer.SendBlockAsync(block, cancellationToken);
+                peer.DecrementUploadRequested();
             }
             catch (Exception ex)
             {
@@ -158,7 +150,7 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
         }
     }
 
-    public async ValueTask<bool> AddRequestAsync(
+    public async ValueTask AddRequestAsync(
         RequestBlock request,
         CancellationToken cancellationToken
     )
@@ -170,37 +162,26 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
             if (!_unchokedPeers.Contains(from))
             {
                 logger.LogInformation("Peer is not unchoked");
-                return false;
+                return;
             }
 
             if (from.UploadRequestedBlocksCount >= MaxInFlightUploadRequests)
             {
                 logger.LogInformation("Peer reached the max requests");
-                return false;
+                return;
             }
         }
 
-        var key = (request.Index, request.Begin, request.Length, from);
-        if (!_requestByIBL.TryAdd(key, request))
-        {
-            logger.LogInformation("Couldn't add this request");
-            return false;
-        }
-
+        from.IncrementUploadRequested();
         await _pendingRequests.Writer.WriteAsync(request, cancellationToken);
-        return true;
     }
 
     public void CancelRequest(RequestBlock request)
     {
         var from = request.RequestedFrom[0];
 
-        var key = (request.Index, request.Begin, request.Length, from);
-        if (!_requestByIBL.TryGetValue(key, out var requestBlock))
-            return;
-
-        requestBlock.State = RequestBlockState.Cancelled;
-        _requestByIBL.TryRemove(key, out _);
+        request.State = RequestBlockState.Cancelled;
+        from.DecrementUploadRequested();
     }
 
     private async ValueTask DrainChannelsAsync()
@@ -225,7 +206,6 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
             }
             catch { }
 
-            _requestByIBL.Clear();
             await DrainChannelsAsync();
             _cts?.Dispose();
         }

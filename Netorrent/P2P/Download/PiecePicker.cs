@@ -48,6 +48,7 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager) : IAsyn
                 && requestBlock.RequestedFrom.Contains(receiveBlock.FromPeer)
             )
             {
+                receiveBlock.FromPeer.DecrementRequestedBlock();
                 var rtt = requestBlock.RequestedAt.HasValue
                     ? receiveBlock.ReceivedAt - requestBlock.RequestedAt.Value
                     : TimeoutSeconds.Seconds;
@@ -55,12 +56,6 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager) : IAsyn
                     (long)receiveBlock.FromPeer.DownloadSpeedTracker.CurrentBps.Bps,
                     rtt
                 );
-
-                //Decrement from all the peers that requested
-                foreach (var peer in requestBlock.RequestedFrom)
-                {
-                    peer.DecrementRequestedBlock();
-                }
             }
 
             requestBlock?.State = RequestBlockState.Completed;
