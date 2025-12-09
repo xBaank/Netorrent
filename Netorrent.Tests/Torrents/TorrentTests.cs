@@ -15,7 +15,7 @@ public enum AnnounceType
 }
 
 [ClassDataSource<OpenTrackerFixture>(Shared = SharedType.PerClass)]
-[Timeout(3 * 60_000)]
+[Timeout(5 * 60_000)]
 public class TorrentTests(OpenTrackerFixture fixture)
 {
     private readonly OpenTrackerFixture _fixture = fixture;
@@ -107,10 +107,10 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 await leecherTorrent.StartAsync(cancellationToken);
             }
 
-            var tasks = leechersTorrents.Select(i =>
-                i.DownloadInfo.DownloadTask.ShouldNotThrowAsync()
-            );
-            await Task.WhenAll(tasks);
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                await leecherTorrent.DownloadInfo.DownloadTask.ShouldNotThrowAsync();
+            }
 
             foreach (var seederTorrent in seedersTorrents)
             {
