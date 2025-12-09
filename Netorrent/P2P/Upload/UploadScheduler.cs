@@ -81,7 +81,6 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
             try
             {
                 await peer.SendBlockAsync(block, cancellationToken);
-                peer.DecrementUploadRequested();
             }
             catch (Exception ex)
             {
@@ -96,6 +95,10 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
                         peer
                     );
                 }
+            }
+            finally
+            {
+                peer.DecrementUploadRequested();
             }
         }
     }
