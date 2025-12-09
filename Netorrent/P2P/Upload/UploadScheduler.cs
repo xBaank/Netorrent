@@ -41,11 +41,15 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
 
     public async Task ProcessSlotsAsync(CancellationToken cancellationToken)
     {
-        await foreach (var peerConnection in _slotsRequests.Reader.ReadAllAsync(cancellationToken))
+        await foreach (
+            var peerConnection in _slotsRequests
+                .Reader.ReadAllAsync(cancellationToken)
+                .ConfigureAwait(false)
+        )
         {
             try
             {
-                await peerConnection.SendUnchokedAsync(cancellationToken);
+                await peerConnection.SendUnchokedAsync(cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -59,7 +63,11 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
 
     public async Task ProcessRequestsAsync(CancellationToken cancellationToken)
     {
-        await foreach (var requestBlock in _pendingRequests.Reader.ReadAllAsync(cancellationToken))
+        await foreach (
+            var requestBlock in _pendingRequests
+                .Reader.ReadAllAsync(cancellationToken)
+                .ConfigureAwait(false)
+        )
         {
             if (
                 requestBlock.State == RequestBlockState.Cancelled
@@ -69,18 +77,20 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
 
             var peer = requestBlock.RequestedFrom[0];
 
-            var pieceData = await fileManager.ReadPieceAsync(
-                requestBlock.Index,
-                requestBlock.Begin,
-                requestBlock.Length,
-                cancellationToken
-            );
+            var pieceData = await fileManager
+                .ReadPieceAsync(
+                    requestBlock.Index,
+                    requestBlock.Begin,
+                    requestBlock.Length,
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
 
             using var block = new Block(requestBlock.Index, requestBlock.Begin, pieceData, peer);
 
             try
             {
-                await peer.SendBlockAsync(block, cancellationToken);
+                await peer.SendBlockAsync(block, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -124,7 +134,9 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
 
         if (shouldEnqueue)
         {
-            await _slotsRequests.Writer.WriteAsync(peerConnection, cancellationToken);
+            await _slotsRequests
+                .Writer.WriteAsync(peerConnection, cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 
@@ -149,7 +161,9 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
 
         if (nextPeer is not null)
         {
-            await _slotsRequests.Writer.WriteAsync(nextPeer, cancellationToken);
+            await _slotsRequests
+                .Writer.WriteAsync(nextPeer, cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 
@@ -176,7 +190,7 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
         }
 
         from.IncrementUploadRequested();
-        await _pendingRequests.Writer.WriteAsync(request, cancellationToken);
+        await _pendingRequests.Writer.WriteAsync(request, cancellationToken).ConfigureAwait(false);
     }
 
     public void CancelRequest(RequestBlock request)
@@ -189,8 +203,8 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
 
     private async ValueTask DrainChannelsAsync()
     {
-        await foreach (var _ in _pendingRequests.Reader.ReadAllAsync()) { }
-        await foreach (var _ in _slotsRequests.Reader.ReadAllAsync()) { }
+        await foreach (var _ in _pendingRequests.Reader.ReadAllAsync().ConfigureAwait(false)) { }
+        await foreach (var _ in _slotsRequests.Reader.ReadAllAsync().ConfigureAwait(false)) { }
     }
 
     public async ValueTask DisposeAsync()
@@ -205,11 +219,11 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
             try
             {
                 if (_runningTask is not null)
-                    await _runningTask;
+                    await _runningTask.ConfigureAwait(false);
             }
             catch { }
 
-            await DrainChannelsAsync();
+            await DrainChannelsAsync().ConfigureAwait(false);
             _cts?.Dispose();
         }
     }

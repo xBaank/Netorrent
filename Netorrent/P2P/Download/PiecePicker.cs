@@ -68,7 +68,9 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager) : IAsyn
 
         try
         {
-            var isWritten = await pieceBuffer.WritePieceAsync(cancellationToken);
+            var isWritten = await pieceBuffer
+                .WritePieceAsync(cancellationToken)
+                .ConfigureAwait(false);
             _pieceBuffers.TryRemove(receiveBlock.Index, out _);
 
             if (!isWritten)

@@ -20,7 +20,9 @@ internal class HttpTrackerResponse
     {
         response.EnsureSuccessStatusCode();
 
-        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        var bytes = await response
+            .Content.ReadAsByteArrayAsync(cancellationToken)
+            .ConfigureAwait(false);
         var decoder = new BDecoder(bytes);
         var root = decoder.Decode();
 

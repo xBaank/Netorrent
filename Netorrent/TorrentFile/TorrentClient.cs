@@ -41,7 +41,8 @@ public sealed class TorrentClient : IAsyncDisposable
         CancellationToken cancellationToken = default
     )
     {
-        var torrentFileData = await File.ReadAllBytesAsync(path, cancellationToken);
+        var torrentFileData = await File.ReadAllBytesAsync(path, cancellationToken)
+            .ConfigureAwait(false);
 
         var decoder = new BDecoder(torrentFileData);
         var decoded = decoder.Decode();
@@ -110,13 +111,14 @@ public sealed class TorrentClient : IAsyncDisposable
     {
         var torrent = new Torrent(
             await CreateMetaInfoFromPathAsync(
-                path,
-                announceUrl,
-                announceUrls,
-                webUrls,
-                pieceLength,
-                cancellationToken
-            ),
+                    path,
+                    announceUrl,
+                    announceUrls,
+                    webUrls,
+                    pieceLength,
+                    cancellationToken
+                )
+                .ConfigureAwait(false),
             _options.HttpClient,
             _trackerTransactionManager,
             _peerId,
@@ -235,9 +237,10 @@ public sealed class TorrentClient : IAsyncDisposable
 
                 int toRead = pieceLength - bufferPos;
                 int bytesRead = await fs.ReadAsync(
-                    pieceBuffer.Slice(bufferPos, toRead),
-                    cancellationToken
-                );
+                        pieceBuffer.Slice(bufferPos, toRead),
+                        cancellationToken
+                    )
+                    .ConfigureAwait(false);
                 if (bytesRead <= 0)
                     break;
 
@@ -434,9 +437,10 @@ public sealed class TorrentClient : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await _trackerTransactionManager.DisposeAsync();
+        await _trackerTransactionManager.DisposeAsync().ConfigureAwait(false);
         await Task.WhenAll(
-            torrents.AsValueEnumerable().Select(i => i.DisposeAsync().AsTask()).ToArray()
-        );
+                torrents.AsValueEnumerable().Select(i => i.DisposeAsync().AsTask()).ToArray()
+            )
+            .ConfigureAwait(false);
     }
 }

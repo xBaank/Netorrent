@@ -53,10 +53,14 @@ internal class RequestScheduler(
 
     public async Task ProcessSlotsAsync(CancellationToken cancellationToken)
     {
-        await WarmupAsync(cancellationToken);
-        await foreach (var peerConnection in _slotsChannel.Reader.ReadAllAsync(cancellationToken))
+        await WarmupAsync(cancellationToken).ConfigureAwait(false);
+        await foreach (
+            var peerConnection in _slotsChannel
+                .Reader.ReadAllAsync(cancellationToken)
+                .ConfigureAwait(false)
+        )
         {
-            await ScheduleRequests(peerConnection, cancellationToken);
+            await ScheduleRequests(peerConnection, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -67,8 +71,10 @@ internal class RequestScheduler(
         )
         {
             using var block = receiveBlock;
-            await piecePicker.ReceiveBlockAsync(block, cancellationToken);
-            await _slotsChannel.Writer.WriteAsync(block.FromPeer, cancellationToken);
+            await piecePicker.ReceiveBlockAsync(block, cancellationToken).ConfigureAwait(false);
+            await _slotsChannel
+                .Writer.WriteAsync(block.FromPeer, cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 
@@ -111,9 +117,11 @@ internal class RequestScheduler(
                     passedTime.TotalSeconds,
                     stopwatch.Elapsed.TotalSeconds
                 );
-                await _slotsChannel.Writer.WriteAsync(freePeer, cancellationToken);
+                await _slotsChannel
+                    .Writer.WriteAsync(freePeer, cancellationToken)
+                    .ConfigureAwait(false);
             }
-            await Task.Delay(1.Seconds, cancellationToken);
+            await Task.Delay(1.Seconds, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -123,7 +131,7 @@ internal class RequestScheduler(
         var minPeersReady = 0;
         do
         {
-            await Task.Delay(100.Milliseconds, cancellationToken);
+            await Task.Delay(100.Milliseconds, cancellationToken).ConfigureAwait(false);
             lock (_activePeersLock)
             {
                 minPeersReady = _activePeers
@@ -176,7 +184,9 @@ internal class RequestScheduler(
 
             try
             {
-                await peerConnection.SendRequestAsync(requestBlock, cancellationToken);
+                await peerConnection
+                    .SendRequestAsync(requestBlock, cancellationToken)
+                    .ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -215,7 +225,9 @@ internal class RequestScheduler(
 
         if (shouldEnqueue)
         {
-            await _slotsChannel.Writer.WriteAsync(peerConnection, cancellationToken);
+            await _slotsChannel
+                .Writer.WriteAsync(peerConnection, cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 
@@ -241,7 +253,9 @@ internal class RequestScheduler(
 
         if (nextPeer is not null)
         {
-            await _slotsChannel.Writer.WriteAsync(nextPeer, cancellationToken);
+            await _slotsChannel
+                .Writer.WriteAsync(nextPeer, cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 
@@ -251,15 +265,19 @@ internal class RequestScheduler(
 
     public async ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken)
     {
-        await _receiveBlocksChannel.Writer.WriteOrDisposeAsync(block, cancellationToken);
+        await _receiveBlocksChannel
+            .Writer.WriteOrDisposeAsync(block, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask DrainChannelsAsync()
     {
-        await foreach (var item in _receiveBlocksChannel.Reader.ReadAllAsync())
+        await foreach (
+            var item in _receiveBlocksChannel.Reader.ReadAllAsync().ConfigureAwait(false)
+        )
             item.Dispose();
 
-        await foreach (var _ in _slotsChannel.Reader.ReadAllAsync()) { }
+        await foreach (var _ in _slotsChannel.Reader.ReadAllAsync().ConfigureAwait(false)) { }
     }
 
     public async ValueTask DisposeAsync()
@@ -274,12 +292,12 @@ internal class RequestScheduler(
             try
             {
                 if (_runningTask is not null)
-                    await _runningTask;
+                    await _runningTask.ConfigureAwait(false);
             }
             catch { }
 
-            await DrainChannelsAsync();
-            await piecePicker.DisposeAsync();
+            await DrainChannelsAsync().ConfigureAwait(false);
+            await piecePicker.DisposeAsync().ConfigureAwait(false);
             _cts?.Dispose();
         }
     }

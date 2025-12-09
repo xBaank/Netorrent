@@ -19,14 +19,15 @@ internal class HttpTracker(
 {
     public async ValueTask StartAsync(CancellationToken cancellationToken)
     {
-        var response = await TryAnnounceAsync(Events.Started, cancellationToken);
+        var response = await TryAnnounceAsync(Events.Started, cancellationToken)
+            .ConfigureAwait(false);
 
         if (response is null)
             return;
 
         foreach (var iPEndPoint in response.Peers)
         {
-            await channelWriter.WriteAsync(iPEndPoint, cancellationToken);
+            await channelWriter.WriteAsync(iPEndPoint, cancellationToken).ConfigureAwait(false);
         }
 
         while (!cancellationToken.IsCancellationRequested)
@@ -36,9 +37,10 @@ internal class HttpTracker(
             if (logger.IsEnabled(LogLevel.Information))
                 logger.LogInformation("Waiting {seconds} seconds", interval.TotalSeconds);
 
-            await Task.Delay(interval, cancellationToken);
+            await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
 
-            var newResponse = await TryAnnounceAsync(cancellationToken: cancellationToken);
+            var newResponse = await TryAnnounceAsync(cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
 
             if (newResponse is null)
                 continue;
@@ -47,7 +49,7 @@ internal class HttpTracker(
 
             foreach (var iPEndPoint in response.Peers)
             {
-                await channelWriter.WriteAsync(iPEndPoint, cancellationToken);
+                await channelWriter.WriteAsync(iPEndPoint, cancellationToken).ConfigureAwait(false);
             }
         }
     }
@@ -76,14 +78,12 @@ internal class HttpTracker(
                 50
             );
 
-            var response = await client.SendAsync(
-                request.GenerateRequest(announceUrl),
-                cancellationToken
-            );
-            var httpTrackerResponse = await HttpTrackerResponse.FromHttpResponseAsync(
-                response,
-                cancellationToken
-            );
+            var response = await client
+                .SendAsync(request.GenerateRequest(announceUrl), cancellationToken)
+                .ConfigureAwait(false);
+            var httpTrackerResponse = await HttpTrackerResponse
+                .FromHttpResponseAsync(response, cancellationToken)
+                .ConfigureAwait(false);
             return httpTrackerResponse;
         }
         catch (Exception ex)
@@ -96,6 +96,6 @@ internal class HttpTracker(
 
     public async ValueTask DisposeAsync()
     {
-        await TryAnnounceAsync(Events.Stopped);
+        await TryAnnounceAsync(Events.Stopped).ConfigureAwait(false);
     }
 }

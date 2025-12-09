@@ -37,9 +37,10 @@ internal class TrackerClient(
         //They finish successfully because of dns problems, udp timeouts, etc.
         var tasks = await CreateTrackers(urls, cancellationToken)
             .Select(i => i.StartAsync(cancellationToken).AsTask())
-            .ToListAsync(cancellationToken: cancellationToken);
+            .ToListAsync(cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
 
-        await Task.WhenAll(tasks);
+        await Task.WhenAll(tasks).ConfigureAwait(false);
     }
 
     private async IAsyncEnumerable<ITracker> CreateTrackers(
@@ -69,7 +70,7 @@ internal class TrackerClient(
                         forcedIp
                     ),
                 ],
-                "udp" => await CreateUdpTrackers(uri, cancellationToken),
+                "udp" => await CreateUdpTrackers(uri, cancellationToken).ConfigureAwait(false),
                 _ => LogUnknownTracker(url),
             };
 
@@ -86,7 +87,8 @@ internal class TrackerClient(
     private async Task<UdpTracker[]> CreateUdpTrackers(Uri uri, CancellationToken cancellationToken)
     {
         List<UdpTracker> udpTrackers = [];
-        var ips = await Dns.GetHostAdressesOrEmptyAsync(uri.Host, cancellationToken);
+        var ips = await Dns.GetHostAdressesOrEmptyAsync(uri.Host, cancellationToken)
+            .ConfigureAwait(false);
         var ipv4 = ips.FirstOrDefault(i => i.AddressFamily == AddressFamily.InterNetwork);
         var ipv6 = ips.FirstOrDefault(i => i.AddressFamily == AddressFamily.InterNetworkV6);
 
@@ -140,7 +142,7 @@ internal class TrackerClient(
         trackersChannel.TryComplete();
         foreach (var tracker in _trackers)
         {
-            await tracker.DisposeAsync();
+            await tracker.DisposeAsync().ConfigureAwait(false);
         }
     }
 }
