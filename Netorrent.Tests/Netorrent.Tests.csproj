@@ -24,7 +24,7 @@
     <ProjectReference Include="..\Netorrent\Netorrent.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Update="Data\evadubbed_archive.torrent">
+    <None Update="Data\debian-13.2.0-amd64-netinst.iso.torrent">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="Data\MultifileTest\Folder1\Folder2\test3.txt">

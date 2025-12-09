@@ -111,12 +111,14 @@ internal class RequestScheduler(
 
                 //If we can't find a peer we retry with the same one
                 freePeer ??= lastRequestedFrom;
+                /*
                 logger.LogInformation(
                     "Requesting timedout to {peer} block with {time} with total time of {total}",
                     freePeer.PeerId,
                     passedTime.TotalSeconds,
                     stopwatch.Elapsed.TotalSeconds
                 );
+                */
                 await _slotsChannel
                     .Writer.WriteAsync(freePeer, cancellationToken)
                     .ConfigureAwait(false);

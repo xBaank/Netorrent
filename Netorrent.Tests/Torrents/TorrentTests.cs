@@ -15,14 +15,8 @@ public enum AnnounceType
     Udp,
 }
 
-public record MyParallelLimit : IParallelLimit
-{
-    public int Limit => 5;
-}
-
-[ParallelLimiter<MyParallelLimit>]
 [ClassDataSource<OpenTrackerFixture>(Shared = SharedType.PerClass)]
-[Timeout(5 * 60_000)]
+[Timeout(3 * 60_000)]
 public class TorrentTests(OpenTrackerFixture fixture)
 {
     private readonly OpenTrackerFixture _fixture = fixture;
@@ -211,6 +205,20 @@ public class TorrentTests(OpenTrackerFixture fixture)
         }
     }
 
+    [Test]
+    public async Task Should_Download_Real_Torrent(CancellationToken cancellationToken)
+    {
+        await using var torrentClient = new TorrentClient(o => o with { Logger = Logger });
+        await using var torrent = await torrentClient.ImportTorrentAsync(
+            "Data/debian-13.2.0-amd64-netinst.iso.torrent",
+            "Output",
+            cancellationToken
+        );
+        await torrent.StartAsync(cancellationToken);
+        await torrent.DownloadInfo.DownloadTask.ShouldNotThrowAsync();
+        await torrent.StopAsync();
+    }
+
     private async IAsyncEnumerable<(Torrent, TorrentClient)> GetSeedersAsync(
         int number,
         string path,
@@ -223,7 +231,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 o with
                 {
                     PeerIpProxy = FixDockerAdress,
-                    Logger = logger,
+                    //     Logger = logger,
                 }
             );
 
@@ -249,7 +257,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 o with
                 {
                     PeerIpProxy = FixDockerAdress,
-                    Logger = logger,
+                    //     Logger = logger,
                 }
             );
 
