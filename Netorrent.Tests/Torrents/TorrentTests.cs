@@ -5,6 +5,7 @@ using Netorrent.Tests.Fixtures;
 using Netorrent.TorrentFile;
 using Netorrent.TorrentFile.FileStructure;
 using Shouldly;
+using TUnit.Core.Interfaces;
 
 namespace Netorrent.Tests.Torrents;
 
@@ -14,6 +15,12 @@ public enum AnnounceType
     Udp,
 }
 
+public record MyParallelLimit : IParallelLimit
+{
+    public int Limit => 5;
+}
+
+[ParallelLimiter<MyParallelLimit>]
 [ClassDataSource<OpenTrackerFixture>(Shared = SharedType.PerClass)]
 [Timeout(5 * 60_000)]
 public class TorrentTests(OpenTrackerFixture fixture)
