@@ -13,7 +13,7 @@ public class DownloadInfo
     private TaskCompletionSource _downloadTaskCompletitionSource = new();
 
     private IEnumerable<PeerConnection> PeersNotChocking =>
-        _peers.Values.Where(i => !i.PeerChocking && i.AmInterested);
+        _peers.Values.Where(i => !i.PeerChoking && i.AmInterested);
     public int ActivePeers => PeersNotChocking.Count();
     public int TotalPeers => _peers.Values.Count();
     public DownloadSpeed DownloadSpeed =>

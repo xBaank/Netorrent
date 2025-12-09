@@ -66,7 +66,7 @@ internal class RequestScheduler(
         {
             using var block = receiveBlock;
             await piecePicker.ReceiveBlockAsync(block, cancellationToken);
-            await _slotsChannel.Writer.WriteAsync(receiveBlock.FromPeer, cancellationToken);
+            await _slotsChannel.Writer.WriteAsync(block.FromPeer, cancellationToken);
         }
     }
 
@@ -97,10 +97,8 @@ internal class RequestScheduler(
                     }
                 }
 
-                //If we can't find a peer we just keep it as requested until we can find a free peer
-                if (freePeer is null)
-                    continue;
-
+                //If we can't find a peer we retry with the same one
+                freePeer ??= lastRequestedFrom;
                 requestBlock.State = RequestBlockState.Pending;
                 requestBlock.RequestedAt = null;
                 lastRequestedFrom.PeerRequestWindow.CalculateWindow(
@@ -111,16 +109,81 @@ internal class RequestScheduler(
                 await _slotsChannel.Writer.WriteAsync(freePeer, cancellationToken);
             }
 
+            //TODO Fix cases where freeSlot is not freed
+            foreach (var item in piecePicker.GetPendingRequestBlocks())
+            {
+                PeerConnection? freePeer = null;
+
+                lock (_activePeersLock)
+                {
+                    foreach (var peerConnection in _activePeers)
+                    {
+                        if (
+                            peerConnection.RequestedBlocksCount
+                            < peerConnection.PeerRequestWindow.MaxInFlightRequests
+                        )
+                        {
+                            freePeer = peerConnection;
+                            break;
+                        }
+                    }
+                }
+
+                if (freePeer is not null)
+                    await _slotsChannel.Writer.WriteAsync(freePeer, cancellationToken);
+            }
+
             logger.LogInformation("{blocks} number of blocks timedout", blocks.Length);
 
-            foreach (var peer in peers.Values)
+            lock (_activePeersLock)
             {
-                if (!peer.MyBitField.IsComplete)
-                    logger.LogInformation("Bitfield uncompleted");
-                if (peer.AmInterested)
-                    logger.LogInformation("Im interested in peer {peer}", peer.PeerId);
-                if (!peer.PeerChocking)
-                    logger.LogInformation("peer unchoking {peer}", peer.PeerId);
+                logger.LogInformation("---- ACTIVE PEERS ----");
+
+                foreach (var peer in _activePeers)
+                {
+                    logger.LogInformation(
+                        "peer {peer} unchoking {unchoke} interested {interest}",
+                        peer.PeerId,
+                        peer.PeerChoking,
+                        peer.AmInterested
+                    );
+                }
+                logger.LogInformation("---- INTERESTED PEERS ----");
+
+                foreach (var peer in _interestedPeers)
+                {
+                    logger.LogInformation(
+                        "peer {peer} unchoking {unchoke} interested {interest}",
+                        peer.PeerId,
+                        peer.PeerChoking,
+                        peer.AmInterested
+                    );
+                }
+
+                logger.LogInformation("---- REMAINING BLOCKS ----");
+
+                foreach (
+                    var item in piecePicker
+                        ._requestBlocksByPieceIndex.Values.SelectMany(i => i)
+                        .Where(i => i is null || i.State != RequestBlockState.Completed)
+                )
+                {
+                    logger.LogInformation(
+                        "Missing block with index {index} and state {state}",
+                        item?.Index,
+                        item?.State
+                    );
+                }
+
+                logger.LogInformation("---- REMAINING PIECES----");
+
+                for (int i = 0; i < bitfield.Length; i++)
+                {
+                    if (!bitfield.HasPiece(i))
+                    {
+                        logger.LogInformation("Missing piece {pieceIndex}", i);
+                    }
+                }
             }
 
             await Task.Delay(1.Seconds, cancellationToken);
@@ -134,9 +197,12 @@ internal class RequestScheduler(
         do
         {
             await Task.Delay(100.Milliseconds, cancellationToken);
-            minPeersReady = _activePeers
-                .AsValueEnumerable()
-                .Count(i => i.AmInterested && !i.PeerChocking);
+            lock (_activePeersLock)
+            {
+                minPeersReady = _activePeers
+                    .AsValueEnumerable()
+                    .Count(i => i.AmInterested && !i.PeerChoking);
+            }
         } while (!warmupTask.IsCompleted && minPeersReady < MinPeersForRarity);
     }
 
@@ -178,7 +244,7 @@ internal class RequestScheduler(
             requestBlock.State = RequestBlockState.Requested;
             requestBlock.RequestedFrom.Add(peerConnection);
             requestBlock.RequestedAt = DateTimeOffset.UtcNow;
-            peerConnection.RequestedBlocksCount++;
+            peerConnection.IncrementRequestedBlock();
 
             try
             {
@@ -186,10 +252,6 @@ internal class RequestScheduler(
             }
             catch (Exception ex)
             {
-                requestBlock.RequestedFrom.Remove(peerConnection);
-                requestBlock.RequestedAt = null;
-                requestBlock.State = RequestBlockState.Pending;
-                peerConnection.RequestedBlocksCount--;
                 if (logger.IsEnabled(LogLevel.Error))
                 {
                     logger.LogError(

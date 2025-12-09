@@ -107,10 +107,10 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 await leecherTorrent.StartAsync(cancellationToken);
             }
 
-            foreach (var leecherTorrent in leechersTorrents)
-            {
-                await leecherTorrent.DownloadInfo.DownloadTask.ShouldNotThrowAsync();
-            }
+            var tasks = leechersTorrents.Select(i =>
+                i.DownloadInfo.DownloadTask.ShouldNotThrowAsync()
+            );
+            await Task.WhenAll(tasks);
 
             foreach (var seederTorrent in seedersTorrents)
             {

@@ -11,7 +11,7 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager) : IAsyn
     public const int TimeoutSeconds = 10;
 
     private readonly int[] _pieceRarity = new int[myBitfield.Length];
-    private readonly ConcurrentDictionary<int, RequestBlock?[]> _requestBlocksByPieceIndex = [];
+    public readonly ConcurrentDictionary<int, RequestBlock?[]> _requestBlocksByPieceIndex = [];
     private readonly ConcurrentDictionary<int, PieceBuffer> _pieceBuffers = [];
 
     public void IncreaseRarity(int index)
@@ -55,9 +55,14 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager) : IAsyn
                     (long)receiveBlock.FromPeer.DownloadSpeedTracker.CurrentBps.Bps,
                     rtt
                 );
+
+                //Decrement from all the peers that requested
+                foreach (var peer in requestBlock.RequestedFrom)
+                {
+                    peer.DecrementRequestedBlock();
+                }
             }
 
-            receiveBlock.FromPeer.RequestedBlocksCount--;
             requestBlock?.State = RequestBlockState.Completed;
             requestBlock?.RequestedAt = null;
             requestBlock?.RequestedFrom.Clear();
@@ -105,15 +110,14 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager) : IAsyn
         {
             var currentRequestBlock = requestBlocks[i];
 
-            if (
-                currentRequestBlock is not null
-                && currentRequestBlock.State == RequestBlockState.Completed
-            )
+            if (currentRequestBlock?.State == RequestBlockState.Completed)
+            {
                 continue;
+            }
 
             if (currentRequestBlock is null or { State: RequestBlockState.Pending })
             {
-                return requestBlocks[i] = fileManager.GetRequestBlockByBlockIndex(index, i);
+                return requestBlocks[i] ??= fileManager.GetRequestBlockByBlockIndex(index, i);
             }
         }
 
@@ -136,6 +140,16 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager) : IAsyn
 
             if (diff > timeout)
                 yield return (requestBlock, diff);
+        }
+    }
+
+    public IEnumerable<RequestBlock> GetPendingRequestBlocks()
+    {
+        var timeout = TimeoutSeconds.Seconds;
+        foreach (var requestBlock in _requestBlocksByPieceIndex.Values.SelectMany(i => i))
+        {
+            if (requestBlock?.State == RequestBlockState.Pending)
+                yield return requestBlock;
         }
     }
 

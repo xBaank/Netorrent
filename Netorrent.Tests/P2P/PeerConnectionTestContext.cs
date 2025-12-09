@@ -40,8 +40,8 @@ internal sealed class PeerConnectionTestContext : IAsyncDisposable
             UploadMock,
             RequestMock,
             Stream,
-            peerChocking: peerChocking,
-            amChocking: amChocking,
+            peerChoking: peerChocking,
+            amChoking: amChocking,
             peerInterested: peerInterested,
             amInterested: amInterested
         );

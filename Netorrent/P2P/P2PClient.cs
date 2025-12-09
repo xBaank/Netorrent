@@ -279,7 +279,7 @@ internal class P2PClient : IAsyncDisposable
             .Values.AsValueEnumerable()
             .Where(p =>
                 p.ConnectionDuration > minAge
-                && (p.DownloadSpeedTracker.CurrentBps.Kbps < minAcceptableSpeed || p.PeerChocking)
+                && (p.DownloadSpeedTracker.CurrentBps.Kbps < minAcceptableSpeed || p.PeerChoking)
             )
             .ToList();
 

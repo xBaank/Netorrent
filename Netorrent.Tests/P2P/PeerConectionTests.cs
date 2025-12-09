@@ -30,7 +30,7 @@ public class PeerConectionTests
         await stateChanged;
 
         bitfieldMessage.Id.ShouldBe(Message.Bitfield);
-        ctx.Peer.PeerChocking.ShouldBeFalse();
+        ctx.Peer.PeerChoking.ShouldBeFalse();
     }
 
     [Test]
@@ -45,7 +45,7 @@ public class PeerConectionTests
         using var bitfieldMessage = await ctx.ReadAsync(token);
         await state;
 
-        ctx.Peer.PeerChocking.ShouldBeTrue();
+        ctx.Peer.PeerChoking.ShouldBeTrue();
         bitfieldMessage.Id.ShouldBe(Message.Bitfield);
     }
 
@@ -67,7 +67,7 @@ public class PeerConectionTests
         await ctx.DisposeAsync();
 
         ctx.Peer.PeerInterested.ShouldBeTrue();
-        ctx.Peer.AmChocking.ShouldBeFalse();
+        ctx.Peer.AmChoking.ShouldBeFalse();
         bitfieldMessage.Id.ShouldBe(Message.Bitfield);
         unchokeMessage.Id.ShouldBe(Message.Unchoke);
 
@@ -98,7 +98,7 @@ public class PeerConectionTests
         await state;
 
         ctx.Peer.PeerInterested.ShouldBeFalse();
-        ctx.Peer.AmChocking.ShouldBeTrue();
+        ctx.Peer.AmChoking.ShouldBeTrue();
         bitfieldMessage.Id.ShouldBe(Message.Bitfield);
         chokeMessage.Id.ShouldBe(Message.Choke);
     }
@@ -253,7 +253,7 @@ public class PeerConectionTests
         await ctx.DisposeAsync();
 
         ctx.Peer.PeerInterested.ShouldBeTrue();
-        ctx.Peer.AmChocking.ShouldBeFalse();
+        ctx.Peer.AmChoking.ShouldBeFalse();
 
         bitfieldMessage.Id.ShouldBe(Message.Bitfield);
         unchokeMessage.Id.ShouldBe(Message.Unchoke);
@@ -309,7 +309,7 @@ public class PeerConectionTests
         await ctx.DisposeAsync();
 
         ctx.Peer.AmInterested.ShouldBeTrue();
-        ctx.Peer.PeerChocking.ShouldBeFalse();
+        ctx.Peer.PeerChoking.ShouldBeFalse();
 
         bitfieldMessage.Id.ShouldBe(Message.Bitfield);
         intersetedMessage.Id.ShouldBe(Message.Interested);
@@ -349,7 +349,7 @@ public class PeerConectionTests
         await ctx.DisposeAsync();
 
         ctx.Peer.AmInterested.ShouldBeTrue();
-        ctx.Peer.PeerChocking.ShouldBeFalse();
+        ctx.Peer.PeerChoking.ShouldBeFalse();
 
         bitfieldMessage.Id.ShouldBe(Message.Bitfield);
         interestedMessage.Id.ShouldBe(Message.Interested);
