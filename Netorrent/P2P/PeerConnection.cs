@@ -90,7 +90,7 @@ internal class PeerConnection(
             await cancellationTokenSource.CancelOnFirstCompletionAndAwaitAllAsync([
                 messageStream.StartAsync(cancellationTokenSource.Token),
                 ProcessIncomingMessagesAsync(cancellationTokenSource.Token),
-                CheckTimeoutAsync(cancellationTokenSource.Token),
+                //  CheckTimeoutAsync(cancellationTokenSource.Token),
             ]);
         }
         catch (OperationCanceledException) { }
