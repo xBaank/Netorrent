@@ -86,7 +86,7 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager) : IAsyn
             }
             else
             {
-                myBitfield.SetPiece(receiveBlock.Index, cancellationToken);
+                myBitfield.SetPiece(receiveBlock.Index);
                 _requestBlocksByPieceIndex.TryRemove(receiveBlock.Index, out _);
             }
         }
@@ -124,33 +124,22 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager) : IAsyn
         return null;
     }
 
-    public IEnumerable<(RequestBlock requestBlock, TimeSpan passedTime)> GetTimeoutRequestBlocks()
+    public (RequestBlock requestBlock, TimeSpan passedTime)[] GetTimeoutRequestBlocks()
     {
         var timeout = TimeoutSeconds.Seconds;
-        foreach (var requestBlock in _requestBlocksByPieceIndex.Values.SelectMany(i => i))
-        {
-            if (
-                requestBlock is null
-                || requestBlock.State != RequestBlockState.Requested
-                || requestBlock.RequestedAt is null
+        var now = DateTime.UtcNow;
+
+        return _requestBlocksByPieceIndex
+            .Values.AsValueEnumerable()
+            .SelectMany(i => i)
+            .Where(i =>
+                i?.State == RequestBlockState.Requested
+                && i.RequestedAt is not null
+                && (now - i.RequestedAt.Value) > timeout
             )
-                continue;
-
-            var diff = DateTimeOffset.UtcNow - requestBlock.RequestedAt.Value;
-
-            if (diff > timeout)
-                yield return (requestBlock, diff);
-        }
-    }
-
-    public IEnumerable<RequestBlock> GetPendingRequestBlocks()
-    {
-        var timeout = TimeoutSeconds.Seconds;
-        foreach (var requestBlock in _requestBlocksByPieceIndex.Values.SelectMany(i => i))
-        {
-            if (requestBlock?.State == RequestBlockState.Pending)
-                yield return requestBlock;
-        }
+            .Cast<RequestBlock>()
+            .Select(i => (i, (now - i.RequestedAt!.Value)))
+            .ToArray();
     }
 
     private IEnumerable<int> GetPriorityPieces(Bitfield peerBitfield)

@@ -166,7 +166,7 @@ public class PeerConectionTests
         var ctx = new PeerConnectionTestContext(local);
 
         // mark local bitfield as already having piece 1
-        local.SetPiece(1, token);
+        local.SetPiece(1);
         var callTask = ctx.RequestMock.WaitForCallAsync(
             x => x.IncreaseRarity(Arg.Any<int>()),
             token
@@ -192,7 +192,7 @@ public class PeerConectionTests
         // local has all pieces; peer has only piece 1 (so no interest)
         var local = new Bitfield(5, true);
         var peerBitfield = new Bitfield(5);
-        peerBitfield.SetPiece(1, token);
+        peerBitfield.SetPiece(1);
 
         var ctx = new PeerConnectionTestContext(local);
         var callTask = ctx.RequestMock.WaitForCallAsync(

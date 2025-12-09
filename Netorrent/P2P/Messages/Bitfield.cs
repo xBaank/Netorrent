@@ -1,5 +1,8 @@
-﻿using System.Buffers;
+﻿using System;
+using System.Buffers;
 using System.Collections;
+using System.Reactive.Subjects;
+using System.Threading.Channels;
 using Netorrent.Other;
 using ZLinq;
 
@@ -7,9 +10,10 @@ namespace Netorrent.P2P.Messages;
 
 public class Bitfield
 {
-    internal event Func<int, CancellationToken, Task>? OnHavePieceAsync;
     private readonly Lock _lock = new();
     private readonly BitArray _bits;
+    private readonly Subject<int> _stateChanged = new();
+    public IObservable<int> StateChanged => _stateChanged;
 
     internal Bitfield(int pieceCount, bool isInitialized = false)
     {
@@ -36,20 +40,22 @@ public class Bitfield
 
     public bool IsComplete => _bits.HasAllSet();
 
-    internal void SetPiece(int index, CancellationToken cancellationToken)
+    internal void SetPiece(int index)
     {
-        Func<int, CancellationToken, Task>? callback = null;
-
         lock (_lock)
         {
             if (index >= _bits.Length)
                 return;
 
-            _bits[index] = true;
-            callback = OnHavePieceAsync;
-        }
+            if (_bits[index])
+                return;
 
-        callback?.Invoke(index, cancellationToken);
+            _bits[index] = true;
+            _stateChanged.OnNext(index);
+
+            if (IsComplete)
+                _stateChanged.OnCompleted();
+        }
     }
 
     internal bool HasPiece(int index) => index < _bits.Length && _bits[index];

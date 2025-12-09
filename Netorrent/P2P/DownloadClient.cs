@@ -2,6 +2,7 @@
 using Netorrent.IO;
 using Netorrent.P2P.Measurement;
 using Netorrent.P2P.Messages;
+using ZLinq;
 
 namespace Netorrent.P2P;
 
@@ -10,14 +11,14 @@ public class DownloadInfo
     private readonly IReadOnlyDictionary<PeerEndpoint, PeerConnection> _peers;
     private readonly FileManager _fileManager;
     private readonly Bitfield _bitfield;
+    private readonly IDisposable _stateDisposable;
     private TaskCompletionSource _downloadTaskCompletitionSource = new();
-
     private IEnumerable<PeerConnection> PeersNotChocking =>
         _peers.Values.Where(i => !i.PeerChoking && i.AmInterested);
     public int ActivePeers => PeersNotChocking.Count();
     public int TotalPeers => _peers.Values.Count();
     public DownloadSpeed DownloadSpeed =>
-        PeersNotChocking.Sum(p => p.DownloadSpeedTracker.CurrentBps.Bps);
+        PeersNotChocking.AsValueEnumerable().Sum(p => p.DownloadSpeedTracker.CurrentBps.Bps);
     public ByteSize DownloadedBytes => (long)_fileManager.GetWrittenBytes();
     public ByteSize TotalBytes => _fileManager.TotalSize;
     public Task DownloadTask => _downloadTaskCompletitionSource.Task;
@@ -31,13 +32,12 @@ public class DownloadInfo
         _peers = peers;
         _fileManager = fileManager;
         _bitfield = bitfield;
-        _bitfield.OnHavePieceAsync += CheckDownload;
+        _stateDisposable = _bitfield.StateChanged.Subscribe(CheckDownload);
     }
 
     internal void Reset()
     {
         _downloadTaskCompletitionSource.TrySetCanceled();
-
         _downloadTaskCompletitionSource = new();
         if (_bitfield.IsComplete)
             _downloadTaskCompletitionSource.TrySetResult();
@@ -53,18 +53,16 @@ public class DownloadInfo
         _downloadTaskCompletitionSource.TrySetCanceled();
     }
 
-    private Task CheckDownload(int pieceIndex, CancellationToken token)
+    private void CheckDownload(int pieceIndex)
     {
         if (_bitfield.IsComplete)
         {
             _downloadTaskCompletitionSource.TrySetResult();
         }
-
-        return Task.CompletedTask;
     }
 
     internal void Dispose()
     {
-        _bitfield.OnHavePieceAsync -= CheckDownload;
+        _stateDisposable.Dispose();
     }
 }
