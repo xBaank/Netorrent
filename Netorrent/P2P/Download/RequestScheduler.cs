@@ -79,6 +79,15 @@ internal class RequestScheduler(
             foreach (var (requestBlock, passedTime) in piecePicker.GetTimeoutRequestBlocks())
             {
                 var lastRequestedFrom = requestBlock.RequestedFrom[^1];
+
+                requestBlock.State = RequestBlockState.Pending;
+                requestBlock.RequestedAt = null;
+                lastRequestedFrom.PeerRequestWindow.CalculateWindow(
+                    (long)lastRequestedFrom.DownloadSpeedTracker.CurrentBps.Bps,
+                    passedTime
+                );
+                lastRequestedFrom.DecrementRequestedBlock();
+
                 PeerConnection? freePeer = null;
 
                 lock (_activePeersLock)
@@ -100,14 +109,6 @@ internal class RequestScheduler(
 
                 //If we can't find a peer we retry with the same one
                 freePeer ??= lastRequestedFrom;
-                requestBlock.State = RequestBlockState.Pending;
-                requestBlock.RequestedAt = null;
-                lastRequestedFrom.PeerRequestWindow.CalculateWindow(
-                    (long)lastRequestedFrom.DownloadSpeedTracker.CurrentBps.Bps,
-                    passedTime
-                );
-                lastRequestedFrom.DecrementRequestedBlock();
-
                 logger.LogInformation(
                     "Requesting timedout to {peer} block with {time} with total time of {total}",
                     freePeer.PeerId,
