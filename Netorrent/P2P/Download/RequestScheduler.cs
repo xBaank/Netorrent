@@ -82,10 +82,6 @@ internal class RequestScheduler(
 
                 requestBlock.State = RequestBlockState.Pending;
                 requestBlock.RequestedAt = null;
-                lastRequestedFrom.PeerRequestWindow.CalculateWindow(
-                    (long)lastRequestedFrom.DownloadSpeedTracker.CurrentBps.Bps,
-                    passedTime
-                );
                 lastRequestedFrom.DecrementRequestedBlock();
 
                 PeerConnection? freePeer = null;
