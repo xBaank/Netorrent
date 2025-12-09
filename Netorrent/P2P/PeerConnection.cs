@@ -375,7 +375,7 @@ internal class PeerConnection(
         try
         {
             if (PeerBitField is null)
-                throw new InvalidOperationException("PeerBitfield should not be null");
+                return;
 
             var interest = MyBitField.HasAnyMissingPiece(PeerBitField);
             if (interest != AmInterested)
