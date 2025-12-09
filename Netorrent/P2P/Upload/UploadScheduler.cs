@@ -19,7 +19,7 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
         new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
     );
     private readonly ConcurrentDictionary<
-        (int Index, int Begin, int Length),
+        (int Index, int Begin, int Length, PeerConnection peer),
         RequestBlock
     > _requestByIBL = [];
 
@@ -74,7 +74,7 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
             var peer = requestBlock.RequestedFrom[0];
 
             _requestByIBL.TryRemove(
-                (requestBlock.Index, requestBlock.Begin, requestBlock.Length),
+                (requestBlock.Index, requestBlock.Begin, requestBlock.Length, peer),
                 out _
             );
 
@@ -168,26 +168,34 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
         lock (_unchokedSlotsLock)
         {
             if (!_unchokedPeers.Contains(from))
+            {
+                logger.LogInformation("Peer is not unchoked");
                 return false;
+            }
 
             if (from.UploadRequestedBlocksCount >= MaxInFlightUploadRequests)
+            {
+                logger.LogInformation("Peer reached the max requests");
                 return false;
-
-            // prevent duplicates if you want
+            }
         }
 
-        var key = (request.Index, request.Begin, request.Length);
+        var key = (request.Index, request.Begin, request.Length, from);
         if (!_requestByIBL.TryAdd(key, request))
+        {
+            logger.LogInformation("Couldn't add this request");
             return false;
+        }
 
-        // write to channel *outside* lock
         await _pendingRequests.Writer.WriteAsync(request, cancellationToken);
         return true;
     }
 
     public void CancelRequest(RequestBlock request)
     {
-        var key = (request.Index, request.Begin, request.Length);
+        var from = request.RequestedFrom[0];
+
+        var key = (request.Index, request.Begin, request.Length, from);
         if (!_requestByIBL.TryGetValue(key, out var requestBlock))
             return;
 

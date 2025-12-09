@@ -260,7 +260,6 @@ internal class PeerConnection(
     {
         if (AmChoking)
         {
-            Debug.Fail("AAAAAAAAAAAA");
             return;
         }
 
