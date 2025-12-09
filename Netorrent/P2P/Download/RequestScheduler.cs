@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
@@ -35,11 +36,12 @@ internal class RequestScheduler(
     private CancellationTokenSource? _cts;
     private Task? _runningTask;
     private bool _disposed;
+    private readonly Stopwatch stopwatch = new Stopwatch();
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-
+        stopwatch.Start();
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _runningTask = _cts.CancelOnFirstCompletionAndAwaitAllAsync([
             ReceiveBlocksAsync(_cts.Token),
@@ -104,7 +106,14 @@ internal class RequestScheduler(
                     (long)lastRequestedFrom.DownloadSpeedTracker.CurrentBps.Bps,
                     passedTime
                 );
+                lastRequestedFrom.DecrementRequestedBlock();
 
+                logger.LogInformation(
+                    "Requesting timedout to {peer} block with {time} with total time of {total}",
+                    freePeer.PeerId,
+                    passedTime.TotalSeconds,
+                    stopwatch.Elapsed.TotalSeconds
+                );
                 await _slotsChannel.Writer.WriteAsync(freePeer, cancellationToken);
             }
             await Task.Delay(1.Seconds, cancellationToken);
@@ -155,6 +164,7 @@ internal class RequestScheduler(
 
                 if (newIndex == possiblePieceIndex || newIndex is null)
                 {
+                    logger.LogInformation("No piece selected");
                     return;
                 }
 

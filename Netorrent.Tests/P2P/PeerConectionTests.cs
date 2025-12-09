@@ -267,7 +267,7 @@ public class PeerConectionTests
         await ctx
             .UploadMock.Received(1)
             .FreeSlotAsync(Arg.Any<PeerConnection>(), Arg.Any<CancellationToken>());
-        ctx.Peer.UploadRequestedBlocksCount.ShouldBe(1);
+        ctx.Peer.UploadRequestedBlocksCount.ShouldBe(0);
     }
 
     [Test]
