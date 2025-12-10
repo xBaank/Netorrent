@@ -18,6 +18,7 @@ internal class RequestScheduler(
 {
     const int MinPeersForRarity = 6;
     const int WarmupTimeoutSecods = 8;
+    const int WatchDogIntervalMiliseconds = 500;
     const int MinPeers = 6;
     const int MaxPeers = 10;
 
@@ -32,6 +33,9 @@ internal class RequestScheduler(
     private readonly List<PeerConnection> _interestedPeers = [];
     private readonly Lock _activePeersLock = new();
     private readonly IReadOnlyDictionary<PeerEndpoint, PeerConnection> peers = peers;
+    private readonly HashSet<PeerConnection> _peersEnqueued = [];
+    private readonly Lock _peersEnqueuedLock = new();
+
     private int _maxCurrentPeers = MinPeers;
     private CancellationTokenSource? _cts;
     private Task? _runningTask;
@@ -45,6 +49,7 @@ internal class RequestScheduler(
             ReceiveBlocksAsync(_cts.Token),
             ReScheduleTimeoutBlocksAsync(_cts.Token),
             ProcessSlotsAsync(_cts.Token),
+            SlotsWatchdogAsync(_cts.Token),
         ]);
         return _runningTask;
     }
@@ -52,13 +57,105 @@ internal class RequestScheduler(
     public async Task ProcessSlotsAsync(CancellationToken cancellationToken)
     {
         await WarmupAsync(cancellationToken).ConfigureAwait(false);
+
         await foreach (
             var peerConnection in _slotsChannel
                 .Reader.ReadAllAsync(cancellationToken)
                 .ConfigureAwait(false)
         )
         {
-            await ScheduleRequests(peerConnection, cancellationToken).ConfigureAwait(false);
+            // mark as dequeued as early as possible
+            lock (_peersEnqueuedLock)
+            {
+                _peersEnqueued.Remove(peerConnection);
+            }
+
+            try
+            {
+                await ScheduleRequests(peerConnection, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                // log if needed, but don't let exceptions kill the loop
+                if(logger.IsEnabled(LogLevel.Warning))
+                {
+                    logger.LogWarning(
+                    ex,
+                    "ScheduleRequests failed for peer {Peer}",
+                    peerConnection.IPEndPoint
+                );
+                }
+                // If the peer still should be processed later, re-enqueue it:
+                // await RequestSlotAsync(peerConnection, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async Task SlotsWatchdogAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(WatchDogIntervalMiliseconds.Milliseconds, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+
+            // compute total outstanding requests across active peers
+            int totalRequested = 0;
+            List<PeerConnection> currentActive;
+            lock (_activePeersLock)
+            {
+                currentActive = _activePeers.ToList();
+            }
+
+            foreach (var p in currentActive)
+                totalRequested += p.RequestedBlocksCount; // ensure this is atomic on PeerConnection
+
+            bool anyEnqueued;
+            lock (_peersEnqueuedLock)
+            {
+                anyEnqueued = _peersEnqueued.Count > 0;
+            }
+
+            // If nothing is happening and no peer is enqueued, try to kick the scheduler.
+            if (totalRequested == 0 && !anyEnqueued && currentActive.Count > 0)
+            {
+                // Re-enqueue a small subset (or all) of the active peers.
+                // Use TryWrite to avoid blocking the watchdog.
+                foreach (var p in currentActive)
+                {
+                    bool alreadyEnqueued;
+                    lock (_peersEnqueuedLock)
+                    {
+                        alreadyEnqueued = _peersEnqueued.Contains(p);
+                        if (!alreadyEnqueued)
+                            _peersEnqueued.Add(p); // reserve spot
+                    }
+
+                    if (alreadyEnqueued)
+                        continue;
+
+                    // Best-effort - don't await here to avoid blocking the loop.
+                    if (!_slotsChannel.Writer.TryWrite(p))
+                    {
+                        // If TryWrite failed, remove reservation so we can try later.
+                        lock (_peersEnqueuedLock)
+                        {
+                            _peersEnqueued.Remove(p);
+                        }
+                    }
+                    else
+                    {
+                        // Successfully re-enqueued — you may break early to avoid spamming many writes
+                        // break;
+                    }
+                }
+            }
         }
     }
 
@@ -74,6 +171,11 @@ internal class RequestScheduler(
                 .Writer.WriteAsync(block.FromPeer, cancellationToken)
                 .ConfigureAwait(false);
         }
+    }
+
+    private async Task ReSchedulePeersBlocksAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested) { }
     }
 
     private async Task ReScheduleTimeoutBlocksAsync(CancellationToken cancellationToken)
@@ -198,6 +300,11 @@ internal class RequestScheduler(
             await _slotsChannel
                 .Writer.WriteAsync(peerConnection, cancellationToken)
                 .ConfigureAwait(false);
+
+            lock (_peersEnqueuedLock)
+            {
+                _peersEnqueued.Add(peerConnection);
+            }
         }
     }
 
@@ -225,26 +332,6 @@ internal class RequestScheduler(
         {
             await _slotsChannel
                 .Writer.WriteAsync(nextPeer, cancellationToken)
-                .ConfigureAwait(false);
-        }
-    }
-
-    public async ValueTask ReceivedHaveAsync(
-        PeerConnection peerConnection,
-        CancellationToken cancellationToken
-    )
-    {
-        var contains = false;
-
-        lock (_activePeersLock)
-        {
-            contains = _activePeers.Contains(peerConnection);
-        }
-
-        if (contains)
-        {
-            await _slotsChannel
-                .Writer.WriteAsync(peerConnection, cancellationToken)
                 .ConfigureAwait(false);
         }
     }

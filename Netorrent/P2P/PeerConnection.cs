@@ -253,7 +253,6 @@ internal class PeerConnection(
         RegisterPiece(pieceIndex);
         PeerBitField.SetPiece(pieceIndex);
         await CheckInterestAsync(cancellationToken).ConfigureAwait(false);
-        await _requestScheduler.ReceivedHaveAsync(this, cancellationToken).ConfigureAwait(false);
     }
 
     private async ValueTask ReceiveUnchokeAsync(CancellationToken cancellationToken)
