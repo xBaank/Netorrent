@@ -36,9 +36,27 @@ public class Bitfield
         }
     }
 
-    public int Length => _bits.Length;
+    public int Length
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _bits.Length;
+            }
+        }
+    }
 
-    public bool IsComplete => _bits.HasAllSet();
+    public bool IsComplete
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _bits.HasAllSet();
+            }
+        }
+    }
 
     internal void SetPiece(int index)
     {
@@ -58,7 +76,13 @@ public class Bitfield
         }
     }
 
-    internal bool HasPiece(int index) => index < _bits.Length && _bits[index];
+    internal bool HasPiece(int index)
+    {
+        lock (_lock)
+        {
+            return index < _bits.Length && _bits[index];
+        }
+    }
 
     internal bool HasAnyMissingPiece(Bitfield other)
     {
@@ -67,8 +91,8 @@ public class Bitfield
 
         for (int i = 0; i < Length; i++)
         {
-            // If the peer has the piece and I don't, I'm missing something they have
-            if (other._bits[i] && !this._bits[i])
+            // If the peer has the piece and I don't, I'm interested
+            if (other.HasPiece(i) && !HasPiece((i)))
                 return true;
         }
 
@@ -77,15 +101,18 @@ public class Bitfield
 
     internal RentedArray<byte> ToRentedArray()
     {
-        int byteCount = (_bits.Length + 7) / 8;
-        var array = ArrayPool<byte>.Shared.Rent(byteCount);
-        var memory = array.AsSpan()[..byteCount];
-        PackBitsBigEndian(memory);
+        lock (_lock)
+        {
+            int byteCount = (_bits.Length + 7) / 8;
+            var array = ArrayPool<byte>.Shared.Rent(byteCount);
+            var memory = array.AsSpan()[..byteCount];
+            PackBitsBigEndian(memory);
 
-        return new RentedArray<byte>(array, byteCount);
+            return new RentedArray<byte>(array, byteCount);
+        }
     }
 
-    internal void PackBitsBigEndian(Span<byte> dest)
+    private void PackBitsBigEndian(Span<byte> dest)
     {
         int byteLen = (_bits.Length + 7) / 8;
         if (dest.Length < byteLen)

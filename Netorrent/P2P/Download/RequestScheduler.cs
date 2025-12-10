@@ -36,12 +36,10 @@ internal class RequestScheduler(
     private CancellationTokenSource? _cts;
     private Task? _runningTask;
     private bool _disposed;
-    private readonly Stopwatch stopwatch = new Stopwatch();
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        stopwatch.Start();
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _runningTask = _cts.CancelOnFirstCompletionAndAwaitAllAsync([
             ReceiveBlocksAsync(_cts.Token),
@@ -82,12 +80,11 @@ internal class RequestScheduler(
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            foreach (var (requestBlock, passedTime) in piecePicker.GetTimeoutRequestBlocks())
+            foreach (var requestBlock in piecePicker.GetTimeoutRequestBlocks())
             {
                 var lastRequestedFrom = requestBlock.RequestedFrom[^1];
 
-                requestBlock.State = RequestBlockState.Pending;
-                requestBlock.RequestedAt = null;
+                piecePicker.SetBlockToPending(requestBlock);
                 lastRequestedFrom.DecrementRequestedBlock();
 
                 PeerConnection? freePeer = null;
@@ -98,10 +95,7 @@ internal class RequestScheduler(
                     {
                         if (peerConnection == lastRequestedFrom)
                             continue;
-                        if (
-                            peerConnection.RequestedBlocksCount
-                            < peerConnection.PeerRequestWindow.MaxInFlightRequests
-                        )
+                        if (peerConnection.PeerBitField?.HasPiece(requestBlock.Index) == true)
                         {
                             freePeer = peerConnection;
                             break;
@@ -111,14 +105,6 @@ internal class RequestScheduler(
 
                 //If we can't find a peer we retry with the same one
                 freePeer ??= lastRequestedFrom;
-                /*
-                logger.LogInformation(
-                    "Requesting timedout to {peer} block with {time} with total time of {total}",
-                    freePeer.PeerId,
-                    passedTime.TotalSeconds,
-                    stopwatch.Elapsed.TotalSeconds
-                );
-                */
                 await _slotsChannel
                     .Writer.WriteAsync(freePeer, cancellationToken)
                     .ConfigureAwait(false);
@@ -129,18 +115,20 @@ internal class RequestScheduler(
 
     private async Task WarmupAsync(CancellationToken cancellationToken)
     {
-        var warmupTask = Task.Delay(WarmupTimeoutSecods.Seconds, cancellationToken);
-        var minPeersReady = 0;
-        do
+        var warmupDeadline = DateTime.UtcNow + WarmupTimeoutSecods.Seconds;
+        while (DateTime.UtcNow < warmupDeadline && !cancellationToken.IsCancellationRequested)
         {
-            await Task.Delay(100.Milliseconds, cancellationToken).ConfigureAwait(false);
+            int minPeersReady;
             lock (_activePeersLock)
             {
-                minPeersReady = _activePeers
-                    .AsValueEnumerable()
-                    .Count(i => i.AmInterested && !i.PeerChoking);
+                minPeersReady = _activePeers.Count(i => i.AmInterested && !i.PeerChoking);
             }
-        } while (!warmupTask.IsCompleted && minPeersReady < MinPeersForRarity);
+
+            if (minPeersReady >= MinPeersForRarity)
+                return;
+
+            await Task.Delay(100, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private async ValueTask ScheduleRequests(
@@ -151,44 +139,24 @@ internal class RequestScheduler(
         if (peerConnection.PeerBitField is null)
             throw new InvalidOperationException("PeerBitfield should not be null");
 
-        var possiblePieceIndex = piecePicker.GetPiece(peerConnection.PeerBitField);
-
         while (
             peerConnection.RequestedBlocksCount
             < peerConnection.PeerRequestWindow.MaxInFlightRequests
         )
         {
-            if (possiblePieceIndex is null)
+            var requestBlock = piecePicker.GetBlock(peerConnection.PeerBitField);
+
+            if (requestBlock is null)
                 return;
 
-            var requestBlock = piecePicker.SelectBlock(possiblePieceIndex.Value);
-
-            //All requestBlocks are already created for this piece so we try to generate a new one
-            if (requestBlock is null)
-            {
-                // try to find another piece once; avoid hot spin if we get the same piece again
-                var newIndex = piecePicker.GetPiece(peerConnection.PeerBitField);
-
-                if (newIndex == possiblePieceIndex || newIndex is null)
-                {
-                    logger.LogInformation("No piece selected");
-                    return;
-                }
-
-                possiblePieceIndex = newIndex;
-                continue;
-            }
-
-            requestBlock.State = RequestBlockState.Requested;
-            requestBlock.RequestedFrom.Add(peerConnection);
-            requestBlock.RequestedAt = DateTimeOffset.UtcNow;
-            peerConnection.IncrementRequestedBlock();
+            piecePicker.SetBlockToRequested(requestBlock, peerConnection);
 
             try
             {
                 await peerConnection
                     .SendRequestAsync(requestBlock, cancellationToken)
                     .ConfigureAwait(false);
+                peerConnection.IncrementRequestedBlock();
             }
             catch (Exception ex)
             {
@@ -202,6 +170,7 @@ internal class RequestScheduler(
                         peerConnection.IPEndPoint
                     );
                 }
+                peerConnection.DecrementRequestedBlock();
                 break;
             }
         }

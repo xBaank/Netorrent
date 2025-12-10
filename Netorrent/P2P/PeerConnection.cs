@@ -283,9 +283,8 @@ internal class PeerConnection(
         var request = new RequestBlock(index, begin, length)
         {
             RequestedAt = DateTimeOffset.UtcNow,
+            RequestedFrom = [this],
         };
-        request.RequestedFrom.Add(this);
-
         await _uploadScheduler.AddRequestAsync(request, cancellationToken).ConfigureAwait(false);
     }
 

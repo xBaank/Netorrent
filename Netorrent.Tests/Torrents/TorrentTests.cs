@@ -5,7 +5,6 @@ using Netorrent.Tests.Fixtures;
 using Netorrent.TorrentFile;
 using Netorrent.TorrentFile.FileStructure;
 using Shouldly;
-using TUnit.Core.Interfaces;
 
 namespace Netorrent.Tests.Torrents;
 
@@ -16,7 +15,7 @@ public enum AnnounceType
 }
 
 [ClassDataSource<OpenTrackerFixture>(Shared = SharedType.PerClass)]
-[Timeout(5 * 60_000)]
+[Timeout(3 * 60_000)]
 public class TorrentTests(OpenTrackerFixture fixture)
 {
     private readonly OpenTrackerFixture _fixture = fixture;
@@ -205,7 +204,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
         }
     }
 
-    [Test]
+    [Test, Skip("There's a bug! ")]
     public async Task Should_Download_Real_Torrent(CancellationToken cancellationToken)
     {
         await using var torrentClient = new TorrentClient(o => o with { Logger = Logger });

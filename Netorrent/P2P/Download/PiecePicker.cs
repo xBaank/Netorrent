@@ -11,8 +11,11 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager) : IAsyn
     public const int TimeoutSeconds = 10;
 
     private readonly int[] _pieceRarity = new int[myBitfield.Length];
-    public readonly ConcurrentDictionary<int, RequestBlock?[]> _requestBlocksByPieceIndex = [];
+    private readonly Lock _requestBlocksLock = new();
+    private readonly ConcurrentDictionary<int, RequestBlock[]> _requestBlocks = [];
     private readonly ConcurrentDictionary<int, PieceBuffer> _pieceBuffers = [];
+
+    public Bitfield Bitfield => myBitfield;
 
     public void IncreaseRarity(int index)
     {
@@ -35,138 +38,157 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager) : IAsyn
             _pieceBuffers[receiveBlock.Index] = pieceBuffer;
         }
 
-        pieceBuffer.AddBlock(receiveBlock);
+        if (!_requestBlocks.TryGetValue(receiveBlock.Index, out var requestBlocks))
+            return;
 
-        if (_requestBlocksByPieceIndex.TryGetValue(receiveBlock.Index, out var requestBlocks))
+        lock (_requestBlocksLock)
         {
-            var requestBlock = requestBlocks
-                .AsValueEnumerable()
-                .FirstOrDefault(i => i?.Begin == receiveBlock.Begin);
-
-            if (
-                requestBlock is not null
-                && requestBlock.RequestedFrom.Contains(receiveBlock.FromPeer)
-            )
+            RequestBlock? requestedBlock = null;
+            foreach (var requestBlock in requestBlocks)
             {
-                receiveBlock.FromPeer.DecrementRequestedBlock();
-                var rtt = requestBlock.RequestedAt.HasValue
-                    ? receiveBlock.ReceivedAt - requestBlock.RequestedAt.Value
+                if (
+                    requestBlock.Index == receiveBlock.Index
+                    && requestBlock.Begin == receiveBlock.Begin
+                    && requestBlock.Length == receiveBlock.Payload.Length
+                    && requestBlock.RequestedFrom.Contains(receiveBlock.FromPeer)
+                )
+                {
+                    requestedBlock = requestBlock;
+                    break;
+                }
+            }
+
+            if (requestedBlock is not null)
+            {
+                var rtt = requestedBlock.RequestedAt.HasValue
+                    ? receiveBlock.ReceivedAt - requestedBlock.RequestedAt.Value
                     : TimeoutSeconds.Seconds;
                 receiveBlock.FromPeer.PeerRequestWindow.CalculateWindow(
                     (long)receiveBlock.FromPeer.DownloadSpeedTracker.CurrentBps.Bps,
                     rtt
                 );
+                receiveBlock.FromPeer.DecrementRequestedBlock();
+                requestedBlock.State = RequestBlockState.Completed;
+                requestedBlock.RequestedAt = null;
+                requestedBlock.RequestedFrom.Clear();
+                pieceBuffer.AddBlock(receiveBlock);
             }
-
-            requestBlock?.State = RequestBlockState.Completed;
-            requestBlock?.RequestedAt = null;
-            requestBlock?.RequestedFrom.Clear();
         }
 
         if (!pieceBuffer.IsComplete)
             return;
 
+        var isWritten = false;
         try
         {
-            var isWritten = await pieceBuffer
-                .WritePieceAsync(cancellationToken)
-                .ConfigureAwait(false);
-            _pieceBuffers.TryRemove(receiveBlock.Index, out _);
-
-            if (!isWritten)
-            {
-                _pieceBuffers[receiveBlock.Index] = new PieceBuffer(
-                    receiveBlock.Index,
-                    fileManager
-                );
-                _requestBlocksByPieceIndex.TryRemove(receiveBlock.Index, out _);
-            }
-            else
-            {
-                myBitfield.SetPiece(receiveBlock.Index);
-                _requestBlocksByPieceIndex.TryRemove(receiveBlock.Index, out _);
-            }
+            isWritten = await pieceBuffer.WritePieceAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {
-            pieceBuffer.Dispose();
-            _pieceBuffers.TryRemove(receiveBlock.Index, out _);
+            _requestBlocks.TryRemove(receiveBlock.Index, out _);
+            if (_pieceBuffers.TryRemove(receiveBlock.Index, out var removedBuffer))
+            {
+                removedBuffer.Dispose();
+            }
+        }
+
+        if (isWritten)
+        {
+            myBitfield.SetPiece(receiveBlock.Index);
+        }
+        else
+        {
+            // Retry with a fresh buffer
+            _pieceBuffers[receiveBlock.Index] = new PieceBuffer(receiveBlock.Index, fileManager);
         }
     }
 
-    public RequestBlock? SelectBlock(int index)
+    //TODO use rented arrays
+    public RequestBlock? GetBlock(Bitfield bitfield)
     {
-        if (!_requestBlocksByPieceIndex.TryGetValue(index, out var requestBlocks))
+        HashSet<int> excludedIndices = [];
+        lock (_requestBlocksLock)
         {
-            var blockCount = fileManager.GetBlockCountByPieceIndex(index);
-            requestBlocks = new RequestBlock[blockCount];
-            _requestBlocksByPieceIndex[index] = requestBlocks;
-        }
-
-        for (int i = 0; i < requestBlocks.Length; i++)
-        {
-            var currentRequestBlock = requestBlocks[i];
-
-            if (currentRequestBlock?.State == RequestBlockState.Completed)
+            foreach (
+                var requestBlock in _requestBlocks.Values.AsValueEnumerable().SelectMany(i => i)
+            )
             {
-                continue;
-            }
+                excludedIndices.Add(requestBlock.Index);
 
-            if (currentRequestBlock is null or { State: RequestBlockState.Pending })
-            {
-                return requestBlocks[i] ??= fileManager.GetRequestBlockByBlockIndex(index, i);
+                if (
+                    requestBlock.State == RequestBlockState.Pending
+                    && bitfield.HasPiece(requestBlock.Index)
+                )
+                    return requestBlock;
             }
         }
 
-        return null;
+        var piece = GetPiece(bitfield, excludedIndices);
+
+        if (piece is null)
+            return null;
+
+        var blockCount = fileManager.GetBlockCountByPieceIndex(piece.Value);
+
+        lock (_requestBlocksLock)
+        {
+            if (!_requestBlocks.TryGetValue(piece.Value, out var requestBlocks))
+            {
+                requestBlocks = new RequestBlock[blockCount];
+                _requestBlocks[piece.Value] = requestBlocks;
+
+                for (int i = 0; i < blockCount; i++)
+                {
+                    requestBlocks[i] = fileManager.GetRequestBlockByBlockIndex(piece.Value, i);
+                }
+            }
+
+            return requestBlocks[0];
+        }
     }
 
-    public (RequestBlock requestBlock, TimeSpan passedTime)[] GetTimeoutRequestBlocks()
+    public RequestBlock[] GetTimeoutRequestBlocks()
     {
         var timeout = TimeoutSeconds.Seconds;
         var now = DateTime.UtcNow;
-
-        return _requestBlocksByPieceIndex
-            .Values.AsValueEnumerable()
-            .SelectMany(i => i)
-            .Where(i =>
-                i?.State == RequestBlockState.Requested
-                && i.RequestedAt is not null
-                && (now - i.RequestedAt.Value) > timeout
-            )
-            .Cast<RequestBlock>()
-            .Select(i => (i, (now - i.RequestedAt!.Value)))
-            .ToArray();
-    }
-
-    private IEnumerable<int> GetPriorityPieces(Bitfield peerBitfield)
-    {
-        foreach (var (pieceIndex, blocks) in _requestBlocksByPieceIndex)
+        lock (_requestBlocksLock)
         {
-            // peer must have it + we don't already own it
-            if (!peerBitfield.HasPiece(pieceIndex) || myBitfield.HasPiece(pieceIndex))
-                continue;
-
-            // only return pieces that have pending/incomplete blocks
-            if (
-                blocks
-                    .AsValueEnumerable()
-                    .Any(b => b is null or { State: RequestBlockState.Pending })
-            )
-                yield return pieceIndex;
+            return
+            [
+                .. _requestBlocks
+                    .Values.AsValueEnumerable()
+                    .SelectMany(i => i)
+                    .Where(i =>
+                        i?.State == RequestBlockState.Requested
+                        && i.RequestedAt is not null
+                        && (now - i.RequestedAt.Value) > timeout
+                    )
+                    .Cast<RequestBlock>(),
+            ];
         }
     }
 
-    public int? GetPiece(Bitfield peerBitfield)
+    public void SetBlockToPending(RequestBlock requestBlock)
     {
-        //Try to get pieces with priority (already started)
-        var priorityPieces = GetPriorityPieces(peerBitfield).AsValueEnumerable().ToArray();
-        if (priorityPieces.Length > 0)
+        lock (_requestBlocksLock)
         {
-            // cheap shuffle/random pick
-            return priorityPieces.AsValueEnumerable().Shuffle().First();
+            requestBlock.State = RequestBlockState.Pending;
+            requestBlock.RequestedAt = null;
         }
+    }
 
+    public void SetBlockToRequested(RequestBlock requestBlock, PeerConnection peerConnection)
+    {
+        lock (_requestBlocksLock)
+        {
+            requestBlock.State = RequestBlockState.Requested;
+            requestBlock.RequestedFrom.Add(peerConnection);
+            requestBlock.RequestedAt = DateTimeOffset.UtcNow;
+        }
+    }
+
+    private int? GetPiece(Bitfield peerBitfield, HashSet<int> excluded)
+    {
         //Fallback to rarest
         var posiblePieces = new List<int>(myBitfield.Length);
         for (int i = 0; i < peerBitfield.Length; i++)
@@ -174,7 +196,7 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager) : IAsyn
             if (
                 peerBitfield.HasPiece(i)
                 && !myBitfield.HasPiece(i)
-                && !_requestBlocksByPieceIndex.ContainsKey(i) //If we didn't return any of these then we exclude them
+                && !excluded.Contains(i) //If we didn't return any of these then we exclude them
             )
             {
                 posiblePieces.Add(i);
