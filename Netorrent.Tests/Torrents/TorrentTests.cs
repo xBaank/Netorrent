@@ -15,7 +15,7 @@ public enum AnnounceType
 }
 
 [ClassDataSource<OpenTrackerFixture>(Shared = SharedType.PerClass)]
-[Timeout(3 * 60_000)]
+[Timeout(5 * 60_000)]
 public class TorrentTests(OpenTrackerFixture fixture)
 {
     private readonly OpenTrackerFixture _fixture = fixture;
@@ -80,8 +80,8 @@ public class TorrentTests(OpenTrackerFixture fixture)
     [Test]
     [MatrixDataSource]
     public async Task Should_Download_Torrent(
-        [MatrixRange<int>(1, 5)] int seedersCount,
-        [MatrixRange<int>(1, 5)] int leechersCount,
+        [MatrixRange<int>(1, 6)] int seedersCount,
+        [MatrixRange<int>(1, 6)] int leechersCount,
         CancellationToken cancellationToken
     )
     {
@@ -102,7 +102,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 await seederTorrent.StartAsync(cancellationToken);
             }
 
-            await Task.Delay(5.Seconds, cancellationToken);
+            await Task.Delay(3.Seconds, cancellationToken);
 
             foreach (var leecherTorrent in leechersTorrents)
             {
