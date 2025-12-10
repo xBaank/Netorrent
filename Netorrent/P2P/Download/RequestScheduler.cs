@@ -230,6 +230,14 @@ internal class RequestScheduler(
         }
     }
 
+    public async ValueTask ReceivedHaveAsync(
+        PeerConnection peerConnection,
+        CancellationToken cancellationToken
+    ) =>
+        await _slotsChannel
+            .Writer.WriteAsync(peerConnection, cancellationToken)
+            .ConfigureAwait(false);
+
     public void IncreaseRarity(int index) => piecePicker.IncreaseRarity(index);
 
     public void DecreaseRarity(int index) => piecePicker.DecreaseRarity(index);

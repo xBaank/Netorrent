@@ -9,4 +9,8 @@ internal interface IRequestScheduler : IAsyncDisposable
     ValueTask RequestSlotAsync(PeerConnection peerConnection, CancellationToken cancellationToken);
     ValueTask FreeSlotAsync(PeerConnection peerConnection, CancellationToken cancellationToken);
     ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken);
+    public ValueTask ReceivedHaveAsync(
+        PeerConnection peerConnection,
+        CancellationToken cancellationToken
+    );
 }
