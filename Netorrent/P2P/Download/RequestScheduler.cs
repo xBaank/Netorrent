@@ -99,8 +99,11 @@ internal class RequestScheduler(
                         if (peerConnection == lastRequestedFrom)
                             continue;
                         if (
-                            peerConnection.RequestedBlocksCount
-                            < peerConnection.PeerRequestWindow.MaxInFlightRequests
+                               !peerConnection.PeerChoking
+                                && peerConnection.AmInterested
+                                && peerConnection.RequestedBlocksCount
+                                    < peerConnection.PeerRequestWindow.MaxInFlightRequests
+                                && peerConnection.PeerBitField?.HasPiece(requestBlock.Index) == true
                         )
                         {
                             freePeer = peerConnection;
