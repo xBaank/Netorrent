@@ -136,7 +136,7 @@ internal class RequestScheduler(
     )
     {
         if (peerConnection.PeerBitField is null)
-            throw new InvalidOperationException("PeerBitfield should not be null");
+            return;
 
         while (
             peerConnection.RequestedBlocksCount
@@ -241,7 +241,7 @@ internal class RequestScheduler(
             contains = _activePeers.Contains(peerConnection);
         }
 
-        if(contains)
+        if (contains)
         {
             await _slotsChannel
                 .Writer.WriteAsync(peerConnection, cancellationToken)
