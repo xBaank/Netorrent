@@ -76,14 +76,6 @@ internal class RequestScheduler(
         }
     }
 
-    private async Task ReSchedulePeersBlocksAsync(CancellationToken cancellationToken)
-    {
-        while (!cancellationToken.IsCancellationRequested)
-        {
-
-        }
-        }
-
     private async Task ReScheduleTimeoutBlocksAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
