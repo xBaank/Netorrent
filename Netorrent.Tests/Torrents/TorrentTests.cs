@@ -204,7 +204,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
         }
     }
 
-    [Test, Skip("There's a bug! ")]
+    [Test]
     public async Task Should_Download_Real_Torrent(CancellationToken cancellationToken)
     {
         await using var torrentClient = new TorrentClient(o => o with { Logger = Logger });
