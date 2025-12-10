@@ -168,6 +168,14 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager) : IAsyn
         }
     }
 
+    public PeerConnection GetLastRequester(RequestBlock requestBlock)
+    {
+        lock (_requestBlocksLock)
+        {
+            return requestBlock.RequestedFrom[^1];
+        }
+    }
+
     public void SetBlockToPending(RequestBlock requestBlock)
     {
         lock (_requestBlocksLock)

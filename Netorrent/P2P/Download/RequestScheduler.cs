@@ -82,8 +82,7 @@ internal class RequestScheduler(
         {
             foreach (var requestBlock in piecePicker.GetTimeoutRequestBlocks())
             {
-                var lastRequestedFrom = requestBlock.RequestedFrom[^1];
-
+                var lastRequestedFrom = piecePicker.GetLastRequester(requestBlock);
                 piecePicker.SetBlockToPending(requestBlock);
                 lastRequestedFrom.DecrementRequestedBlock();
 
@@ -233,10 +232,15 @@ internal class RequestScheduler(
     public async ValueTask ReceivedHaveAsync(
         PeerConnection peerConnection,
         CancellationToken cancellationToken
-    ) =>
-        await _slotsChannel
-            .Writer.WriteAsync(peerConnection, cancellationToken)
-            .ConfigureAwait(false);
+    )
+    {
+        if (_activePeers.Contains(peerConnection))
+        {
+            await _slotsChannel
+                .Writer.WriteAsync(peerConnection, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
 
     public void IncreaseRarity(int index) => piecePicker.IncreaseRarity(index);
 
