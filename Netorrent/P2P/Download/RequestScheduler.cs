@@ -234,7 +234,14 @@ internal class RequestScheduler(
         CancellationToken cancellationToken
     )
     {
-        if (_activePeers.Contains(peerConnection))
+        var contains = false;
+
+        lock (_activePeersLock)
+        {
+            contains = _activePeers.Contains(peerConnection);
+        }
+
+        if(contains)
         {
             await _slotsChannel
                 .Writer.WriteAsync(peerConnection, cancellationToken)
