@@ -77,19 +77,23 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
 
             var peer = requestBlock.RequestedFrom[0];
 
-            var pieceData = await fileManager
-                .ReadPieceAsync(
-                    requestBlock.Index,
-                    requestBlock.Begin,
-                    requestBlock.Length,
-                    cancellationToken
-                )
-                .ConfigureAwait(false);
-
-            using var block = new Block(requestBlock.Index, requestBlock.Begin, pieceData, peer);
-
             try
             {
+                var pieceData = await fileManager
+                    .ReadPieceAsync(
+                        requestBlock.Index,
+                        requestBlock.Begin,
+                        requestBlock.Length,
+                        cancellationToken
+                    )
+                    .ConfigureAwait(false);
+
+                using var block = new Block(
+                    requestBlock.Index,
+                    requestBlock.Begin,
+                    pieceData,
+                    peer
+                );
                 await peer.SendBlockAsync(block, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
