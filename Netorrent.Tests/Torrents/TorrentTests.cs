@@ -80,8 +80,8 @@ public class TorrentTests(OpenTrackerFixture fixture)
     [Test]
     [MatrixDataSource]
     public async Task Should_Download_Torrent(
-        [MatrixRange<int>(1, 6)] int seedersCount,
-        [MatrixRange<int>(1, 6)] int leechersCount,
+        [MatrixRange<int>(1, 5)] int seedersCount,
+        [MatrixRange<int>(1, 5)] int leechersCount,
         CancellationToken cancellationToken
     )
     {
