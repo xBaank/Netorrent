@@ -1,13 +1,15 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.14.36121.58
+# Visual Studio Version 18
+VisualStudioVersion = 18.0.11222.15 d18.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Netorrent", "Netorrent\Netorrent.csproj", "{BD85D794-6F15-450F-A67B-8E002A15FC35}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Netorrent.Tests", "Netorrent.Tests\Netorrent.Tests.csproj", "{F3B94B1F-F48C-47B4-AD6B-516834938EA3}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Netorrent.Example", "Netorrent.Example\Netorrent.Example.csproj", "{A36E606A-4537-4468-8B55-F14493432BEA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Netorrent.Tests.Integration", "Netorrent.Tests.Integration\Netorrent.Tests.Integration.csproj", "{46DAAA92-8A3E-4953-98D9-2FBF5965ED34}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -27,6 +29,10 @@ Global
 		{A36E606A-4537-4468-8B55-F14493432BEA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A36E606A-4537-4468-8B55-F14493432BEA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A36E606A-4537-4468-8B55-F14493432BEA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{46DAAA92-8A3E-4953-98D9-2FBF5965ED34}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{46DAAA92-8A3E-4953-98D9-2FBF5965ED34}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{46DAAA92-8A3E-4953-98D9-2FBF5965ED34}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{46DAAA92-8A3E-4953-98D9-2FBF5965ED34}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

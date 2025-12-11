@@ -17,33 +17,9 @@
     </PackageReference>
     <PackageReference Include="NSubstitute" Version="5.3.0" />
     <PackageReference Include="Shouldly" Version="4.3.0" />
-    <PackageReference Include="Testcontainers" Version="4.9.0" />
     <PackageReference Include="TUnit" Version="1.5.37" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Netorrent\Netorrent.csproj" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Update="Data\debian-13.2.0-amd64-netinst.iso.torrent">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Data\MultifileTest\Folder1\Folder2\test3.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Data\MultifileTest\Folder1\test2.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Data\MultifileTest\test.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Data\nosferatu.torrent">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Data\test.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Data\MultifileTest\" />
   </ItemGroup>
 </Project>

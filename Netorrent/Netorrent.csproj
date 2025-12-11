@@ -21,6 +21,7 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Netorrent.Tests" />
+    <InternalsVisibleTo Include="Netorrent.Tests.Integration" />
     <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
   </ItemGroup>
 </Project>

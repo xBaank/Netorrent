@@ -1,6 +1,6 @@
 ﻿using TUnit.Core.Logging;
 
-namespace Netorrent.Tests;
+namespace Netorrent.Tests.Integration;
 
 internal class TUnitLogger(DefaultLogger logger) : Microsoft.Extensions.Logging.ILogger
 {

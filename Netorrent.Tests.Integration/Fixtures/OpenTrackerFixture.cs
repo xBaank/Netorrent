@@ -2,7 +2,7 @@
 using TUnit.Core.Interfaces;
 using IContainer = DotNet.Testcontainers.Containers.IContainer;
 
-namespace Netorrent.Tests.Fixtures;
+namespace Netorrent.Tests.Integration.Fixtures;
 
 public class OpenTrackerFixture : IAsyncInitializer, IAsyncDisposable
 {

@@ -1,6 +1,5 @@
 ﻿using System.Reactive.Linq;
 using Netorrent.Tests.Extensions;
-using Netorrent.Tests.P2P;
 using NSubstitute;
 
 namespace Netorrent.Tests.Extensions;

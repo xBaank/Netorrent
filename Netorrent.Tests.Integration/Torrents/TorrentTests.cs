@@ -1,12 +1,12 @@
 ﻿using System.Net;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
-using Netorrent.Tests.Fixtures;
+using Netorrent.Tests.Integration.Fixtures;
 using Netorrent.TorrentFile;
 using Netorrent.TorrentFile.FileStructure;
 using Shouldly;
 
-namespace Netorrent.Tests.Torrents;
+namespace Netorrent.Tests.Integration.Torrents;
 
 public enum AnnounceType
 {
@@ -102,7 +102,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 await seederTorrent.StartAsync(cancellationToken);
             }
 
-            await Task.Delay(3.Seconds, cancellationToken);
+            await Task.Delay(3000, cancellationToken);
 
             foreach (var leecherTorrent in leechersTorrents)
             {

@@ -1,4 +1,4 @@
-﻿namespace Netorrent.Tests.Torrents;
+﻿namespace Netorrent.Tests.Integration.Torrents;
 
 public static class Hooks
 {

@@ -2,7 +2,7 @@
 using Netorrent.TorrentFile;
 using Shouldly;
 
-namespace Netorrent.Tests.Torrents;
+namespace Netorrent.Tests.Integration.Torrents;
 
 public class TorrentFileTests
 {
