@@ -10,30 +10,21 @@ Console.CancelKeyPress += (s, e) =>
 };
 try
 {
-    // Prompt for .torrent file
     var torrentPath = await BrowseForTorrent(cts.Token);
-
-    // Prompt for output directory
     var outputPath = await BrowseForOutputDir(cts.Token);
 
-    // Initialize TorrentClient
-    var client = new TorrentClient();
-
+    await using var client = new TorrentClient();
     await using var torrent = await client.ImportTorrentAsync(torrentPath, outputPath);
 
-    // A task to keep refreshing status on screen
     var statusTask = RunStatusUI(torrent, cts.Token);
 
-    // Start the torrent
     await torrent.StartAsync(cts.Token);
 
-    // Wait for completion or cancellation
     var completed = await Task.WhenAny(
         torrent.Statistics.Completion.AsTask(),
         Task.Delay(Timeout.Infinite, cts.Token)
     );
 
-    // If torrent finished normally
     if (completed == torrent.Statistics.Completion.AsTask())
     {
         AnsiConsole.MarkupLine("[green]Download complete.[/]");
