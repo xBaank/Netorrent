@@ -6,7 +6,7 @@ using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.IO;
 
-internal partial class FileManager : IDisposable
+internal class FileManager : IDisposable
 {
     private readonly string _outputDirectory;
     private readonly List<TorrentFileEntry> _files = [];

@@ -2,16 +2,13 @@
 
 namespace Netorrent.IO;
 
-internal partial class FileManager
+internal sealed record TorrentFileEntry(
+    string FullPath,
+    long StartOffset,
+    long Length,
+    SafeFileHandle SafeHandle
+)
 {
-    private sealed record TorrentFileEntry(
-        string FullPath,
-        long StartOffset,
-        long Length,
-        SafeFileHandle SafeHandle
-    )
-    {
-        public long EndOffset => StartOffset + Length;
-        public bool IsDirectoryCreated { get; set; } = false;
-    }
+    public long EndOffset => StartOffset + Length;
+    public bool IsDirectoryCreated { get; set; } = false;
 }
