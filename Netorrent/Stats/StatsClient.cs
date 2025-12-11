@@ -1,39 +1,54 @@
-﻿using System.Net;
-using Netorrent.IO;
+﻿using Netorrent.IO;
+using Netorrent.P2P;
 using Netorrent.P2P.Measurement;
 using Netorrent.P2P.Messages;
 using ZLinq;
+using ZLinq.Linq;
 
-namespace Netorrent.P2P;
+namespace Netorrent.Stats;
 
-public class DownloadInfo
+public class StatsClient
 {
     private readonly IReadOnlyDictionary<PeerEndpoint, PeerConnection> _peers;
-    private readonly FileManager _fileManager;
     private readonly Bitfield _bitfield;
     private readonly IDisposable _stateDisposable;
     private TaskCompletionSource _downloadTaskCompletitionSource = new();
-    private IEnumerable<PeerConnection> PeersNotChocking =>
-        _peers.Values.Where(i => !i.PeerChoking && i.AmInterested);
+    private long _downloadedBytes;
+    private long _uploadedBytes;
+    private readonly long _totalBytes;
+
+    private ValueEnumerable<
+        Where<FromEnumerable<PeerConnection>, PeerConnection>,
+        PeerConnection
+    > PeersNotChocking =>
+        _peers.Values.AsValueEnumerable().Where(i => !i.PeerChoking && i.AmInterested);
+
     public int ActivePeers => PeersNotChocking.Count();
-    public int TotalPeers => _peers.Values.Count();
+    public int TotalPeers => _peers.Values.AsValueEnumerable().Count();
     public DownloadSpeed DownloadSpeed =>
-        PeersNotChocking.AsValueEnumerable().Sum(p => p.DownloadSpeedTracker.CurrentBps.Bps);
-    public ByteSize DownloadedBytes => (long)_fileManager.GetWrittenBytes();
-    public ByteSize TotalBytes => _fileManager.TotalSize;
+        PeersNotChocking.Sum(p => p.DownloadSpeedTracker.CurrentBps.Bps);
+    public ByteSize DownloadedBytes => _downloadedBytes;
+    public ByteSize UploadedBytes => _uploadedBytes;
+    public ByteSize TotalBytes => _totalBytes;
+    public ByteSize LeftBytes => TotalBytes - DownloadedBytes;
+
     public Task DownloadTask => _downloadTaskCompletitionSource.Task;
 
-    internal DownloadInfo(
+    internal StatsClient(
         IReadOnlyDictionary<PeerEndpoint, PeerConnection> peers,
-        FileManager fileManager,
+        long totalSize,
         Bitfield bitfield
     )
     {
         _peers = peers;
-        _fileManager = fileManager;
+        _totalBytes = totalSize;
         _bitfield = bitfield;
         _stateDisposable = _bitfield.StateChanged.Subscribe(CheckDownload);
     }
+
+    internal void AddDownloadedBytes(long bytes) => Interlocked.Add(ref _downloadedBytes, bytes);
+
+    internal void AddUploadedBytes(long bytes) => Interlocked.Add(ref _uploadedBytes, bytes);
 
     internal void Reset()
     {

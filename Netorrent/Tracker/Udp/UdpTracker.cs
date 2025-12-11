@@ -3,6 +3,7 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.P2P;
+using Netorrent.Stats;
 using Netorrent.Tracker.Udp.Request;
 using Netorrent.Tracker.Udp.Response;
 
@@ -10,7 +11,8 @@ namespace Netorrent.Tracker.Udp;
 
 internal class UdpTracker(
     UdpTrackerTransactionManager transactionManager,
-    P2PClient p2PClient,
+    int port,
+    StatsClient statsClient,
     PeerId peerId,
     ChannelWriter<IPEndPoint> channelWriter,
     byte[] infoHash,
@@ -114,11 +116,11 @@ internal class UdpTracker(
                 iPEndPoint,
                 infoHash,
                 peerId,
-                (long)p2PClient.FileManager.GetWrittenBytes(),
-                (long)p2PClient.FileManager.GetWrittenBytes(),
-                0, //TODO implement
+                statsClient.DownloadedBytes.Bytes,
+                statsClient.UploadedBytes.Bytes,
+                statsClient.LeftBytes.Bytes, //TODO implement
                 @event,
-                (ushort)p2PClient.EndPoint.Port,
+                (ushort)port,
                 ConnectionId: connectionId.Value,
                 TransactionId: transactionManager.MakeTransactionId(),
                 NumWant: 50,

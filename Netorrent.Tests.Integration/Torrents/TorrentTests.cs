@@ -102,6 +102,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 await seederTorrent.StartAsync(cancellationToken);
             }
 
+            //This is needed because if seeder and leecher announce at the same time, they don't see each other
             await Task.Delay(3000, cancellationToken);
 
             foreach (var leecherTorrent in leechersTorrents)
@@ -111,7 +112,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
             foreach (var leecherTorrent in leechersTorrents)
             {
-                await leecherTorrent.DownloadInfo.DownloadTask.ShouldNotThrowAsync();
+                await leecherTorrent.Stadistics.DownloadTask.ShouldNotThrowAsync();
             }
 
             foreach (var seederTorrent in seedersTorrents)
@@ -189,7 +190,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
             foreach (var leecherTorrent in leechersTorrents)
             {
-                await leecherTorrent.DownloadInfo.DownloadTask.ShouldThrowAsync<TaskCanceledException>();
+                await leecherTorrent.Stadistics.DownloadTask.ShouldThrowAsync<TaskCanceledException>();
             }
         }
         finally
@@ -216,7 +217,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
             cancellationToken
         );
         await torrent.StartAsync(cancellationToken);
-        await torrent.DownloadInfo.DownloadTask.ShouldNotThrowAsync();
+        await torrent.Stadistics.DownloadTask.ShouldNotThrowAsync();
         await torrent.StopAsync();
     }
 

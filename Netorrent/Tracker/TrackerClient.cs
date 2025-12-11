@@ -5,6 +5,7 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.P2P;
+using Netorrent.Stats;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker.Http;
 using Netorrent.Tracker.Udp;
@@ -14,7 +15,8 @@ namespace Netorrent.Tracker;
 internal class TrackerClient(
     HttpClient httpClient,
     UdpTrackerTransactionManager trackerTransaction,
-    P2PClient p2PClient,
+    int port,
+    StatsClient statsClient,
     PeerId peerId,
     ChannelWriter<IPEndPoint> trackersChannel,
     MetaInfo metaInfo,
@@ -60,7 +62,8 @@ internal class TrackerClient(
                 "http" or "https" =>
                 [
                     new HttpTracker(
-                        p2PClient,
+                        port,
+                        statsClient,
                         httpClient,
                         peerId,
                         metaInfo.Info.InfoHash,
@@ -97,7 +100,8 @@ internal class TrackerClient(
             var ipEndpoint = new IPEndPoint(ipv4, uri.Port);
             var trackerv4 = new UdpTracker(
                 trackerTransaction,
-                p2PClient,
+                port,
+                statsClient,
                 peerId,
                 trackersChannel,
                 metaInfo.Info.InfoHash,
@@ -114,7 +118,8 @@ internal class TrackerClient(
             var ipEndpoint = new IPEndPoint(ipv6, uri.Port);
             var trackerv6 = new UdpTracker(
                 trackerTransaction,
-                p2PClient,
+                port,
+                statsClient,
                 peerId,
                 trackersChannel,
                 metaInfo.Info.InfoHash,

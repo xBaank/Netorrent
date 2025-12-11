@@ -2,7 +2,6 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
-using System.Threading;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.Tracker.Udp.Request;

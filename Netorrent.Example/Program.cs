@@ -16,16 +16,16 @@ var task = Task.Run(async () =>
     {
         logger.LogInformation(
             "Downloaded {downloaded}/{total} at {speed}, from {active}/{total} active peers",
-            torrent.DownloadInfo.DownloadedBytes,
-            torrent.DownloadInfo.TotalBytes,
-            torrent.DownloadInfo.DownloadSpeed,
-            torrent.DownloadInfo.ActivePeers,
-            torrent.DownloadInfo.TotalPeers
+            torrent.Stadistics.DownloadedBytes,
+            torrent.Stadistics.TotalBytes,
+            torrent.Stadistics.DownloadSpeed,
+            torrent.Stadistics.ActivePeers,
+            torrent.Stadistics.TotalPeers
         );
         await Task.Delay(1000);
     }
 });
 await torrent.StartAsync();
 
-var taskFinished = await Task.WhenAny(torrent.DownloadInfo.DownloadTask, task);
+var taskFinished = await Task.WhenAny(torrent.Stadistics.DownloadTask, task);
 await taskFinished;

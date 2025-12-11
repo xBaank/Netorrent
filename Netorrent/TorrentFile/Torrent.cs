@@ -6,6 +6,7 @@ using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.P2P;
 using Netorrent.P2P.Messages;
+using Netorrent.Stats;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker;
 using Netorrent.Tracker.Udp;
@@ -16,16 +17,16 @@ public sealed class Torrent : IAsyncDisposable
 {
     public MetaInfo MetaInfo { get; init; }
     public Bitfield Bitfield => _myBitfield;
-    public DownloadInfo DownloadInfo => _p2pClient.DownloadInfo;
+    public StatsClient Stadistics => _p2pClient.Stats;
     public string OutputDirectory => _fileManager.OutputDirectory;
 
     public State State { get; private set; } = State.Stopped;
-    public Task? TorrentTask { get; private set; }
 
     private readonly P2PClient _p2pClient;
     private readonly TrackerClient _trackerClient;
     private readonly FileManager _fileManager;
     private readonly Bitfield _myBitfield;
+    private Task? _runTask;
     private CancellationTokenSource? _cancellationTokenSource;
     private bool _disposed;
 
@@ -65,7 +66,8 @@ public sealed class Torrent : IAsyncDisposable
         _trackerClient = new TrackerClient(
             httpClient,
             trackerTransaction,
-            _p2pClient,
+            _p2pClient.EndPoint.Port,
+            _p2pClient.Stats,
             peerId,
             trackersChannel.Writer,
             metaInfo,
@@ -87,11 +89,11 @@ public sealed class Torrent : IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
-            DownloadInfo.SetCanceled();
+            Stadistics.SetCanceled();
         }
         catch (Exception ex)
         {
-            DownloadInfo.SetException(ex);
+            Stadistics.SetException(ex);
         }
     }
 
@@ -109,17 +111,17 @@ public sealed class Torrent : IAsyncDisposable
 
         _cancellationTokenSource?.Cancel();
 
-        if (TorrentTask is not null)
-            await TorrentTask.ConfigureAwait(false);
+        if (_runTask is not null)
+            await _runTask.ConfigureAwait(false);
 
-        DownloadInfo.Reset();
+        Stadistics.Reset();
         _cancellationTokenSource?.Dispose();
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
-        _cancellationTokenSource.Token.Register(_p2pClient.DownloadInfo.SetCanceled);
+        _cancellationTokenSource.Token.Register(_p2pClient.Stats.SetCanceled);
         State = State.Started;
-        TorrentTask = StartAndWaitToFinishAsync(_cancellationTokenSource);
+        _runTask = StartAndWaitToFinishAsync(_cancellationTokenSource);
     }
 
     /// <summary>
@@ -132,8 +134,8 @@ public sealed class Torrent : IAsyncDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         Stop();
-        if (TorrentTask is not null)
-            await TorrentTask.ConfigureAwait(false);
+        if (_runTask is not null)
+            await _runTask.ConfigureAwait(false);
     }
 
     private void Stop()
@@ -174,8 +176,8 @@ public sealed class Torrent : IAsyncDisposable
             _cancellationTokenSource?.Cancel();
             try
             {
-                if (TorrentTask is not null)
-                    await TorrentTask.ConfigureAwait(false);
+                if (_runTask is not null)
+                    await _runTask.ConfigureAwait(false);
             }
             catch { }
             _fileManager.Dispose();
@@ -183,7 +185,7 @@ public sealed class Torrent : IAsyncDisposable
             await _trackerClient.DisposeAsync().ConfigureAwait(false);
             _cancellationTokenSource?.Dispose();
             _cancellationTokenSource = null;
-            TorrentTask = null;
+            _runTask = null;
             State = State.Disposed;
         }
     }

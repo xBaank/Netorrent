@@ -10,6 +10,7 @@ using Netorrent.Other;
 using Netorrent.P2P.Download;
 using Netorrent.P2P.Messages;
 using Netorrent.P2P.Upload;
+using Netorrent.Stats;
 using Netorrent.TorrentFile.FileStructure;
 using ZLinq;
 
@@ -35,7 +36,7 @@ internal class P2PClient : IAsyncDisposable
     private readonly List<Task> _peerTasks = [];
 
     public FileManager FileManager { get; }
-    public DownloadInfo DownloadInfo { get; }
+    public StatsClient Stats { get; }
     public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
 
     public P2PClient(
@@ -54,15 +55,15 @@ internal class P2PClient : IAsyncDisposable
         _metaInfo = metaInfo;
         _logger = logger;
         FileManager = fileManager;
-        DownloadInfo = new DownloadInfo(_activePeers, fileManager, bitField);
+        Stats = new StatsClient(_activePeers, fileManager.TotalSize, bitField);
         _peerIpProxy = peerIpProxy;
         _requestManager = new RequestScheduler(
             _activePeers,
             _bitField,
-            new PiecePicker(_bitField, fileManager),
+            new PiecePicker(_bitField, fileManager, Stats),
             logger
         );
-        _uploadScheduler = new UploadScheduler(fileManager, logger);
+        _uploadScheduler = new UploadScheduler(fileManager, Stats, logger);
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -302,6 +303,6 @@ internal class P2PClient : IAsyncDisposable
         await _requestManager.DisposeAsync().ConfigureAwait(false);
         await _uploadScheduler.DisposeAsync().ConfigureAwait(false);
         _semaphoreSlim.Dispose();
-        DownloadInfo.Dispose();
+        Stats.Dispose();
     }
 }

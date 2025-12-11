@@ -2,11 +2,13 @@
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.P2P.Messages;
+using Netorrent.Stats;
 using ZLinq;
 
 namespace Netorrent.P2P.Download;
 
-internal class PiecePicker(Bitfield myBitfield, FileManager fileManager) : IAsyncDisposable
+internal class PiecePicker(Bitfield myBitfield, FileManager fileManager, StatsClient statsClient)
+    : IAsyncDisposable
 {
     public const int TimeoutSeconds = 10;
 
@@ -72,6 +74,7 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager) : IAsyn
                 requestedBlock.RequestedAt = null;
                 requestedBlock.RequestedFrom.Clear();
                 pieceBuffer.AddBlock(receiveBlock);
+                statsClient.AddDownloadedBytes(receiveBlock.Payload.Length);
             }
         }
 
@@ -103,7 +106,6 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager) : IAsyn
         }
     }
 
-    //TODO use rented arrays
     public RequestBlock? GetBlock(Bitfield bitfield)
     {
         HashSet<int> excludedIndices = [];
@@ -197,15 +199,10 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager) : IAsyn
 
     private int? GetPiece(Bitfield peerBitfield, HashSet<int> excluded)
     {
-        //Fallback to rarest
         var posiblePieces = new List<int>(myBitfield.Length);
         for (int i = 0; i < peerBitfield.Length; i++)
         {
-            if (
-                peerBitfield.HasPiece(i)
-                && !myBitfield.HasPiece(i)
-                && !excluded.Contains(i) //If we didn't return any of these then we exclude them
-            )
+            if (peerBitfield.HasPiece(i) && !myBitfield.HasPiece(i) && !excluded.Contains(i))
             {
                 posiblePieces.Add(i);
             }
