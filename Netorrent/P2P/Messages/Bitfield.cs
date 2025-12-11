@@ -1,14 +1,11 @@
-﻿using System;
-using System.Buffers;
+﻿using System.Buffers;
 using System.Collections;
 using System.Reactive.Subjects;
-using System.Threading.Channels;
 using Netorrent.Other;
-using ZLinq;
 
 namespace Netorrent.P2P.Messages;
 
-public class Bitfield
+internal class Bitfield
 {
     private readonly Lock _lock = new();
     private readonly BitArray _bits;
@@ -58,6 +55,14 @@ public class Bitfield
         }
     }
 
+    public bool HasPiece(int index)
+    {
+        lock (_lock)
+        {
+            return index < _bits.Length && _bits[index];
+        }
+    }
+
     internal void SetPiece(int index)
     {
         lock (_lock)
@@ -73,14 +78,6 @@ public class Bitfield
 
             if (IsComplete)
                 _stateChanged.OnCompleted();
-        }
-    }
-
-    internal bool HasPiece(int index)
-    {
-        lock (_lock)
-        {
-            return index < _bits.Length && _bits[index];
         }
     }
 

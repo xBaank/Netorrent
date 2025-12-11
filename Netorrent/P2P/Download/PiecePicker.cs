@@ -2,13 +2,16 @@
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.P2P.Messages;
-using Netorrent.Stats;
+using Netorrent.Statistics;
 using ZLinq;
 
 namespace Netorrent.P2P.Download;
 
-internal class PiecePicker(Bitfield myBitfield, FileManager fileManager, StatsClient statsClient)
-    : IAsyncDisposable
+internal class PiecePicker(
+    Bitfield myBitfield,
+    FileManager fileManager,
+    TransferStatistics transfer
+) : IAsyncDisposable
 {
     public const int TimeoutSeconds = 10;
 
@@ -74,7 +77,7 @@ internal class PiecePicker(Bitfield myBitfield, FileManager fileManager, StatsCl
                 requestedBlock.RequestedAt = null;
                 requestedBlock.RequestedFrom.Clear();
                 pieceBuffer.AddBlock(receiveBlock);
-                statsClient.AddDownloadedBytes(receiveBlock.Payload.Length);
+                transfer.AddDownloadedBytes(receiveBlock.Payload.Length);
             }
         }
 

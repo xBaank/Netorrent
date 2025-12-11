@@ -10,7 +10,7 @@ using Netorrent.Other;
 using Netorrent.P2P.Download;
 using Netorrent.P2P.Messages;
 using Netorrent.P2P.Upload;
-using Netorrent.Stats;
+using Netorrent.Statistics;
 using Netorrent.TorrentFile.FileStructure;
 using ZLinq;
 
@@ -36,7 +36,7 @@ internal class P2PClient : IAsyncDisposable
     private readonly List<Task> _peerTasks = [];
 
     public FileManager FileManager { get; }
-    public StatsClient Stats { get; }
+    public TorrentStatisticsClient Stats { get; }
     public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
 
     public P2PClient(
@@ -55,15 +55,18 @@ internal class P2PClient : IAsyncDisposable
         _metaInfo = metaInfo;
         _logger = logger;
         FileManager = fileManager;
-        Stats = new StatsClient(_activePeers, fileManager.TotalSize, bitField);
+        Stats = new TorrentStatisticsClient(
+            new TransferStatistics(fileManager.TotalSize),
+            new PeerStatistics(_activePeers),
+            new CompletionTracker(bitField)
+        );
         _peerIpProxy = peerIpProxy;
         _requestManager = new RequestScheduler(
             _activePeers,
-            _bitField,
-            new PiecePicker(_bitField, fileManager, Stats),
+            new PiecePicker(_bitField, fileManager, Stats.Transfer),
             logger
         );
-        _uploadScheduler = new UploadScheduler(fileManager, Stats, logger);
+        _uploadScheduler = new UploadScheduler(fileManager, Stats.Transfer, logger);
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)

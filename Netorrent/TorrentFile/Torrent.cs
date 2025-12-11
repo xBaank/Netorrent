@@ -6,7 +6,7 @@ using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.P2P;
 using Netorrent.P2P.Messages;
-using Netorrent.Stats;
+using Netorrent.Statistics;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker;
 using Netorrent.Tracker.Udp;
@@ -16,8 +16,7 @@ namespace Netorrent.TorrentFile;
 public sealed class Torrent : IAsyncDisposable
 {
     public MetaInfo MetaInfo { get; init; }
-    public Bitfield Bitfield => _myBitfield;
-    public StatsClient Stadistics => _p2pClient.Stats;
+    public TorrentStatisticsClient Statistics => _p2pClient.Stats;
     public string OutputDirectory => _fileManager.OutputDirectory;
 
     public State State { get; private set; } = State.Stopped;
@@ -67,7 +66,7 @@ public sealed class Torrent : IAsyncDisposable
             httpClient,
             trackerTransaction,
             _p2pClient.EndPoint.Port,
-            _p2pClient.Stats,
+            _p2pClient.Stats.Transfer,
             peerId,
             trackersChannel.Writer,
             metaInfo,
@@ -89,11 +88,11 @@ public sealed class Torrent : IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
-            Stadistics.SetCanceled();
+            Statistics.Completion.SetCanceled();
         }
         catch (Exception ex)
         {
-            Stadistics.SetException(ex);
+            Statistics.Completion.SetException(ex);
         }
     }
 
@@ -114,12 +113,12 @@ public sealed class Torrent : IAsyncDisposable
         if (_runTask is not null)
             await _runTask.ConfigureAwait(false);
 
-        Stadistics.Reset();
+        Statistics.Completion.Reset();
         _cancellationTokenSource?.Dispose();
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
-        _cancellationTokenSource.Token.Register(_p2pClient.Stats.SetCanceled);
+        _cancellationTokenSource.Token.Register(_p2pClient.Stats.Completion.SetCanceled);
         State = State.Started;
         _runTask = StartAndWaitToFinishAsync(_cancellationTokenSource);
     }

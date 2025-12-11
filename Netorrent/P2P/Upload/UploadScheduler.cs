@@ -4,11 +4,11 @@ using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.P2P.Messages;
-using Netorrent.Stats;
+using Netorrent.Statistics;
 
 namespace Netorrent.P2P.Upload;
 
-internal class UploadScheduler(FileManager fileManager, StatsClient statsClient, ILogger logger)
+internal class UploadScheduler(FileManager fileManager, TransferStatistics transfer, ILogger logger)
     : IUploadScheduler
 {
     const int MaxInFlightUploadRequests = 4;
@@ -97,7 +97,7 @@ internal class UploadScheduler(FileManager fileManager, StatsClient statsClient,
                     peer
                 );
                 await peer.SendBlockAsync(block, cancellationToken).ConfigureAwait(false);
-                statsClient.AddUploadedBytes(block.Payload.Length);
+                transfer.AddUploadedBytes(block.Payload.Length);
             }
             catch (Exception ex)
             {

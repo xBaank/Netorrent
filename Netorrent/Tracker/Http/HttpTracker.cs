@@ -3,13 +3,13 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.P2P;
-using Netorrent.Stats;
+using Netorrent.Statistics;
 
 namespace Netorrent.Tracker.Http;
 
 internal class HttpTracker(
     int port,
-    StatsClient statsClient,
+    TransferStatistics transfer,
     HttpClient client,
     PeerId peerId,
     byte[] infoHash,
@@ -70,9 +70,9 @@ internal class HttpTracker(
                 infoHash,
                 peerId,
                 port,
-                (ulong)statsClient.DownloadedBytes.Bytes,
-                (ulong)statsClient.UploadedBytes.Bytes,
-                (ulong)statsClient.LeftBytes.Bytes,
+                (ulong)transfer.DownloadedBytes.Bytes,
+                (ulong)transfer.UploadedBytes.Bytes,
+                (ulong)transfer.LeftBytes.Bytes,
                 true,
                 false,
                 @event,

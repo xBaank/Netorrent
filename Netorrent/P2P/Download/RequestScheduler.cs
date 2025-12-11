@@ -11,7 +11,6 @@ namespace Netorrent.P2P.Download;
 
 internal class RequestScheduler(
     IReadOnlyDictionary<PeerEndpoint, PeerConnection> peers,
-    Bitfield bitfield,
     PiecePicker piecePicker,
     ILogger logger
 ) : IRequestScheduler
