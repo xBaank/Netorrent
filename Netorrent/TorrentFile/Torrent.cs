@@ -1,7 +1,5 @@
 ﻿using System.Net;
-using System.Threading;
 using System.Threading.Channels;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Netorrent.Bencoding;
 using Netorrent.Extensions;
@@ -80,10 +78,12 @@ public sealed class Torrent : IAsyncDisposable
     {
         try
         {
-            await cancellationTokenSource.CancelOnFirstCompletionAndAwaitAllAsync([
-                _p2pClient.StartAsync(cancellationTokenSource.Token),
-                _trackerClient.StartAsync(cancellationTokenSource.Token),
-            ]);
+            await cancellationTokenSource
+                .CancelOnFirstCompletionAndAwaitAllAsync([
+                    _p2pClient.StartAsync(cancellationTokenSource.Token),
+                    _trackerClient.StartAsync(cancellationTokenSource.Token),
+                ])
+                .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -108,7 +108,9 @@ public sealed class Torrent : IAsyncDisposable
             return;
 
         _cancellationTokenSource?.Cancel();
-        await (TorrentTask ?? Task.CompletedTask);
+
+        if (TorrentTask is not null)
+            await TorrentTask.ConfigureAwait(false);
 
         DownloadInfo.Reset();
         _cancellationTokenSource?.Dispose();
@@ -131,7 +133,7 @@ public sealed class Torrent : IAsyncDisposable
 
         Stop();
         if (TorrentTask is not null)
-            await TorrentTask;
+            await TorrentTask.ConfigureAwait(false);
     }
 
     private void Stop()
@@ -160,7 +162,8 @@ public sealed class Torrent : IAsyncDisposable
 
         var rawMetainfo = MetaInfo.ToBDictionary();
         await using var encoder = new BEncoder();
-        await File.WriteAllBytesAsync(outputPath, encoder.Encode(rawMetainfo), cancellationToken);
+        await File.WriteAllBytesAsync(outputPath, encoder.Encode(rawMetainfo), cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask DisposeAsync()
@@ -172,12 +175,12 @@ public sealed class Torrent : IAsyncDisposable
             try
             {
                 if (TorrentTask is not null)
-                    await TorrentTask;
+                    await TorrentTask.ConfigureAwait(false);
             }
             catch { }
             _fileManager.Dispose();
-            await _p2pClient.DisposeAsync();
-            await _trackerClient.DisposeAsync();
+            await _p2pClient.DisposeAsync().ConfigureAwait(false);
+            await _trackerClient.DisposeAsync().ConfigureAwait(false);
             _cancellationTokenSource?.Dispose();
             _cancellationTokenSource = null;
             TorrentTask = null;

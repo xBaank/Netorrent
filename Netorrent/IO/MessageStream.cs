@@ -1,5 +1,6 @@
 ﻿using System.Buffers;
 using System.Buffers.Binary;
+using System.Threading;
 using System.Threading.Channels;
 using Netorrent.Extensions;
 using Netorrent.Other;
@@ -22,6 +23,8 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
 
     private readonly byte[] _lengthBuffer = new byte[4];
     private readonly byte[] _idBuffer = new byte[1];
+    private CancellationTokenSource? _receiveCts;
+    private CancellationTokenSource? _sendCts;
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -43,8 +46,8 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
             cancellationToken,
             timeoutCts.Token
         );
-        await SendHandHandshake(infoHash, peerId, linkedCts.Token);
-        var receivedHandshake = await ReceiveHandshakeAsync(linkedCts.Token);
+        await SendHandHandshake(infoHash, peerId, linkedCts.Token).ConfigureAwait(false);
+        var receivedHandshake = await ReceiveHandshakeAsync(linkedCts.Token).ConfigureAwait(false);
 
         return ValidateHandshake(infoHash, receivedHandshake);
     }
@@ -61,8 +64,8 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
             timeoutCts.Token
         );
 
-        var receivedHandshake = await ReceiveHandshakeAsync(linkedCts.Token);
-        await SendHandHandshake(infoHash, peerId, linkedCts.Token);
+        var receivedHandshake = await ReceiveHandshakeAsync(linkedCts.Token).ConfigureAwait(false);
+        await SendHandHandshake(infoHash, peerId, linkedCts.Token).ConfigureAwait(false);
         return ValidateHandshake(infoHash, receivedHandshake);
     }
 
@@ -70,32 +73,52 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            var message = await ReceiveMessageAsync(cancellationToken);
-            await _incomingMessages.Writer.WriteOrDisposeAsync(message, cancellationToken);
+            var message = await ReceiveMessageAsync(cancellationToken).ConfigureAwait(false);
+            await _incomingMessages
+                .Writer.WriteOrDisposeAsync(message, cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 
     private async Task WriteLoopAsync(CancellationToken cancellationToken)
     {
-        await foreach (var item in _outgoingMessages.Reader.ReadAllAsync(cancellationToken))
+        await foreach (
+            var item in _outgoingMessages
+                .Reader.ReadAllAsync(cancellationToken)
+                .ConfigureAwait(false)
+        )
         {
             using var message = item;
-            await SendMessageAsync(message, cancellationToken);
+            await SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
         }
     }
 
     private async ValueTask SendMessageAsync(Message message, CancellationToken cancellationToken)
     {
-        using var cts = cancellationToken.WithTimeout(timeout);
+        if (_sendCts is null || !_sendCts.TryReset())
+        {
+            _sendCts?.Dispose();
+            _sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        }
+        _sendCts.CancelAfter(timeout);
+        var token = _sendCts?.Token ?? cancellationToken;
+
         using var messageBytes = message.ToRentedArray();
-        await stream.WriteAsync(messageBytes.Memory, cts.Token);
-        await stream.FlushAsync(cts.Token);
+        await stream.WriteAsync(messageBytes.Memory, token).ConfigureAwait(false);
+        await stream.FlushAsync(token).ConfigureAwait(false);
     }
 
     private async ValueTask<Message> ReceiveMessageAsync(CancellationToken cancellationToken)
     {
-        using var cts = cancellationToken.WithTimeout(timeout);
-        await stream.ReadExactlyAsync(_lengthBuffer, cts.Token);
+        if (_receiveCts is null || !_receiveCts.TryReset())
+        {
+            _receiveCts?.Dispose();
+            _receiveCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        }
+        _receiveCts?.CancelAfter(timeout);
+        var token = _receiveCts?.Token ?? cancellationToken;
+
+        await stream.ReadExactlyAsync(_lengthBuffer, token).ConfigureAwait(false);
         int messageLength = BinaryPrimitives.ReadInt32BigEndian(_lengthBuffer);
         var payloadLength = messageLength - 1;
 
@@ -105,8 +128,8 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
         var array = ArrayPool<byte>.Shared.Rent(messageLength);
         try
         {
-            await stream.ReadExactlyAsync(_idBuffer, cts.Token);
-            await stream.ReadExactlyAsync(array, 0, payloadLength, cts.Token);
+            await stream.ReadExactlyAsync(_idBuffer, token).ConfigureAwait(false);
+            await stream.ReadExactlyAsync(array, 0, payloadLength, token).ConfigureAwait(false);
             return Message.From(array, payloadLength, _idBuffer[0]);
         }
         catch
@@ -121,7 +144,7 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
         using var cts = cancellationToken.WithTimeout(timeout);
         using var pool = MemoryPool<byte>.Shared.Rent(Handshake.TotalLength);
         var buffer = pool.Memory[..Handshake.TotalLength];
-        await stream.ReadExactlyAsync(buffer, cts.Token);
+        await stream.ReadExactlyAsync(buffer, cts.Token).ConfigureAwait(false);
         var receivedHandshake = Handshake.FromBytes(buffer.Span);
         return receivedHandshake;
     }
@@ -135,8 +158,8 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
         using var cts = cancellationToken.WithTimeout(timeout);
         var handshake = Handshake.Create(infoHash.ToArray(), peerId.ToBytes());
         using var bytesRented = handshake.ToBytes();
-        await stream.WriteAsync(bytesRented.Memory, cts.Token);
-        await stream.FlushAsync(cts.Token);
+        await stream.WriteAsync(bytesRented.Memory, cts.Token).ConfigureAwait(false);
+        await stream.FlushAsync(cts.Token).ConfigureAwait(false);
     }
 
     private static PeerId ValidateHandshake(
@@ -152,11 +175,11 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
 
     private async ValueTask DrainChannelsAsync()
     {
-        await foreach (var item in _incomingMessages.Reader.ReadAllAsync())
+        await foreach (var item in _incomingMessages.Reader.ReadAllAsync().ConfigureAwait(false))
         {
             item.Dispose();
         }
-        await foreach (var item in _outgoingMessages.Reader.ReadAllAsync())
+        await foreach (var item in _outgoingMessages.Reader.ReadAllAsync().ConfigureAwait(false))
         {
             item.Dispose();
         }
@@ -167,8 +190,10 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
         stream.Dispose();
         _incomingMessages.Writer.TryComplete();
         _outgoingMessages.Writer.TryComplete();
-        await DrainChannelsAsync();
+        await DrainChannelsAsync().ConfigureAwait(false);
         await _incomingMessages.Reader.Completion;
         await _outgoingMessages.Reader.Completion;
+        _receiveCts?.Dispose();
+        _sendCts?.Dispose();
     }
 }

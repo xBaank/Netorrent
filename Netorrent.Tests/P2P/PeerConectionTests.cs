@@ -30,10 +30,7 @@ public class PeerConectionTests
         await stateChanged;
 
         bitfieldMessage.Id.ShouldBe(Message.Bitfield);
-        ctx.Peer.PeerChocking.ShouldBeFalse();
-        await ctx
-            .RequestMock.Received()
-            .OnPeerUnchockedAsync(Arg.Any<PeerConnection>(), Arg.Any<CancellationToken>());
+        ctx.Peer.PeerChoking.ShouldBeFalse();
     }
 
     [Test]
@@ -48,7 +45,7 @@ public class PeerConectionTests
         using var bitfieldMessage = await ctx.ReadAsync(token);
         await state;
 
-        ctx.Peer.PeerChocking.ShouldBeTrue();
+        ctx.Peer.PeerChoking.ShouldBeTrue();
         bitfieldMessage.Id.ShouldBe(Message.Bitfield);
     }
 
@@ -70,7 +67,7 @@ public class PeerConectionTests
         await ctx.DisposeAsync();
 
         ctx.Peer.PeerInterested.ShouldBeTrue();
-        ctx.Peer.AmChocking.ShouldBeFalse();
+        ctx.Peer.AmChoking.ShouldBeFalse();
         bitfieldMessage.Id.ShouldBe(Message.Bitfield);
         unchokeMessage.Id.ShouldBe(Message.Unchoke);
 
@@ -101,7 +98,7 @@ public class PeerConectionTests
         await state;
 
         ctx.Peer.PeerInterested.ShouldBeFalse();
-        ctx.Peer.AmChocking.ShouldBeTrue();
+        ctx.Peer.AmChoking.ShouldBeTrue();
         bitfieldMessage.Id.ShouldBe(Message.Bitfield);
         chokeMessage.Id.ShouldBe(Message.Choke);
     }
@@ -169,7 +166,7 @@ public class PeerConectionTests
         var ctx = new PeerConnectionTestContext(local);
 
         // mark local bitfield as already having piece 1
-        local.SetPiece(1, token);
+        local.SetPiece(1);
         var callTask = ctx.RequestMock.WaitForCallAsync(
             x => x.IncreaseRarity(Arg.Any<int>()),
             token
@@ -195,7 +192,7 @@ public class PeerConectionTests
         // local has all pieces; peer has only piece 1 (so no interest)
         var local = new Bitfield(5, true);
         var peerBitfield = new Bitfield(5);
-        peerBitfield.SetPiece(1, token);
+        peerBitfield.SetPiece(1);
 
         var ctx = new PeerConnectionTestContext(local);
         var callTask = ctx.RequestMock.WaitForCallAsync(
@@ -228,7 +225,7 @@ public class PeerConectionTests
 
         // Configure upload scheduler behavior
         ctx.UploadMock.AddRequestAsync(Arg.Any<RequestBlock>(), Arg.Any<CancellationToken>())
-            .Returns(true);
+            .Returns(ValueTask.CompletedTask);
         ctx.UploadMock.RequestSlotAsync(Arg.Any<PeerConnection>(), Arg.Any<CancellationToken>())
             .Returns(ValueTask.CompletedTask);
         ctx.UploadMock.FreeSlotAsync(Arg.Any<PeerConnection>(), Arg.Any<CancellationToken>())
@@ -256,7 +253,7 @@ public class PeerConectionTests
         await ctx.DisposeAsync();
 
         ctx.Peer.PeerInterested.ShouldBeTrue();
-        ctx.Peer.AmChocking.ShouldBeFalse();
+        ctx.Peer.AmChoking.ShouldBeFalse();
 
         bitfieldMessage.Id.ShouldBe(Message.Bitfield);
         unchokeMessage.Id.ShouldBe(Message.Unchoke);
@@ -270,7 +267,7 @@ public class PeerConectionTests
         await ctx
             .UploadMock.Received(1)
             .FreeSlotAsync(Arg.Any<PeerConnection>(), Arg.Any<CancellationToken>());
-        ctx.Peer.UploadRequestedBlocksCount.ShouldBe(1);
+        ctx.Peer.UploadRequestedBlocksCount.ShouldBe(0);
     }
 
     [Test]
@@ -312,7 +309,7 @@ public class PeerConectionTests
         await ctx.DisposeAsync();
 
         ctx.Peer.AmInterested.ShouldBeTrue();
-        ctx.Peer.PeerChocking.ShouldBeFalse();
+        ctx.Peer.PeerChoking.ShouldBeFalse();
 
         bitfieldMessage.Id.ShouldBe(Message.Bitfield);
         intersetedMessage.Id.ShouldBe(Message.Interested);
@@ -352,7 +349,7 @@ public class PeerConectionTests
         await ctx.DisposeAsync();
 
         ctx.Peer.AmInterested.ShouldBeTrue();
-        ctx.Peer.PeerChocking.ShouldBeFalse();
+        ctx.Peer.PeerChoking.ShouldBeFalse();
 
         bitfieldMessage.Id.ShouldBe(Message.Bitfield);
         interestedMessage.Id.ShouldBe(Message.Interested);

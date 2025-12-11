@@ -46,11 +46,15 @@ internal class PieceBuffer : IDisposable
             return false;
         }
 
-        var isOK = await _fileManager.VerifyPieceAsync(_index, _buffer.Memory, cancellationToken);
+        var isOK = await _fileManager
+            .VerifyPieceAsync(_index, _buffer.Memory, cancellationToken)
+            .ConfigureAwait(false);
 
         if (isOK)
         {
-            await _fileManager.WritePieceAsync(_index, 0, _buffer.Memory, cancellationToken);
+            await _fileManager
+                .WritePieceAsync(_index, 0, _buffer.Memory, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         return isOK;

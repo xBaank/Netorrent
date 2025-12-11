@@ -10,20 +10,18 @@ namespace Netorrent.P2P.Upload;
 internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploadScheduler
 {
     const int MaxInFlightUploadRequests = 4;
+    const int MaxUnchokedPeers = 4;
+
     private readonly Channel<RequestBlock> _pendingRequests = Channel.CreateBounded<RequestBlock>(
         new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
     );
     private readonly Channel<PeerConnection> _slotsRequests = Channel.CreateBounded<PeerConnection>(
-        new BoundedChannelOptions(256) { SingleWriter = true, SingleReader = true }
+        new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
     );
-    private readonly ConcurrentDictionary<
-        (int Index, int Begin, int Length),
-        RequestBlock
-    > _requestByIBL = [];
 
     private readonly List<PeerConnection> _interestedPeers = [];
-    private readonly List<PeerConnection> _unchokedPeers = [];
-    private readonly SemaphoreSlim _unchokedSlotsSemahpore = new(1);
+    private readonly HashSet<PeerConnection> _unchokedPeers = [];
+    private readonly Lock _unchokedSlotsLock = new();
 
     private CancellationTokenSource? _cts;
     private Task? _runningTask;
@@ -43,15 +41,33 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
 
     public async Task ProcessSlotsAsync(CancellationToken cancellationToken)
     {
-        await foreach (var peerConnection in _slotsRequests.Reader.ReadAllAsync(cancellationToken))
+        await foreach (
+            var peerConnection in _slotsRequests
+                .Reader.ReadAllAsync(cancellationToken)
+                .ConfigureAwait(false)
+        )
         {
-            await peerConnection.SendUnchokedAsync(cancellationToken);
+            try
+            {
+                await peerConnection.SendUnchokedAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                if (logger.IsEnabled(LogLevel.Error))
+                {
+                    logger.LogError(ex, "Error unchoking peer {peeid}", peerConnection.PeerId);
+                }
+            }
         }
     }
 
     public async Task ProcessRequestsAsync(CancellationToken cancellationToken)
     {
-        await foreach (var requestBlock in _pendingRequests.Reader.ReadAllAsync(cancellationToken))
+        await foreach (
+            var requestBlock in _pendingRequests
+                .Reader.ReadAllAsync(cancellationToken)
+                .ConfigureAwait(false)
+        )
         {
             if (
                 requestBlock.State == RequestBlockState.Cancelled
@@ -61,23 +77,24 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
 
             var peer = requestBlock.RequestedFrom[0];
 
-            _requestByIBL.TryRemove(
-                (requestBlock.Index, requestBlock.Begin, requestBlock.Length),
-                out _
-            );
-
-            var pieceData = await fileManager.ReadPieceAsync(
-                requestBlock.Index,
-                requestBlock.Begin,
-                requestBlock.Length,
-                cancellationToken
-            );
-
-            using var block = new Block(requestBlock.Index, requestBlock.Begin, pieceData, peer);
-
             try
             {
-                await peer.SendBlockAsync(block, cancellationToken);
+                var pieceData = await fileManager
+                    .ReadPieceAsync(
+                        requestBlock.Index,
+                        requestBlock.Begin,
+                        requestBlock.Length,
+                        cancellationToken
+                    )
+                    .ConfigureAwait(false);
+
+                using var block = new Block(
+                    requestBlock.Index,
+                    requestBlock.Begin,
+                    pieceData,
+                    peer
+                );
+                await peer.SendBlockAsync(block, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -93,6 +110,10 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
                     );
                 }
             }
+            finally
+            {
+                peer.DecrementUploadRequested();
+            }
         }
     }
 
@@ -101,22 +122,25 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
         CancellationToken cancellationToken
     )
     {
-        await _unchokedSlotsSemahpore.WaitAsync(cancellationToken);
-        try
+        bool shouldEnqueue;
+
+        lock (_unchokedSlotsLock)
         {
-            if (_unchokedPeers.Count >= 4)
+            if (_unchokedPeers.Count >= MaxUnchokedPeers)
             {
                 _interestedPeers.Add(peerConnection);
                 return;
             }
 
-            await _slotsRequests.Writer.WriteAsync(peerConnection, cancellationToken);
             _unchokedPeers.Add(peerConnection);
-            return;
+            shouldEnqueue = true;
         }
-        finally
+
+        if (shouldEnqueue)
         {
-            _unchokedSlotsSemahpore.Release();
+            await _slotsRequests
+                .Writer.WriteAsync(peerConnection, cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 
@@ -125,60 +149,66 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
         CancellationToken cancellationToken
     )
     {
-        await _unchokedSlotsSemahpore.WaitAsync(cancellationToken);
-        try
+        PeerConnection? nextPeer = null;
+
+        lock (_unchokedSlotsLock)
         {
             _interestedPeers.Remove(peerConnection);
             _unchokedPeers.Remove(peerConnection);
-
-            var nextPeer = _interestedPeers.FirstOrDefault();
-            if (nextPeer is not null)
+            if (_interestedPeers.Count > 0)
             {
-                await _slotsRequests.Writer.WriteAsync(nextPeer, cancellationToken);
-                _interestedPeers.Remove(nextPeer);
+                nextPeer = _interestedPeers[0];
+                _interestedPeers.RemoveAt(0);
+                _unchokedPeers.Add(nextPeer);
             }
         }
-        finally
+
+        if (nextPeer is not null)
         {
-            _unchokedSlotsSemahpore.Release();
+            await _slotsRequests
+                .Writer.WriteAsync(nextPeer, cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 
-    public async ValueTask<bool> AddRequestAsync(
+    public async ValueTask AddRequestAsync(
         RequestBlock request,
         CancellationToken cancellationToken
     )
     {
         var from = request.RequestedFrom[0];
 
-        if (!_unchokedPeers.Contains(from))
-            return false;
+        lock (_unchokedSlotsLock)
+        {
+            if (!_unchokedPeers.Contains(from))
+            {
+                logger.LogInformation("Peer is not unchoked");
+                return;
+            }
 
-        if (from.UploadRequestedBlocksCount >= MaxInFlightUploadRequests)
-            return false;
+            if (from.UploadRequestedBlocksCount >= MaxInFlightUploadRequests)
+            {
+                logger.LogInformation("Peer reached the max requests");
+                return;
+            }
+        }
 
-        var key = (request.Index, request.Begin, request.Length);
-        _requestByIBL.TryAdd(key, request);
-        await _pendingRequests.Writer.WriteAsync(request, cancellationToken);
-        return true;
+        from.IncrementUploadRequested();
+        await _pendingRequests.Writer.WriteAsync(request, cancellationToken).ConfigureAwait(false);
     }
 
     public void CancelRequest(RequestBlock request)
     {
-        var key = (request.Index, request.Begin, request.Length);
-        if (!_requestByIBL.TryGetValue(key, out var requestBlock))
-            return;
+        var from = request.RequestedFrom[0];
 
-        requestBlock.State = RequestBlockState.Cancelled;
-        _requestByIBL.TryRemove(key, out _);
+        request.State = RequestBlockState.Cancelled;
+        from.DecrementUploadRequested();
     }
 
     private async ValueTask DrainChannelsAsync()
     {
-        await foreach (var _ in _pendingRequests.Reader.ReadAllAsync()) { }
-        await foreach (var _ in _slotsRequests.Reader.ReadAllAsync()) { }
-        await _pendingRequests.Reader.Completion;
-        await _slotsRequests.Reader.Completion;
+        await foreach (var _ in _pendingRequests.Reader.ReadAllAsync().ConfigureAwait(false)) { }
+        await foreach (var _ in _slotsRequests.Reader.ReadAllAsync().ConfigureAwait(false)) { }
     }
 
     public async ValueTask DisposeAsync()
@@ -193,13 +223,11 @@ internal class UploadScheduler(FileManager fileManager, ILogger logger) : IUploa
             try
             {
                 if (_runningTask is not null)
-                    await _runningTask;
+                    await _runningTask.ConfigureAwait(false);
             }
             catch { }
 
-            _unchokedSlotsSemahpore.Dispose();
-            _requestByIBL.Clear();
-            await DrainChannelsAsync();
+            await DrainChannelsAsync().ConfigureAwait(false);
             _cts?.Dispose();
         }
     }

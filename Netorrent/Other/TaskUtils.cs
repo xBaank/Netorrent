@@ -21,11 +21,12 @@ internal static class TaskUtils
             );
         }
 
-        var completed = await Task.WhenAny(Task.WhenAll(taskList), firstFailure.Task);
+        var completed = await Task.WhenAny(Task.WhenAll(taskList), firstFailure.Task)
+            .ConfigureAwait(false);
 
         if (completed == firstFailure.Task)
         {
-            var ex = await firstFailure.Task;
+            var ex = await firstFailure.Task.ConfigureAwait(false);
 
             // Unwrap if only one inner exception
             if (ex is AggregateException agg && agg.InnerExceptions.Count == 1)

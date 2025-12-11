@@ -1,6 +1,8 @@
 ﻿using System.Buffers;
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Net;
+using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using Netorrent.Extensions;
 using Netorrent.IO;
@@ -18,19 +20,19 @@ internal class PeerConnection(
     IUploadScheduler uploadScheduler,
     IRequestScheduler requestScheduler,
     IMessageStream messageStream,
-    bool amChocking = true,
+    bool amChoking = true,
     bool amInterested = false,
-    bool peerChocking = true,
+    bool peerChoking = true,
     bool peerInterested = false
 ) : IAsyncDisposable
 {
     private readonly IUploadScheduler _uploadScheduler = uploadScheduler;
     private readonly IRequestScheduler _requestScheduler = requestScheduler;
     private readonly Subject<PeerConnection> _stateChanged = new();
-
-    private DateTime _lastKeepAlive;
+    private readonly SemaphoreSlim _stateSemaphoreSlim = new(1);
+    private DateTimeOffset _lastKeepAlive;
     private CancellationTokenSource? _cancellationTokenSource;
-    private DateTime _startedConnectionTime;
+    private DateTimeOffset _startedConnectionTime;
     private Task? _runTask;
     private bool _disposed;
 
@@ -38,9 +40,9 @@ internal class PeerConnection(
     public SpeedTracker UploadSpeedTracker { get; } = new();
     public IPEndPoint IPEndPoint { get; } = iPEndPoint;
     public Bitfield MyBitField { get; } = myBitField;
-    public bool AmChocking { get; private set; } = amChocking;
+    public bool AmChoking { get; private set; } = amChoking;
     public bool AmInterested { get; private set; } = amInterested;
-    public bool PeerChocking { get; private set; } = peerChocking;
+    public bool PeerChoking { get; private set; } = peerChoking;
     public bool PeerInterested { get; private set; } = peerInterested;
     public PeerId? PeerId { get; private set; }
     public Bitfield? PeerBitField { get; private set; }
@@ -48,24 +50,20 @@ internal class PeerConnection(
     public IObservable<PeerConnection> StateChanged => _stateChanged;
     public PeerEndpoint PeerEndpoint => new(IPEndPoint, PeerId!.Value);
 
-    public int RequestedBlocksCount
-    {
-        get => field;
-        set => Interlocked.Exchange(ref field, value);
-    }
-    public int UploadRequestedBlocksCount
-    {
-        get => field;
-        set => Interlocked.Exchange(ref field, value);
-    }
+    private int _requestedBlocksCount;
+    private int _uploadRequestedCount;
+
+    public int RequestedBlocksCount => Volatile.Read(ref _requestedBlocksCount);
+    public int UploadRequestedBlocksCount => Volatile.Read(ref _uploadRequestedCount);
+
     public TimeSpan ConnectionDuration => DateTime.UtcNow - _startedConnectionTime;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        _startedConnectionTime = DateTime.Now;
-        _lastKeepAlive = DateTime.UtcNow;
+        _startedConnectionTime = DateTimeOffset.UtcNow;
+        _lastKeepAlive = DateTimeOffset.UtcNow;
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
@@ -78,25 +76,32 @@ internal class PeerConnection(
 
     private async Task RunAsync(CancellationTokenSource cancellationTokenSource)
     {
-        await SendBitfieldAsync(MyBitField, cancellationTokenSource.Token);
-        MyBitField.OnHavePieceAsync += SendHaveAsync;
+        await SendBitfieldAsync(MyBitField, cancellationTokenSource.Token).ConfigureAwait(false);
 
-        await using var downloadTimer = DownloadSpeedTracker.StartSampling(500.Milliseconds);
-        await using var uploadTimer = UploadSpeedTracker.StartSampling(500.Milliseconds);
+        using var stateChangedDisposable = MyBitField
+            .StateChanged.SelectMany(i =>
+                Observable.FromAsync(() => SendHaveAsync(i, cancellationTokenSource.Token))
+            )
+            .Subscribe();
+
+        await using var downloadTimer = DownloadSpeedTracker
+            .StartSampling(500.Milliseconds)
+            .ConfigureAwait(false);
+        await using var uploadTimer = UploadSpeedTracker
+            .StartSampling(500.Milliseconds)
+            .ConfigureAwait(false);
 
         try
         {
-            await cancellationTokenSource.CancelOnFirstCompletionAndAwaitAllAsync([
-                messageStream.StartAsync(cancellationTokenSource.Token),
-                ProcessIncomingMessagesAsync(cancellationTokenSource.Token),
-                CheckTimeoutAsync(cancellationTokenSource.Token),
-            ]);
+            await cancellationTokenSource
+                .CancelOnFirstCompletionAndAwaitAllAsync([
+                    messageStream.StartAsync(cancellationTokenSource.Token),
+                    ProcessIncomingMessagesAsync(cancellationTokenSource.Token),
+                    CheckTimeoutAsync(cancellationTokenSource.Token),
+                ])
+                .ConfigureAwait(false);
         }
         catch (OperationCanceledException) { }
-        finally
-        {
-            MyBitField.OnHavePieceAsync -= SendHaveAsync;
-        }
     }
 
     public async Task CheckTimeoutAsync(CancellationToken cancellationToken)
@@ -106,21 +111,22 @@ internal class PeerConnection(
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            var timePassed = DateTime.UtcNow - _lastKeepAlive;
+            var timePassed = DateTimeOffset.UtcNow - _lastKeepAlive;
             if (timePassed > keepAliveThreshold)
             {
-                await messageStream.OutgoingMessages.WriteOrDisposeAsync(
-                    Message.KeepAlive,
-                    cancellationToken
-                );
+                await WriteMessageAsync(Message.KeepAlive, cancellationToken).ConfigureAwait(false);
             }
-            await Task.Delay(waitTime, cancellationToken);
+            await Task.Delay(waitTime, cancellationToken).ConfigureAwait(false);
         }
     }
 
     private async Task ProcessIncomingMessagesAsync(CancellationToken cancellationToken)
     {
-        await foreach (var item in messageStream.IncomingMessages.ReadAllAsync(cancellationToken))
+        await foreach (
+            var item in messageStream
+                .IncomingMessages.ReadAllAsync(cancellationToken)
+                .ConfigureAwait(false)
+        )
         {
             using var message = item;
 
@@ -129,84 +135,49 @@ internal class PeerConnection(
 
             if (message.Id == Message.Bitfield)
             {
-                //Maybe connection should be dropped if we receive >2 bitfields or have -> bitfield
-                if (PeerBitField is not null)
-                    continue;
-
-                var bitfieldBytes = message.Payload!.Memory;
-                PeerBitField = new Bitfield(bitfieldBytes.Span, MyBitField.Length);
-                RegisterPieces(PeerBitField);
-                await SendInterestAsync(cancellationToken);
+                await ReceiveBitfieldAsync(message, cancellationToken).ConfigureAwait(false);
                 continue;
             }
 
             if (message.Id == Message.Interested)
             {
-                if (PeerInterested != true)
-                {
-                    PeerInterested = true;
-                    await _uploadScheduler.RequestSlotAsync(this, cancellationToken);
-                    _stateChanged.OnNext(this);
-                }
+                await ReceiveInterestedAsync(cancellationToken).ConfigureAwait(false);
                 continue;
             }
 
             if (message.Id == Message.NotInterested)
             {
-                if (PeerInterested != false)
-                {
-                    PeerInterested = false;
-                    await SendChokedAsync(cancellationToken);
-                    _stateChanged.OnNext(this);
-                }
+                await ReceiveNotInterestedAsync(cancellationToken).ConfigureAwait(false);
                 continue;
             }
 
             if (message.Id == Message.Choke)
             {
-                if (PeerChocking != true)
-                {
-                    PeerChocking = true;
-                    _stateChanged.OnNext(this);
-                }
+                await ReceiveChokeAsync(cancellationToken).ConfigureAwait(false);
                 continue;
             }
 
             if (message.Id == Message.Unchoke)
             {
-                if (PeerChocking != false)
-                {
-                    PeerChocking = false;
-                    await _requestScheduler.OnPeerUnchockedAsync(this, cancellationToken);
-                    _stateChanged.OnNext(this);
-                }
+                await ReceiveUnchokeAsync(cancellationToken).ConfigureAwait(false);
                 continue;
             }
 
             if (message.Id == Message.Have)
             {
-                //Lazy bitfield
-                PeerBitField ??= new(MyBitField.Length);
-                int pieceIndex = BinaryPrimitives.ReadInt32BigEndian(message.Payload!.Memory.Span);
-                //If the have was already sent or we already know that he has that piece we omit this message
-                if (PeerBitField.HasPiece(pieceIndex))
-                    continue;
-
-                RegisterPiece(pieceIndex);
-                PeerBitField.SetPiece(pieceIndex, cancellationToken);
-                await SendInterestAsync(cancellationToken);
+                await ReceiveHaveAsync(message, cancellationToken).ConfigureAwait(false);
                 continue;
             }
 
             if (message.Id == Message.Request)
             {
-                await ReceiveRequestAsync(message, cancellationToken);
+                await ReceiveRequestAsync(message, cancellationToken).ConfigureAwait(false);
                 continue;
             }
 
             if (message.Id == Message.Piece)
             {
-                await ReceiveBlockAsync(message, cancellationToken);
+                await ReceiveBlockAsync(message, cancellationToken).ConfigureAwait(false);
                 continue;
             }
 
@@ -226,13 +197,83 @@ internal class PeerConnection(
         }
     }
 
+    private async ValueTask ReceiveBitfieldAsync(
+        Message message,
+        CancellationToken cancellationToken
+    )
+    {
+        if (PeerBitField is not null)
+            throw new InvalidOperationException("Second bitfield received, dropping connection");
+
+        var bitfieldBytes = message.Payload!.Memory;
+        PeerBitField = new Bitfield(bitfieldBytes.Span, MyBitField.Length);
+        RegisterPieces(PeerBitField);
+        await CheckInterestAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask ReceiveInterestedAsync(CancellationToken cancellationToken)
+    {
+        if (!PeerInterested)
+        {
+            PeerInterested = true;
+            await _uploadScheduler.RequestSlotAsync(this, cancellationToken).ConfigureAwait(false);
+            _stateChanged.OnNext(this);
+        }
+    }
+
+    private async ValueTask ReceiveNotInterestedAsync(CancellationToken cancellationToken)
+    {
+        if (PeerInterested)
+        {
+            PeerInterested = false;
+            await SendChokedAsync(cancellationToken).ConfigureAwait(false);
+            _stateChanged.OnNext(this);
+        }
+    }
+
+    private async ValueTask ReceiveChokeAsync(CancellationToken cancellationToken)
+    {
+        if (!PeerChoking)
+        {
+            PeerChoking = true;
+            await _requestScheduler.FreeSlotAsync(this, cancellationToken).ConfigureAwait(false);
+            _stateChanged.OnNext(this);
+        }
+    }
+
+    private async ValueTask ReceiveHaveAsync(Message message, CancellationToken cancellationToken)
+    {
+        //Lazy bitfield
+        PeerBitField ??= new(MyBitField.Length);
+        int pieceIndex = BinaryPrimitives.ReadInt32BigEndian(message.Payload!.Memory.Span);
+        //If the have was already sent or we already know that he has that piece we omit this message
+        if (PeerBitField.HasPiece(pieceIndex))
+            return;
+
+        RegisterPiece(pieceIndex);
+        PeerBitField.SetPiece(pieceIndex);
+        await CheckInterestAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask ReceiveUnchokeAsync(CancellationToken cancellationToken)
+    {
+        if (PeerChoking)
+        {
+            PeerChoking = false;
+            await _requestScheduler.RequestSlotAsync(this, cancellationToken).ConfigureAwait(false);
+            _stateChanged.OnNext(this);
+        }
+    }
+
     private async ValueTask ReceiveRequestAsync(
         Message message,
         CancellationToken cancellationToken
     )
     {
-        if (AmChocking)
+        if (AmChoking)
+        {
             return;
+        }
 
         var span = message.Payload!.Memory.Span;
         var index = BinaryPrimitives.ReadInt32BigEndian(span[..4]);
@@ -242,11 +283,9 @@ internal class PeerConnection(
         var request = new RequestBlock(index, begin, length)
         {
             RequestedAt = DateTimeOffset.UtcNow,
+            RequestedFrom = [this],
         };
-        request.RequestedFrom.Add(this);
-
-        if (await _uploadScheduler.AddRequestAsync(request, cancellationToken))
-            UploadRequestedBlocksCount++;
+        await _uploadScheduler.AddRequestAsync(request, cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask SendRequestAsync(
@@ -259,7 +298,7 @@ internal class PeerConnection(
             nextBlock.Begin,
             nextBlock.Length
         );
-        await messageStream.OutgoingMessages.WriteOrDisposeAsync(requestMessage, cancellationToken);
+        await WriteMessageAsync(requestMessage, cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask SendCancelAsync(
@@ -268,15 +307,14 @@ internal class PeerConnection(
     )
     {
         var cancelMessage = Message.CreateCancel(request.Index, request.Begin, request.Length);
-        await messageStream.OutgoingMessages.WriteOrDisposeAsync(cancelMessage, cancellationToken);
+        await WriteMessageAsync(cancelMessage, cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask SendBlockAsync(Block block, CancellationToken cancellationToken)
     {
         var pieceMessage = Message.CreatePiece(block.Index, block.Begin, block.Payload);
-        await messageStream.OutgoingMessages.WriteOrDisposeAsync(pieceMessage, cancellationToken);
+        await WriteMessageAsync(pieceMessage, cancellationToken).ConfigureAwait(false);
         UploadSpeedTracker.AddBytes(block.Payload.Length);
-        UploadRequestedBlocksCount--;
     }
 
     private async ValueTask ReceiveBlockAsync(Message message, CancellationToken cancellationToken)
@@ -292,7 +330,7 @@ internal class PeerConnection(
         );
         span[8..].CopyTo(rented.Memory.Span);
         var block = new Block(index, begin, rented, this);
-        await _requestScheduler.ReceiveBlockAsync(block, cancellationToken);
+        await _requestScheduler.ReceiveBlockAsync(block, cancellationToken).ConfigureAwait(false);
         DownloadSpeedTracker.AddBytes(payloadLength);
     }
 
@@ -305,77 +343,87 @@ internal class PeerConnection(
 
         var request = new RequestBlock(index, begin, length);
         _uploadScheduler.CancelRequest(request);
-        UploadRequestedBlocksCount--;
     }
 
     public async ValueTask PerformHandshakeAsync(
         ReadOnlyMemory<byte> infoHash,
         PeerId peerId,
         CancellationToken cancellationToken = default
-    ) => PeerId = await messageStream.PerformHandshakeAsync(infoHash, peerId, cancellationToken);
+    ) =>
+        PeerId = await messageStream
+            .PerformHandshakeAsync(infoHash, peerId, cancellationToken)
+            .ConfigureAwait(false);
 
     public async ValueTask ReceiveHandshakeAsync(
         ReadOnlyMemory<byte> infoHash,
         PeerId peerId,
         CancellationToken cancellationToken = default
-    ) => PeerId = await messageStream.ReceiveHandshakeAsync(infoHash, peerId, cancellationToken);
+    ) =>
+        PeerId = await messageStream
+            .ReceiveHandshakeAsync(infoHash, peerId, cancellationToken)
+            .ConfigureAwait(false);
 
     private async Task SendHaveAsync(int pieceIndex, CancellationToken cancellationToken)
     {
         var message = Message.CreateHave(pieceIndex);
-        await messageStream.OutgoingMessages.WriteOrDisposeAsync(message, cancellationToken);
-        await SendNotInterestedAsync(cancellationToken);
+        await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
+        await CheckInterestAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private async ValueTask SendInterestAsync(CancellationToken cancellationToken)
+    private async Task CheckInterestAsync(CancellationToken cancellationToken)
     {
-        if (PeerBitField is null)
-            throw new InvalidOperationException("PeerBitfield should not be null");
-
-        var interest = MyBitField.HasAnyMissingPiece(PeerBitField);
-        if (interest != AmInterested)
+        await _stateSemaphoreSlim.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            AmInterested = interest;
-            var message = Message.CreateInterested();
-            await messageStream.OutgoingMessages.WriteOrDisposeAsync(message, cancellationToken);
-            _stateChanged.OnNext(this);
+            if (PeerBitField is null)
+                return;
+
+            var interest = MyBitField.HasAnyMissingPiece(PeerBitField);
+            if (interest != AmInterested)
+            {
+                AmInterested = interest;
+                if (!interest)
+                {
+                    var message = Message.CreateNotInterested();
+                    await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
+                    await _requestScheduler
+                        .FreeSlotAsync(this, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                if (interest)
+                {
+                    AmInterested = interest;
+                    var message = Message.CreateInterested();
+                    await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
+                }
+                _stateChanged.OnNext(this);
+            }
         }
-    }
-
-    private async Task SendNotInterestedAsync(CancellationToken cancellationToken)
-    {
-        if (PeerBitField is null)
-            throw new InvalidOperationException("PeerBitfield should not be null");
-
-        var interest = MyBitField.HasAnyMissingPiece(PeerBitField);
-        if (interest != AmInterested)
+        finally
         {
-            AmInterested = interest;
-            var message = Message.CreateNotInterested();
-            await messageStream.OutgoingMessages.WriteOrDisposeAsync(message, cancellationToken);
-            _stateChanged.OnNext(this);
+            _stateSemaphoreSlim.Release();
         }
     }
 
     private async Task SendChokedAsync(CancellationToken cancellationToken)
     {
-        if (AmChocking != true)
+        if (AmChoking != true)
         {
-            AmChocking = true;
+            AmChoking = true;
             var message = Message.CreateChoke();
-            await messageStream.OutgoingMessages.WriteOrDisposeAsync(message, cancellationToken);
-            await _uploadScheduler.FreeSlotAsync(this, cancellationToken);
+            await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
+            await _uploadScheduler.FreeSlotAsync(this, cancellationToken).ConfigureAwait(false);
             _stateChanged.OnNext(this);
         }
     }
 
     public async Task SendUnchokedAsync(CancellationToken cancellationToken)
     {
-        if (AmChocking != false)
+        if (AmChoking != false)
         {
-            AmChocking = false;
+            AmChoking = false;
             var message = Message.CreateUnchoke();
-            await messageStream.OutgoingMessages.WriteOrDisposeAsync(message, cancellationToken);
+            await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
             _stateChanged.OnNext(this);
         }
     }
@@ -384,8 +432,16 @@ internal class PeerConnection(
     {
         var memoryRented = bitField.ToRentedArray();
         var message = Message.CreateBitfield(memoryRented);
-        await messageStream.OutgoingMessages.WriteOrDisposeAsync(message, cancellationToken);
+        await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
     }
+
+    public int IncrementUploadRequested() => Interlocked.Increment(ref _uploadRequestedCount);
+
+    public int DecrementUploadRequested() => Interlocked.Decrement(ref _uploadRequestedCount);
+
+    public int IncrementRequestedBlock() => Interlocked.Increment(ref _requestedBlocksCount);
+
+    public int DecrementRequestedBlock() => Interlocked.Decrement(ref _requestedBlocksCount);
 
     private void RegisterPiece(int index) => _requestScheduler.IncreaseRarity(index);
 
@@ -407,29 +463,38 @@ internal class PeerConnection(
         }
     }
 
+    private async ValueTask WriteMessageAsync(Message message, CancellationToken cancellationToken)
+    {
+        await messageStream
+            .OutgoingMessages.WriteOrDisposeAsync(message, cancellationToken)
+            .ConfigureAwait(false);
+        _lastKeepAlive = DateTimeOffset.UtcNow;
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (!_disposed)
         {
             _disposed = true;
-            MyBitField.OnHavePieceAsync -= SendHaveAsync;
 
             if (PeerBitField is not null)
                 UnregisterPieces(PeerBitField);
 
-            await _uploadScheduler.FreeSlotAsync(this, default);
+            await _uploadScheduler.FreeSlotAsync(this, default).ConfigureAwait(false);
+            await _requestScheduler.FreeSlotAsync(this, default).ConfigureAwait(false);
 
-            _cancellationTokenSource?.Cancel(); // ⭐ STOP StartAsync children
+            _cancellationTokenSource?.Cancel();
 
             try
             {
                 if (_runTask is not null)
-                    await _runTask; // let channels drain / cleanup happen
+                    await _runTask.ConfigureAwait(false);
             }
             catch { }
 
             _cancellationTokenSource?.Dispose();
-            await messageStream.DisposeAsync();
+            await messageStream.DisposeAsync().ConfigureAwait(false);
+            _stateSemaphoreSlim.Dispose();
         }
     }
 }

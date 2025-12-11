@@ -102,7 +102,7 @@ public sealed class BEncoder : IAsyncDisposable, IDisposable
         return a.Length.CompareTo(b.Length);
     }
 
-    public async ValueTask DisposeAsync() => await _stream.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _stream.DisposeAsync().ConfigureAwait(false);
 
     public void Dispose() => _stream.Dispose();
 }

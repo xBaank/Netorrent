@@ -25,33 +25,36 @@ internal class UdpTracker(
 
     public async ValueTask StartAsync(CancellationToken cancellationToken)
     {
-        if (await TryConnectAsync(iPEndPoint, cancellationToken) is null)
+        if (await TryConnectAsync(iPEndPoint, cancellationToken).ConfigureAwait(false) is null)
             return;
 
         _lastResponse = await TryAnnounceAsync(
-            iPEndPoint,
-            @event: Events.Started,
-            cancellationToken: cancellationToken
-        );
+                iPEndPoint,
+                @event: Events.Started,
+                cancellationToken: cancellationToken
+            )
+            .ConfigureAwait(false);
 
         if (_lastResponse is null)
             return;
 
         foreach (var peer in _lastResponse.Peers)
         {
-            await channelWriter.WriteAsync(peer, cancellationToken);
+            await channelWriter.WriteAsync(peer, cancellationToken).ConfigureAwait(false);
         }
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            await Task.Delay(_lastResponse.Interval.Seconds, cancellationToken);
+            await Task.Delay(_lastResponse.Interval.Seconds, cancellationToken)
+                .ConfigureAwait(false);
 
             var interval = _lastResponse.Interval.Seconds;
 
-            if (logger.IsEnabled(LogLevel.Trace))
-                logger.LogTrace("Waiting {seconds} seconds", interval.TotalSeconds);
+            if (logger.IsEnabled(LogLevel.Information))
+                logger.LogInformation("Waiting {seconds} seconds", interval.TotalSeconds);
 
-            var newResponse = await TryAnnounceAsync(iPEndPoint, null, cancellationToken);
+            var newResponse = await TryAnnounceAsync(iPEndPoint, null, cancellationToken)
+                .ConfigureAwait(false);
 
             if (newResponse is null)
                 continue;
@@ -60,7 +63,7 @@ internal class UdpTracker(
 
             foreach (var peer in _lastResponse.Peers)
             {
-                await channelWriter.WriteAsync(peer, cancellationToken);
+                await channelWriter.WriteAsync(peer, cancellationToken).ConfigureAwait(false);
             }
         }
     }
@@ -72,7 +75,9 @@ internal class UdpTracker(
     {
         try
         {
-            return await transactionManager.ConnectAsync(iPEndPoint, _trackerId, cancellationToken);
+            return await transactionManager
+                .ConnectAsync(iPEndPoint, _trackerId, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -98,11 +103,9 @@ internal class UdpTracker(
 
             if (connectionId is null || transactionManager.IsOutdated(connectionId.Value))
             {
-                var response = await transactionManager.ConnectAsync(
-                    iPEndPoint,
-                    _trackerId,
-                    cancellationToken
-                );
+                var response = await transactionManager
+                    .ConnectAsync(iPEndPoint, _trackerId, cancellationToken)
+                    .ConfigureAwait(false);
 
                 connectionId = response.ConnectionId;
             }
@@ -122,11 +125,9 @@ internal class UdpTracker(
                 IpAddress: forcedIp
             );
 
-            return await transactionManager.SendAsync<UdpTrackerResponse>(
-                updRequest,
-                _trackerId,
-                cancellationToken
-            );
+            return await transactionManager
+                .SendAsync<UdpTrackerResponse>(updRequest, _trackerId, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -140,6 +141,6 @@ internal class UdpTracker(
     public async ValueTask DisposeAsync()
     {
         if (iPEndPoint is not null && _lastResponse is not null)
-            await TryAnnounceAsync(iPEndPoint, Events.Stopped, default);
+            await TryAnnounceAsync(iPEndPoint, Events.Stopped, default).ConfigureAwait(false);
     }
 }

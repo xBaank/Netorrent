@@ -6,7 +6,7 @@ using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.IO;
 
-internal partial class FileManager : IDisposable
+internal class FileManager : IDisposable
 {
     private readonly string _outputDirectory;
     private readonly List<TorrentFileEntry> _files = [];
@@ -103,7 +103,7 @@ internal partial class FileManager : IDisposable
         long total = 0;
         for (int i = 0; i < BitField.Length; i++)
         {
-            if (BitField[i])
+            if (BitField.HasPiece(i))
             {
                 long pieceSize = Math.Min(
                     _pieceLength,
@@ -130,7 +130,7 @@ internal partial class FileManager : IDisposable
     {
         long globalOffset = (long)pieceIndex * _pieceLength;
         globalOffset += begin;
-        await WriteAsync(globalOffset, pieceData, ct);
+        await WriteAsync(globalOffset, pieceData, ct).ConfigureAwait(false);
     }
 
     public async ValueTask<bool> VerifyPieceAsync(
@@ -145,7 +145,7 @@ internal partial class FileManager : IDisposable
 
         var actualHash =
             pieceData.Length > 1024 * 1024
-                ? await Task.Run(() => SHA1.HashData(pieceData.Span), ct)
+                ? await Task.Run(() => SHA1.HashData(pieceData.Span), ct).ConfigureAwait(false)
                 : SHA1.HashData(pieceData.Span);
 
         return expectedHash.SequenceEqual(actualHash);
@@ -174,12 +174,9 @@ internal partial class FileManager : IDisposable
                 file.IsDirectoryCreated = true;
             }
 
-            await RandomAccess.WriteAsync(
-                file.SafeHandle,
-                data.Slice(position, (int)writable),
-                fileOffset,
-                ct
-            );
+            await RandomAccess
+                .WriteAsync(file.SafeHandle, data.Slice(position, (int)writable), fileOffset, ct)
+                .ConfigureAwait(false);
 
             globalOffset += writable;
             position += (int)writable;
@@ -199,7 +196,7 @@ internal partial class FileManager : IDisposable
     {
         long offset = (long)pieceIndex * _pieceLength;
         offset += begin;
-        return await ReadAsync(offset, length, ct);
+        return await ReadAsync(offset, length, ct).ConfigureAwait(false);
     }
 
     private async ValueTask<RentedArray<byte>> ReadAsync(
@@ -220,12 +217,9 @@ internal partial class FileManager : IDisposable
             long fileOffset = Math.Max(0, globalOffset - file.StartOffset);
             long readable = Math.Min(length - totalRead, file.Length - fileOffset);
 
-            int bytesRead = await RandomAccess.ReadAsync(
-                file.SafeHandle,
-                buffer.Slice(totalRead, (int)readable),
-                fileOffset,
-                ct
-            );
+            int bytesRead = await RandomAccess
+                .ReadAsync(file.SafeHandle, buffer.Slice(totalRead, (int)readable), fileOffset, ct)
+                .ConfigureAwait(false);
 
             totalRead += bytesRead;
             globalOffset += bytesRead;

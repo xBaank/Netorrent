@@ -13,7 +13,8 @@ internal static class DnsExtensions
         {
             try
             {
-                return await Dns.GetHostAddressesAsync(hostName, cancellationToken);
+                return await Dns.GetHostAddressesAsync(hostName, cancellationToken)
+                    .ConfigureAwait(false);
             }
             catch
             {

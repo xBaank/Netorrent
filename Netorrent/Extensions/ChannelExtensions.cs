@@ -14,7 +14,7 @@ internal static class ChannelExtensions
         {
             try
             {
-                await source.WriteAsync(item, cancellationToken);
+                await source.WriteAsync(item, cancellationToken).ConfigureAwait(false);
             }
             catch
             {

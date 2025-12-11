@@ -1,6 +1,8 @@
-﻿using System.Buffers;
+﻿using System;
+using System.Buffers;
 using System.Collections;
-using System.Runtime.CompilerServices;
+using System.Reactive.Subjects;
+using System.Threading.Channels;
 using Netorrent.Other;
 using ZLinq;
 
@@ -8,9 +10,10 @@ namespace Netorrent.P2P.Messages;
 
 public class Bitfield
 {
-    internal event Func<int, CancellationToken, Task>? OnHavePieceAsync;
-
+    private readonly Lock _lock = new();
     private readonly BitArray _bits;
+    private readonly Subject<int> _stateChanged = new();
+    public IObservable<int> StateChanged => _stateChanged;
 
     internal Bitfield(int pieceCount, bool isInitialized = false)
     {
@@ -33,27 +36,53 @@ public class Bitfield
         }
     }
 
-    public int Length => _bits.Length;
-
-    public bool this[int index]
+    public int Length
     {
-        get => _bits[index];
-        set => _bits[index] = value;
+        get
+        {
+            lock (_lock)
+            {
+                return _bits.Length;
+            }
+        }
     }
 
-    public bool IsComplete => _bits.HasAllSet();
-
-    internal void SetPiece(int index, CancellationToken cancellationToken)
+    public bool IsComplete
     {
-        if (index >= _bits.Length)
-            return;
-
-        _bits[index] = true;
-
-        OnHavePieceAsync?.Invoke(index, cancellationToken);
+        get
+        {
+            lock (_lock)
+            {
+                return _bits.HasAllSet();
+            }
+        }
     }
 
-    internal bool HasPiece(int index) => index < _bits.Length && _bits[index];
+    internal void SetPiece(int index)
+    {
+        lock (_lock)
+        {
+            if (index >= _bits.Length)
+                return;
+
+            if (_bits[index])
+                return;
+
+            _bits[index] = true;
+            _stateChanged.OnNext(index);
+
+            if (IsComplete)
+                _stateChanged.OnCompleted();
+        }
+    }
+
+    internal bool HasPiece(int index)
+    {
+        lock (_lock)
+        {
+            return index < _bits.Length && _bits[index];
+        }
+    }
 
     internal bool HasAnyMissingPiece(Bitfield other)
     {
@@ -62,8 +91,8 @@ public class Bitfield
 
         for (int i = 0; i < Length; i++)
         {
-            // If the peer has the piece and I don't, I'm missing something they have
-            if (other[i] && !this[i])
+            // If the peer has the piece and I don't, I'm interested
+            if (other.HasPiece(i) && !HasPiece((i)))
                 return true;
         }
 
@@ -72,15 +101,18 @@ public class Bitfield
 
     internal RentedArray<byte> ToRentedArray()
     {
-        int byteCount = (_bits.Length + 7) / 8;
-        var array = ArrayPool<byte>.Shared.Rent(byteCount);
-        var memory = array.AsSpan()[..byteCount];
-        PackBitsBigEndian(memory);
+        lock (_lock)
+        {
+            int byteCount = (_bits.Length + 7) / 8;
+            var array = ArrayPool<byte>.Shared.Rent(byteCount);
+            var memory = array.AsSpan()[..byteCount];
+            PackBitsBigEndian(memory);
 
-        return new RentedArray<byte>(array, byteCount);
+            return new RentedArray<byte>(array, byteCount);
+        }
     }
 
-    internal void PackBitsBigEndian(Span<byte> dest)
+    private void PackBitsBigEndian(Span<byte> dest)
     {
         int byteLen = (_bits.Length + 7) / 8;
         if (dest.Length < byteLen)
