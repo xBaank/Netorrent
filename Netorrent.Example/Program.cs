@@ -19,16 +19,8 @@ try
     var statusTask = RunStatusUI(torrent, cts.Token);
 
     await torrent.StartAsync(cts.Token);
-
-    var completed = await Task.WhenAny(
-        torrent.Statistics.Completion.AsTask(),
-        Task.Delay(Timeout.Infinite, cts.Token)
-    );
-
-    if (completed == torrent.Statistics.Completion.AsTask())
-    {
-        AnsiConsole.MarkupLine("[green]Download complete.[/]");
-    }
+    await torrent.Statistics.Completion;
+    AnsiConsole.MarkupLine("[green]Download complete.[/]");
 }
 catch (OperationCanceledException)
 {

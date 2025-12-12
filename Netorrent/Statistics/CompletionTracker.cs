@@ -23,12 +23,12 @@ public class CompletionTracker
             _downloadTaskCompletitionSource.TrySetResult();
     }
 
-    internal void SetException(Exception exception)
+    internal void TrySetException(Exception exception)
     {
         _downloadTaskCompletitionSource.TrySetException(exception);
     }
 
-    internal void SetCanceled()
+    internal void TrySetCanceled()
     {
         _downloadTaskCompletitionSource.TrySetCanceled();
     }

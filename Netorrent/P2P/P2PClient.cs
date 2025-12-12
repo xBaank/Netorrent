@@ -62,7 +62,6 @@ internal class P2PClient : IAsyncDisposable
         );
         _peerIpProxy = peerIpProxy;
         _requestManager = new RequestScheduler(
-            _activePeers,
             new PiecePicker(_bitField, fileManager, Stats.Transfer),
             logger
         );
@@ -81,7 +80,11 @@ internal class P2PClient : IAsyncDisposable
             ])
             .ConfigureAwait(false);
 
-        await Task.WhenAll(_peerTasks).ConfigureAwait(false);
+        try
+        {
+            await Task.WhenAll(_peerTasks).ConfigureAwait(false);
+        }
+        catch { }
     }
 
     private async Task ProcessPeersAsync(CancellationToken cancellationToken)

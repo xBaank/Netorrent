@@ -1,19 +1,12 @@
-﻿using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.Threading.Channels;
+﻿using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
-using Netorrent.IO;
 using Netorrent.P2P.Messages;
 using ZLinq;
 
 namespace Netorrent.P2P.Download;
 
-internal class RequestScheduler(
-    IReadOnlyDictionary<PeerEndpoint, PeerConnection> peers,
-    PiecePicker piecePicker,
-    ILogger logger
-) : IRequestScheduler
+internal class RequestScheduler(PiecePicker piecePicker, ILogger logger) : IRequestScheduler
 {
     const int MinPeersForRarity = 6;
     const int WarmupTimeoutSecods = 8;
@@ -30,7 +23,6 @@ internal class RequestScheduler(
     private readonly HashSet<PeerConnection> _activePeers = [];
     private readonly List<PeerConnection> _interestedPeers = [];
     private readonly Lock _activePeersLock = new();
-    private readonly IReadOnlyDictionary<PeerEndpoint, PeerConnection> peers = peers;
     private int _maxCurrentPeers = MinPeers;
     private CancellationTokenSource? _cts;
     private Task? _runningTask;

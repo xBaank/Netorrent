@@ -88,11 +88,11 @@ public sealed class Torrent : IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
-            Statistics.Completion.SetCanceled();
+            Statistics.Completion.TrySetCanceled();
         }
         catch (Exception ex)
         {
-            Statistics.Completion.SetException(ex);
+            Statistics.Completion.TrySetException(ex);
         }
     }
 
@@ -118,7 +118,6 @@ public sealed class Torrent : IAsyncDisposable
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
-        _cancellationTokenSource.Token.Register(_p2pClient.Stats.Completion.SetCanceled);
         State = State.Started;
         _runTask = StartAndWaitToFinishAsync(_cancellationTokenSource);
     }

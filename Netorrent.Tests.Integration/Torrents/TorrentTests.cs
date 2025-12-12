@@ -173,6 +173,8 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 await seederTorrent.StartAsync(cancellationToken);
             }
 
+            await Task.Delay(5.Seconds, cancellationToken);
+
             foreach (var leecherTorrent in leechersTorrents)
             {
                 await leecherTorrent.StartAsync(cancellationToken);
@@ -188,11 +190,91 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 await leecherTorrent.StopAsync();
             }
 
+            foreach (var seederTorrent in seedersTorrents)
+            {
+                await seederTorrent.Statistics.Completion.AsTask().ShouldNotThrowAsync();
+            }
+
             foreach (var leecherTorrent in leechersTorrents)
             {
                 await leecherTorrent
                     .Statistics.Completion.AsTask()
                     .ShouldThrowAsync<TaskCanceledException>();
+            }
+        }
+        finally
+        {
+            foreach (var (_, client) in seeders)
+            {
+                await client.DisposeAsync();
+            }
+
+            foreach (var (_, client) in leechers)
+            {
+                await client.DisposeAsync();
+            }
+        }
+    }
+
+    [Test]
+    [MatrixDataSource]
+    public async Task Should_Throw_In_Torrent(
+        [MatrixRange<int>(1, 3)] int seedersCount,
+        [MatrixRange<int>(1, 3)] int leechersCount,
+        CancellationToken cancellationToken
+    )
+    {
+        var path = await CreateRandomFileAsync("Input");
+
+        var seeders = await GetSeedersAsync(seedersCount, path, Logger)
+            .ToListAsync(cancellationToken: cancellationToken);
+        var seedersTorrents = seeders.Select(i => i.Item1).ToList();
+
+        var leechers = await GetLeechersAsync(leechersCount, seedersTorrents[0].MetaInfo, Logger)
+            .ToListAsync(cancellationToken: cancellationToken);
+        var leechersTorrents = leechers.Select(i => i.Item1).ToList();
+
+        try
+        {
+            foreach (var seederTorrent in seedersTorrents)
+            {
+                await seederTorrent.StartAsync(cancellationToken);
+            }
+
+            await Task.Delay(5.Seconds, cancellationToken);
+
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                await leecherTorrent.StartAsync(cancellationToken);
+            }
+
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                leecherTorrent.Statistics.Completion.TrySetException(
+                    new InvalidOperationException()
+                );
+            }
+
+            foreach (var seederTorrent in seedersTorrents)
+            {
+                await seederTorrent.StopAsync();
+            }
+
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                await leecherTorrent.StopAsync();
+            }
+
+            foreach (var seederTorrent in seedersTorrents)
+            {
+                await seederTorrent.Statistics.Completion.AsTask().ShouldNotThrowAsync();
+            }
+
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                await leecherTorrent
+                    .Statistics.Completion.AsTask()
+                    .ShouldThrowAsync<InvalidOperationException>();
             }
         }
         finally
