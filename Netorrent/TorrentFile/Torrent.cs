@@ -133,8 +133,15 @@ public sealed class Torrent : IAsyncDisposable
     public async ValueTask StopAsync()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        await CancelAndWaitAsync().ConfigureAwait(false);
+    }
 
-        Stop();
+    private async ValueTask CancelAndWaitAsync()
+    {
+        _cancellationTokenSource?.Cancel();
+        Statistics.Completion.TrySetCanceled();
+        State = State.Stopped;
+
         if (_runTask is not null)
         {
             try
@@ -143,15 +150,6 @@ public sealed class Torrent : IAsyncDisposable
             }
             catch { }
         }
-    }
-
-    private void Stop()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        _cancellationTokenSource?.Cancel();
-        Statistics.Completion.TrySetCanceled();
-        State = State.Stopped;
     }
 
     /// <summary>
@@ -181,13 +179,7 @@ public sealed class Torrent : IAsyncDisposable
         if (!_disposed)
         {
             _disposed = true;
-            _cancellationTokenSource?.Cancel();
-            try
-            {
-                if (_runTask is not null)
-                    await _runTask.ConfigureAwait(false);
-            }
-            catch { }
+            await CancelAndWaitAsync().ConfigureAwait(false);
             _fileManager.Dispose();
             await _p2pClient.DisposeAsync().ConfigureAwait(false);
             await _trackerClient.DisposeAsync().ConfigureAwait(false);

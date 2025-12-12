@@ -15,6 +15,7 @@ try
 
     await using var client = new TorrentClient();
     await using var torrent = await client.ImportTorrentAsync(torrentPath, outputPath);
+    cts.Token.Register(async () => await torrent.StopAsync());
 
     var statusTask = RunStatusUI(torrent, cts.Token);
 
@@ -25,6 +26,10 @@ try
 catch (OperationCanceledException)
 {
     AnsiConsole.MarkupLine("[yellow]Canceled by user.[/]");
+}
+catch (Exception ex)
+{
+    AnsiConsole.MarkupLine($"[yellow]Error {ex.Message}[/]");
 }
 
 static async ValueTask<string> BrowseForOutputDir(CancellationToken cancellationToken)
