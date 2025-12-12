@@ -26,7 +26,7 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
     private CancellationTokenSource? _receiveCts;
     private CancellationTokenSource? _sendCts;
 
-    public async Task StartAsync(CancellationToken cancellationToken = default)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         await cts.CancelOnFirstCompletionAndAwaitAllAsync([
@@ -38,7 +38,7 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
     public async ValueTask<PeerId> PerformHandshakeAsync(
         ReadOnlyMemory<byte> infoHash,
         PeerId peerId,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken
     )
     {
         using var timeoutCts = new CancellationTokenSource(timeout);
@@ -55,7 +55,7 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
     public async ValueTask<PeerId> ReceiveHandshakeAsync(
         ReadOnlyMemory<byte> infoHash,
         PeerId peerId,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken
     )
     {
         using var timeoutCts = new CancellationTokenSource(timeout);

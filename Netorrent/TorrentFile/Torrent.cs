@@ -86,13 +86,16 @@ public sealed class Torrent : IAsyncDisposable
                 ])
                 .ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
-        {
-            Statistics.Completion.TrySetCanceled();
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Statistics.Completion.TrySetException(ex);
+            return;
+        }
+
+        //If no exception was thrown or the token is cancelled then we set it to canceled
+        if (cancellationTokenSource.Token.IsCancellationRequested)
+        {
+            Statistics.Completion.TrySetCanceled();
         }
     }
 
@@ -133,7 +136,13 @@ public sealed class Torrent : IAsyncDisposable
 
         Stop();
         if (_runTask is not null)
-            await _runTask.ConfigureAwait(false);
+        {
+            try
+            {
+                await _runTask.ConfigureAwait(false);
+            }
+            catch { }
+        }
     }
 
     private void Stop()
@@ -141,6 +150,7 @@ public sealed class Torrent : IAsyncDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         _cancellationTokenSource?.Cancel();
+        Statistics.Completion.TrySetCanceled();
         State = State.Stopped;
     }
 
