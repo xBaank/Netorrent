@@ -167,16 +167,15 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
     private TrackerTransaction RegisterOrGetTransaction(
         IUdpTrackerSendPacket packet,
         Guid trackerId,
+        CancellationToken cancellationToken,
         out bool isNew
     )
     {
-        var transaction = new TrackerTransaction(
-            packet,
-            new TaskCompletionSource<IUdpTrackerReceivePacket>(
-                TaskCreationOptions.RunContinuationsAsynchronously
-            ),
-            trackerId
+        var task = new TaskCompletionSource<IUdpTrackerReceivePacket>(
+            TaskCreationOptions.RunContinuationsAsynchronously
         );
+        cancellationToken.Register(() => task.TrySetCanceled());
+        var transaction = new TrackerTransaction(packet, task, trackerId);
 
         if (_packetsByTransactionId.TryAdd(packet.TransactionId, transaction))
         {
@@ -206,7 +205,12 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
     )
         where T : IUdpTrackerReceivePacket
     {
-        var transaction = RegisterOrGetTransaction(packet, trackerId, out var isNew);
+        var transaction = RegisterOrGetTransaction(
+            packet,
+            trackerId,
+            cancellationToken,
+            out var isNew
+        );
 
         if (!isNew)
         {

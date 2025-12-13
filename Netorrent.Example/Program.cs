@@ -29,8 +29,8 @@ catch (OperationCanceledException)
 }
 catch (Exception ex)
 {
-    AnsiConsole.MarkupLine($"[yellow]Error {ex.Message}[/]");
-    AnsiConsole.MarkupLine($"[yellow]Stacktrace {ex.StackTrace}[/]");
+    AnsiConsole.MarkupLine($"[yellow]Error {ex.Message.EscapeMarkup()}[/]");
+    AnsiConsole.MarkupLine($"[yellow]Stacktrace {ex.StackTrace.EscapeMarkup()}[/]");
 }
 
 static async ValueTask<string> BrowseForOutputDir(CancellationToken cancellationToken)
@@ -46,7 +46,9 @@ static async ValueTask<string> BrowseForOutputDir(CancellationToken cancellation
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException || ex is IOException)
         {
-            AnsiConsole.MarkupLine($"[red]Cannot enumerate directory: {ex.Message}[/]");
+            AnsiConsole.MarkupLine(
+                $"[red]Cannot enumerate directory: {ex.Message.EscapeMarkup()}[/]"
+            );
             var parent = Directory.GetParent(current);
             if (parent == null)
             {
@@ -76,9 +78,9 @@ static async ValueTask<string> BrowseForOutputDir(CancellationToken cancellation
 
         var choice = await AnsiConsole.PromptAsync(
             new SelectionPrompt<string>()
-                .Title($"Browsing output directories: [green]{current}[/]")
+                .Title($"Browsing output directories: [green]{current.EscapeMarkup()}[/]")
                 .PageSize(20)
-                .AddChoices(items),
+                .AddChoices(items.Select(StringExtensions.EscapeMarkup)),
             cancellationToken
         );
 
@@ -96,7 +98,7 @@ static async ValueTask<string> BrowseForOutputDir(CancellationToken cancellation
 
         if (choice.StartsWith("(dir) "))
         {
-            var name = choice.Substring("(dir) ".Length);
+            var name = choice.RemoveMarkup().Substring("(dir) ".Length);
             // If name is a full path (happens for root), prefer that
             string candidate =
                 dirs.FirstOrDefault(d =>
@@ -139,7 +141,9 @@ static async ValueTask<string> BrowseForOutputDir(CancellationToken cancellation
                     || ex is ArgumentException
                 )
             {
-                AnsiConsole.MarkupLine($"[red]Could not create directory: {ex.Message}[/]");
+                AnsiConsole.MarkupLine(
+                    $"[red]Could not create directory: {ex.Message.EscapeMarkup()}[/]"
+                );
             }
 
             continue;
@@ -172,9 +176,9 @@ static async ValueTask<string> BrowseForTorrent(CancellationToken cancellationTo
 
         var choice = await AnsiConsole.PromptAsync(
             new SelectionPrompt<string>()
-                .Title($"Browsing: [green]{current}[/]")
+                .Title($"Browsing: [green]{current.EscapeMarkup()}[/]")
                 .PageSize(20)
-                .AddChoices(items),
+                .AddChoices(items.Select(StringExtensions.EscapeMarkup)),
             cancellationToken
         );
 
@@ -189,14 +193,14 @@ static async ValueTask<string> BrowseForTorrent(CancellationToken cancellationTo
 
         if (choice.StartsWith("(dir) "))
         {
-            var name = choice.Substring("(dir) ".Length);
+            var name = choice.RemoveMarkup().Substring("(dir) ".Length);
             current = Path.Combine(current, name);
             continue;
         }
 
         if (choice.StartsWith("(file) "))
         {
-            var name = choice.Substring("(file) ".Length);
+            var name = choice.RemoveMarkup().Substring("(file) ".Length);
             return Path.Combine(current, name);
         }
     }
@@ -231,7 +235,7 @@ static async Task RunStatusUI(Torrent torrent, CancellationToken token) =>
                 progressTask.Value(t.DownloadedBytes.Bytes);
 
                 progressTask.Description =
-                    $@"[green]{torrent.MetaInfo.Title ?? torrent.MetaInfo.Info.Name}[/]";
+                    $@"[green]{(torrent.MetaInfo.Title ?? torrent.MetaInfo.Info.Name).EscapeMarkup()}[/]";
 
                 await Task.Delay(1000, token);
             }
