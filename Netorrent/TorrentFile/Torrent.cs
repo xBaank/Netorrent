@@ -76,23 +76,14 @@ public sealed class Torrent : IAsyncDisposable
     }
 
     /// <summary>
-    /// Starts the download process if it is not already running.
+    /// Starts and awaits its download completion.
     /// </summary>
-    /// <remarks>If the download is already started, this method has no effect. Once started, the download
-    /// process can be canceled using StopAsync.</remarks>
+    /// <remarks>If the operation has already been started, this method has no effect. Throws an exception if
+    /// the object has been disposed.</remarks>
     public async ValueTask StartAsync()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        if (State == State.Started)
-            return;
-
-        await StopAsync();
-        Statistics.Completion.Reset();
-        _cancellationTokenSource?.Dispose();
-        _cancellationTokenSource = new CancellationTokenSource();
-        State = State.Started;
-        _runTask = StartAndWaitToFinishAsync(_cancellationTokenSource);
+        Start();
+        await Statistics.Completion;
     }
 
     /// <summary>
@@ -108,10 +99,30 @@ public sealed class Torrent : IAsyncDisposable
     }
 
     /// <summary>
+    /// Starts the operation if it is not already running.
+    /// </summary>
+    /// <remarks>If the operation has already been started, this method has no effect. Throws an exception if
+    /// the object has been disposed.</remarks>
+    public void Start()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (State == State.Started)
+            return;
+
+        Statistics.Completion.Reset();
+        _cancellationTokenSource?.Dispose();
+        _cancellationTokenSource = new CancellationTokenSource();
+        State = State.Started;
+        _runTask = StartAndWaitToFinishAsync(_cancellationTokenSource);
+    }
+
+    /// <summary>
     /// Stops the torrent without waiting for any ongoing tasks to complete.
     /// </summary>
     public void Stop()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
         _cancellationTokenSource?.Cancel();
         Statistics.Completion.TrySetCanceled();
     }
@@ -143,7 +154,8 @@ public sealed class Torrent : IAsyncDisposable
 
     private async ValueTask StopAndWaitToFinishAsync()
     {
-        Stop();
+        _cancellationTokenSource?.Cancel();
+        Statistics.Completion.TrySetCanceled();
         if (_runTask is not null)
         {
             try
