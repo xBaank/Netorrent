@@ -266,10 +266,9 @@ internal class P2PClient : IAsyncDisposable
         }
     }
 
+    //TODO Use score class to track peers with a score between (0,1)
     private PeerConnection? GetWorstPeer()
     {
-        //TODO if im downloading then i should get rid of peers that chock me first and then the slowest ones
-        //TODO if im uploading then i should get rid of peers that i chock first and then the slowest ones
         var minAge = 30.Seconds;
 
         if (_activePeers.IsEmpty)

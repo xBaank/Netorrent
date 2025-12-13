@@ -14,6 +14,7 @@ internal class PeerRequestWindow(int blockSize)
 
     public int MaxInFlightRequests => Volatile.Read(ref _maxInFlightRequests);
 
+    //TODO Split into rtt calculate method and calculate window. rtt method should be called each request block arrives and calculate window each 500ms with speed tracker
     public void CalculateWindow(long bytesPerSecond, TimeSpan rtt)
     {
         lock (_windowLock)

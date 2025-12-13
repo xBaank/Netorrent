@@ -17,7 +17,7 @@ public sealed class SpeedTracker(double alpha = 0.3)
     private readonly double _alpha = alpha;
 
     public ByteSize TotalBytes => Interlocked.Read(ref _totalBytes);
-    public DownloadSpeed CurrentBps => _currentBps;
+    public DownloadSpeed CurrentBps => Volatile.Read(ref _currentBps);
 
     internal Timer StartSampling(TimeSpan period)
     {
