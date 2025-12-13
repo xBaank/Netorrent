@@ -65,7 +65,7 @@ internal class P2PClient : IAsyncDisposable
             new PiecePicker(_bitField, fileManager, Stats.Transfer),
             logger
         );
-        _uploadScheduler = new UploadScheduler(fileManager, Stats.Transfer, logger);
+        _uploadScheduler = new UploadScheduler(fileManager, bitField, Stats.Transfer, logger);
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)

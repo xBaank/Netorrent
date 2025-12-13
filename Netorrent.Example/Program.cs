@@ -15,12 +15,12 @@ try
 
     await using var client = new TorrentClient();
     await using var torrent = await client.ImportTorrentAsync(torrentPath, outputPath);
-    cts.Token.Register(async () => await torrent.StopAsync());
-
+    cts.Token.Register(torrent.Stop);
     var statusTask = RunStatusUI(torrent, cts.Token);
 
-    await torrent.StartAsync(cts.Token);
+    await torrent.StartAsync();
     await torrent.Statistics.Completion;
+
     AnsiConsole.MarkupLine("[green]Download complete.[/]");
 }
 catch (OperationCanceledException)
@@ -30,6 +30,7 @@ catch (OperationCanceledException)
 catch (Exception ex)
 {
     AnsiConsole.MarkupLine($"[yellow]Error {ex.Message}[/]");
+    AnsiConsole.MarkupLine($"[yellow]Stacktrace {ex.StackTrace}[/]");
 }
 
 static async ValueTask<string> BrowseForOutputDir(CancellationToken cancellationToken)

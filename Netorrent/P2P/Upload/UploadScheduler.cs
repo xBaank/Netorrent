@@ -8,8 +8,12 @@ using Netorrent.Statistics;
 
 namespace Netorrent.P2P.Upload;
 
-internal class UploadScheduler(FileManager fileManager, TransferStatistics transfer, ILogger logger)
-    : IUploadScheduler
+internal class UploadScheduler(
+    FileManager fileManager,
+    Bitfield bitfield,
+    TransferStatistics transfer,
+    ILogger logger
+) : IUploadScheduler
 {
     const int MaxInFlightUploadRequests = 4;
     const int MaxUnchokedPeers = 4;
@@ -183,15 +187,34 @@ internal class UploadScheduler(FileManager fileManager, TransferStatistics trans
 
         lock (_unchokedSlotsLock)
         {
+            if (!bitfield.HasPiece(request.Index))
+            {
+                if (logger.IsEnabled(LogLevel.Information))
+                {
+                    logger.LogInformation(
+                        "Peer {peer} requested a block we don't have",
+                        from.PeerId
+                    );
+                }
+
+                return;
+            }
             if (!_unchokedPeers.Contains(from))
             {
-                logger.LogInformation("Peer is not unchoked");
+                if (logger.IsEnabled(LogLevel.Information))
+                {
+                    logger.LogInformation("Peer {peer} is not unchoked", from.PeerId);
+                }
+
                 return;
             }
 
             if (from.UploadRequestedBlocksCount >= MaxInFlightUploadRequests)
             {
-                logger.LogInformation("Peer reached the max requests");
+                if (logger.IsEnabled(LogLevel.Information))
+                {
+                    logger.LogInformation("Peer {peer} reached the max requests", from.PeerId);
+                }
                 return;
             }
         }

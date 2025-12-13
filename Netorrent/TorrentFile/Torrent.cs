@@ -75,6 +75,47 @@ public sealed class Torrent : IAsyncDisposable
         );
     }
 
+    /// <summary>
+    /// Starts the download process if it is not already running.
+    /// </summary>
+    /// <remarks>If the download is already started, this method has no effect. Once started, the download
+    /// process can be canceled using StopAsync.</remarks>
+    public async ValueTask StartAsync()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (State == State.Started)
+            return;
+
+        await StopAsync();
+        Statistics.Completion.Reset();
+        _cancellationTokenSource?.Dispose();
+        _cancellationTokenSource = new CancellationTokenSource();
+        State = State.Started;
+        _runTask = StartAndWaitToFinishAsync(_cancellationTokenSource);
+    }
+
+    /// <summary>
+    /// Asynchronously stops the torrent operation and waits for any ongoing tasks to complete.
+    /// </summary>
+    /// <returns>A task that represents the asynchronous stop operation. The task completes when all related operations have
+    /// finished.</returns>
+    public async ValueTask StopAsync()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        await StopAndWaitToFinishAsync().ConfigureAwait(false);
+        State = State.Stopped;
+    }
+
+    /// <summary>
+    /// Stops the torrent without waiting for any ongoing tasks to complete.
+    /// </summary>
+    public void Stop()
+    {
+        _cancellationTokenSource?.Cancel();
+        Statistics.Completion.TrySetCanceled();
+    }
+
     private async Task StartAndWaitToFinishAsync(CancellationTokenSource cancellationTokenSource)
     {
         try
@@ -96,52 +137,13 @@ public sealed class Torrent : IAsyncDisposable
         if (cancellationTokenSource.Token.IsCancellationRequested)
         {
             Statistics.Completion.TrySetCanceled();
+            State = State.Stopped;
         }
     }
 
-    /// <summary>
-    /// Starts the download process if it is not already running.
-    /// </summary>
-    /// <remarks>If the download is already started, this method has no effect. Once started, the download
-    /// process can be canceled using StopAsync.</remarks>
-    public async ValueTask StartAsync(CancellationToken cancellationToken = default)
+    private async ValueTask StopAndWaitToFinishAsync()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        if (State == State.Started)
-            return;
-
-        _cancellationTokenSource?.Cancel();
-
-        if (_runTask is not null)
-            await _runTask.ConfigureAwait(false);
-
-        Statistics.Completion.Reset();
-        _cancellationTokenSource?.Dispose();
-        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken
-        );
-        State = State.Started;
-        _runTask = StartAndWaitToFinishAsync(_cancellationTokenSource);
-    }
-
-    /// <summary>
-    /// Asynchronously stops the torrent operation and waits for any ongoing tasks to complete.
-    /// </summary>
-    /// <returns>A task that represents the asynchronous stop operation. The task completes when all related operations have
-    /// finished.</returns>
-    public async ValueTask StopAsync()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        await CancelAndWaitAsync().ConfigureAwait(false);
-    }
-
-    private async ValueTask CancelAndWaitAsync()
-    {
-        _cancellationTokenSource?.Cancel();
-        Statistics.Completion.TrySetCanceled();
-        State = State.Stopped;
-
+        Stop();
         if (_runTask is not null)
         {
             try
@@ -179,7 +181,7 @@ public sealed class Torrent : IAsyncDisposable
         if (!_disposed)
         {
             _disposed = true;
-            await CancelAndWaitAsync().ConfigureAwait(false);
+            await StopAndWaitToFinishAsync().ConfigureAwait(false);
             _fileManager.Dispose();
             await _p2pClient.DisposeAsync().ConfigureAwait(false);
             await _trackerClient.DisposeAsync().ConfigureAwait(false);
