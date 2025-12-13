@@ -53,7 +53,7 @@ internal class PieceBuffer : IDisposable
         if (isOK)
         {
             await _fileManager
-                .WritePieceAsync(_index, 0, _buffer.Memory, cancellationToken)
+                .WriteAsync(_index, 0, _buffer.Memory, cancellationToken)
                 .ConfigureAwait(false);
         }
 

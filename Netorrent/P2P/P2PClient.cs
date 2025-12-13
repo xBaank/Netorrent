@@ -1,7 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
-using System.Threading;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
@@ -28,7 +27,7 @@ internal class P2PClient : IAsyncDisposable
     private readonly ConcurrentQueue<IPEndPoint> _knownPeers = [];
     private readonly PeerId _peerId;
     private readonly Bitfield _bitField;
-    private readonly RequestScheduler _requestManager;
+    private readonly RequestScheduler _requestScheduler;
     private readonly UploadScheduler _uploadScheduler;
     private readonly ChannelReader<IPEndPoint> _trackersChannel;
     private readonly Func<IPAddress, IPAddress>? _peerIpProxy;
@@ -61,7 +60,7 @@ internal class P2PClient : IAsyncDisposable
             new CompletionTracker(bitField)
         );
         _peerIpProxy = peerIpProxy;
-        _requestManager = new RequestScheduler(
+        _requestScheduler = new RequestScheduler(
             new PiecePicker(_bitField, fileManager, Stats.Transfer),
             logger
         );
@@ -73,7 +72,7 @@ internal class P2PClient : IAsyncDisposable
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
         await cts.CancelOnFirstCompletionAndAwaitAllAsync([
-                _requestManager.StartAsync(cts.Token),
+                _requestScheduler.StartAsync(cts.Token),
                 _uploadScheduler.StartAsync(cts.Token),
                 ProcessPeersAsync(cts.Token),
                 ListenToPeersAsync(cts.Token),
@@ -149,60 +148,53 @@ internal class P2PClient : IAsyncDisposable
             }
         }
 
-        var peerConnection = new PeerConnection(
-            iPEndPoint,
-            _bitField,
-            _uploadScheduler,
-            _requestManager,
-            new MessageStream(client!.GetStream(), PEER_TIMEOUT_SECONDS.Seconds)
-        );
+        var messageStream = new MessageStream(client!.GetStream(), PEER_TIMEOUT_SECONDS.Seconds);
+        PeerConnection peerConnection;
 
         try
         {
-            if (amInitiating)
-            {
-                await peerConnection
-                    .PerformHandshakeAsync(_metaInfo.Info.InfoHash, _peerId, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            else
-            {
-                await peerConnection
-                    .ReceiveHandshakeAsync(_metaInfo.Info.InfoHash, _peerId, cancellationToken)
-                    .ConfigureAwait(false);
-            }
+            peerConnection = await PeerConnection.CreatePeerConnectionAsync(
+                _bitField,
+                _uploadScheduler,
+                _requestScheduler,
+                messageStream,
+                amInitiating,
+                _metaInfo.Info.InfoHash,
+                _peerId,
+                iPEndPoint,
+                cancellationToken
+            );
         }
         catch (Exception ex)
         {
             if (_logger.IsEnabled(LogLevel.Debug))
+            {
                 _logger.LogDebug(ex, "Error handshaking to {ip}", iPEndPoint);
+            }
+
             return;
         }
 
         await _semaphoreSlim.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (peerConnection.PeerId == _peerId)
+            if (peerConnection.PeerEndpoint.PeerId == _peerId)
             {
                 if (_logger.IsEnabled(LogLevel.Information))
-                    _logger.LogInformation(
-                        "Ignored self connection to {EndPoint}",
-                        peerConnection.IPEndPoint
-                    );
+                    _logger.LogInformation("Ignored self connection to {EndPoint}", iPEndPoint);
                 await peerConnection.DisposeAsync().ConfigureAwait(false);
                 return;
             }
 
             if (
                 _activePeers.ContainsKey(peerConnection.PeerEndpoint)
-                || _activePeers.Keys.AsValueEnumerable().Any(i => i.PeerId == peerConnection.PeerId)
+                || _activePeers
+                    .Keys.AsValueEnumerable()
+                    .Any(i => i.PeerId == peerConnection.PeerEndpoint.PeerId)
             )
             {
                 if (_logger.IsEnabled(LogLevel.Information))
-                    _logger.LogInformation(
-                        "Ignored active peer from {EndPoint}",
-                        peerConnection.IPEndPoint
-                    );
+                    _logger.LogInformation("Ignored active peer from {EndPoint}", iPEndPoint);
                 await peerConnection.DisposeAsync().ConfigureAwait(false);
                 return;
             }
@@ -223,7 +215,10 @@ internal class P2PClient : IAsyncDisposable
             }
 
             if (_logger.IsEnabled(LogLevel.Information))
-                _logger.LogInformation("Connected to peer {PeerId}", peerConnection.PeerId);
+                _logger.LogInformation(
+                    "Connected to peer {PeerId}",
+                    peerConnection.PeerEndpoint.PeerId
+                );
 
             _activePeers[peerConnection.PeerEndpoint] = peerConnection;
             _peerTasks.Add(HandlePeer(peerConnection, cancellationToken));
@@ -252,7 +247,11 @@ internal class P2PClient : IAsyncDisposable
         {
             if (_logger.IsEnabled(LogLevel.Debug))
             {
-                _logger.LogDebug(ex, "Exception on peer {peerId}", peerConnection.PeerId);
+                _logger.LogDebug(
+                    ex,
+                    "Exception on peer {peerId}",
+                    peerConnection.PeerEndpoint.PeerId
+                );
             }
 
             _activePeers.Remove(peerConnection.PeerEndpoint, out _);
@@ -305,7 +304,7 @@ internal class P2PClient : IAsyncDisposable
         {
             await item.Value.DisposeAsync().ConfigureAwait(false);
         }
-        await _requestManager.DisposeAsync().ConfigureAwait(false);
+        await _requestScheduler.DisposeAsync().ConfigureAwait(false);
         await _uploadScheduler.DisposeAsync().ConfigureAwait(false);
         _semaphoreSlim.Dispose();
         Stats.Dispose();

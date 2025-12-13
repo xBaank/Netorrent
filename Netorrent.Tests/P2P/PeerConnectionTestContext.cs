@@ -35,7 +35,7 @@ internal sealed class PeerConnectionTestContext : IAsyncDisposable
         Stream = new FakeMessageStream(PeerId, Incoming, Outgoing);
 
         Peer = new PeerConnection(
-            new IPEndPoint(IPAddress.Loopback, 0),
+            new PeerEndpoint(new IPEndPoint(IPAddress.Loopback, 0), new PeerId()),
             LocalBitfield,
             UploadMock,
             RequestMock,

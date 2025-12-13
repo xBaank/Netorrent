@@ -61,7 +61,11 @@ internal class UploadScheduler(
             {
                 if (logger.IsEnabled(LogLevel.Error))
                 {
-                    logger.LogError(ex, "Error unchoking peer {peeid}", peerConnection.PeerId);
+                    logger.LogError(
+                        ex,
+                        "Error unchoking peer {peeid}",
+                        peerConnection.PeerEndpoint.PeerId
+                    );
                 }
             }
         }
@@ -86,7 +90,7 @@ internal class UploadScheduler(
             try
             {
                 var pieceData = await fileManager
-                    .ReadPieceAsync(
+                    .ReadAsync(
                         requestBlock.Index,
                         requestBlock.Begin,
                         requestBlock.Length,
@@ -193,7 +197,7 @@ internal class UploadScheduler(
                 {
                     logger.LogInformation(
                         "Peer {peer} requested a block we don't have",
-                        from.PeerId
+                        from.PeerEndpoint.PeerId
                     );
                 }
 
@@ -203,7 +207,7 @@ internal class UploadScheduler(
             {
                 if (logger.IsEnabled(LogLevel.Information))
                 {
-                    logger.LogInformation("Peer {peer} is not unchoked", from.PeerId);
+                    logger.LogInformation("Peer {peer} is not unchoked", from.PeerEndpoint.PeerId);
                 }
 
                 return;
@@ -213,7 +217,10 @@ internal class UploadScheduler(
             {
                 if (logger.IsEnabled(LogLevel.Information))
                 {
-                    logger.LogInformation("Peer {peer} reached the max requests", from.PeerId);
+                    logger.LogInformation(
+                        "Peer {peer} reached the max requests",
+                        from.PeerEndpoint.PeerId
+                    );
                 }
                 return;
             }

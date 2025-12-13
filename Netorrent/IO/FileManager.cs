@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using Netorrent.Other;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
+using ZLinq;
 
 namespace Netorrent.IO;
 
@@ -53,7 +54,7 @@ internal class FileManager : IDisposable
             offset += item.Length;
         }
 
-        TotalSize = _files.Sum(f => f.Length);
+        TotalSize = _files.AsValueEnumerable().Sum(f => f.Length);
         MaxBlocksByPiece = _pieceLength / BlockSize;
     }
 
@@ -98,30 +99,7 @@ internal class FileManager : IDisposable
         return new RequestBlock(pieceIndex, begin, length);
     }
 
-    public ulong GetWrittenBytes()
-    {
-        long total = 0;
-        for (int i = 0; i < BitField.Length; i++)
-        {
-            if (BitField.HasPiece(i))
-            {
-                long pieceSize = Math.Min(
-                    _pieceLength,
-                    _files.Sum(f => f.Length) - (long)i * _pieceLength
-                );
-                total += pieceSize;
-            }
-        }
-        return (ulong)total;
-    }
-
-    public ulong GetMissingBytes()
-    {
-        var totalSize = (ulong)_files.Sum(f => f.Length);
-        return totalSize - GetWrittenBytes();
-    }
-
-    public async ValueTask WritePieceAsync(
+    public async ValueTask WriteAsync(
         int pieceIndex,
         int begin,
         ReadOnlyMemory<byte> pieceData,
@@ -187,7 +165,7 @@ internal class FileManager : IDisposable
         }
     }
 
-    public async ValueTask<RentedArray<byte>> ReadPieceAsync(
+    public async ValueTask<RentedArray<byte>> ReadAsync(
         int pieceIndex,
         int begin,
         int length,

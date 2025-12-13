@@ -14,7 +14,7 @@ using Netorrent.P2P.Upload;
 namespace Netorrent.P2P;
 
 internal class PeerConnection(
-    IPEndPoint iPEndPoint,
+    PeerEndpoint peerEndpoint,
     Bitfield myBitField,
     IUploadScheduler uploadScheduler,
     IRequestScheduler requestScheduler,
@@ -37,17 +37,15 @@ internal class PeerConnection(
 
     public SpeedTracker DownloadSpeedTracker { get; } = new();
     public SpeedTracker UploadSpeedTracker { get; } = new();
-    public IPEndPoint IPEndPoint { get; } = iPEndPoint;
     public Bitfield MyBitField { get; } = myBitField;
     public bool AmChoking { get; private set; } = amChoking;
     public bool AmInterested { get; private set; } = amInterested;
     public bool PeerChoking { get; private set; } = peerChoking;
     public bool PeerInterested { get; private set; } = peerInterested;
-    public PeerId? PeerId { get; private set; }
     public Bitfield? PeerBitField { get; private set; }
+    public PeerEndpoint PeerEndpoint { get; } = peerEndpoint;
     public PeerRequestWindow PeerRequestWindow { get; } = new(FileManager.BlockSize);
     public IObservable<PeerConnection> StateChanged => _stateChanged;
-    public PeerEndpoint PeerEndpoint => new(IPEndPoint, PeerId!.Value);
 
     private int _requestedBlocksCount;
     private int _uploadRequestedCount;
@@ -56,6 +54,42 @@ internal class PeerConnection(
     public int UploadRequestedBlocksCount => Volatile.Read(ref _uploadRequestedCount);
 
     public TimeSpan ConnectionDuration => DateTime.UtcNow - _startedConnectionTime;
+
+    public static async ValueTask<PeerConnection> CreatePeerConnectionAsync(
+        Bitfield myBitField,
+        IUploadScheduler uploadScheduler,
+        IRequestScheduler requestScheduler,
+        IMessageStream messageStream,
+        bool amInitiating,
+        ReadOnlyMemory<byte> infoHash,
+        PeerId myPeerId,
+        IPEndPoint peerEndPoint,
+        CancellationToken cancellationToken
+    )
+    {
+        PeerId peerId;
+
+        if (amInitiating)
+        {
+            peerId = await messageStream
+                .PerformHandshakeAsync(infoHash, myPeerId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        else
+        {
+            peerId = await messageStream
+                .ReceiveHandshakeAsync(infoHash, myPeerId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return new PeerConnection(
+            new PeerEndpoint(peerEndPoint, peerId),
+            myBitField,
+            uploadScheduler,
+            requestScheduler,
+            messageStream
+        );
+    }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -343,24 +377,6 @@ internal class PeerConnection(
         var request = new RequestBlock(index, begin, length);
         _uploadScheduler.CancelRequest(request);
     }
-
-    public async ValueTask PerformHandshakeAsync(
-        ReadOnlyMemory<byte> infoHash,
-        PeerId peerId,
-        CancellationToken cancellationToken = default
-    ) =>
-        PeerId = await messageStream
-            .PerformHandshakeAsync(infoHash, peerId, cancellationToken)
-            .ConfigureAwait(false);
-
-    public async ValueTask ReceiveHandshakeAsync(
-        ReadOnlyMemory<byte> infoHash,
-        PeerId peerId,
-        CancellationToken cancellationToken = default
-    ) =>
-        PeerId = await messageStream
-            .ReceiveHandshakeAsync(infoHash, peerId, cancellationToken)
-            .ConfigureAwait(false);
 
     private async Task SendHaveAsync(int pieceIndex, CancellationToken cancellationToken)
     {

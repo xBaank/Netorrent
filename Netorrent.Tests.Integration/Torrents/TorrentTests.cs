@@ -69,7 +69,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
             options: FileOptions.Asynchronous | FileOptions.SequentialScan
         );
 
-        long size = 10L * 1024 * 1024; // 100 MB
+        long size = 10L * 1024 * 1024; // 10 MB
         for (long i = 0; i < size; i++)
         {
             stream.WriteByte((byte)Random.Shared.Next());
@@ -135,6 +135,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                     cancellationToken
                 );
                 originalFile.SequenceEqual(downloadedFile).ShouldBeTrue();
+                leecherTorrent.Statistics.Transfer.DownloadedBytes.ShouldBe(downloadedFile.Length);
             }
         }
         finally

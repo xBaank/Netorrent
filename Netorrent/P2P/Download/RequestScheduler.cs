@@ -157,7 +157,7 @@ internal class RequestScheduler(PiecePicker piecePicker, ILogger logger) : IRequ
                         "Failed to send request block {Index}:{Begin} to peer {Peer}",
                         requestBlock.Index,
                         requestBlock.Begin,
-                        peerConnection.IPEndPoint
+                        peerConnection.PeerEndpoint.PeerId
                     );
                 }
                 peerConnection.DecrementRequestedBlock();
