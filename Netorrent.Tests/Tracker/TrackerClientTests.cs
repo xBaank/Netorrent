@@ -13,7 +13,7 @@ public class TrackerClientTests()
 {
     [Test]
     [Timeout(5_000)]
-    public async Task Should_get_urls_from_tracker(CancellationToken cancellationToken)
+    public async Task Should_get_urls_from_udp_tracker(CancellationToken cancellationToken)
     {
         IPEndPoint[] ips =
         [

@@ -82,7 +82,16 @@ internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
                     )
                 )
                 {
-                    packet.Response.TrySetResult(receivedPacket);
+                    if (receivedPacket is UdpTrackerErrorResponse udpTrackerErrorResponse)
+                    {
+                        packet.Response.TrySetException(
+                            new Exception(udpTrackerErrorResponse.Message)
+                        );
+                    }
+                    else
+                    {
+                        packet.Response.TrySetResult(receivedPacket);
+                    }
                     _packetsByTransactionId.TryRemove(receivedPacket.TransactionId, out _);
                 }
             }
