@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using Castle.Components.DictionaryAdapter.Xml;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.Tests.Integration.Fixtures;
@@ -100,7 +101,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
             foreach (var seederTorrent in seedersTorrents)
             {
                 cancellationToken.Register(seederTorrent.Stop);
-                seederTorrent.Start();
+                await seederTorrent.StartAsync();
             }
 
             //This is needed because if seeder and leecher announce at the same time, they don't see each other
@@ -109,7 +110,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
             foreach (var leecherTorrent in leechersTorrents)
             {
                 cancellationToken.Register(leecherTorrent.Stop);
-                leecherTorrent.Start();
+                await leecherTorrent.StartAsync();
             }
 
             foreach (var leecherTorrent in leechersTorrents)
@@ -174,7 +175,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
             foreach (var seederTorrent in seedersTorrents)
             {
                 cancellationToken.Register(seederTorrent.Stop);
-                seederTorrent.Start();
+                await seederTorrent.StartAsync();
             }
 
             await Task.Delay(5.Seconds, cancellationToken);
@@ -182,7 +183,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
             foreach (var leecherTorrent in leechersTorrents)
             {
                 cancellationToken.Register(leecherTorrent.Stop);
-                leecherTorrent.Start();
+                await leecherTorrent.StartAsync();
             }
 
             foreach (var seederTorrent in seedersTorrents)
@@ -244,7 +245,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
             foreach (var seederTorrent in seedersTorrents)
             {
                 cancellationToken.Register(seederTorrent.Stop);
-                seederTorrent.Start();
+                await seederTorrent.StartAsync();
             }
 
             await Task.Delay(5.Seconds, cancellationToken);
@@ -252,7 +253,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
             foreach (var leecherTorrent in leechersTorrents)
             {
                 cancellationToken.Register(leecherTorrent.Stop);
-                leecherTorrent.Start();
+                await leecherTorrent.StartAsync();
             }
 
             foreach (var leecherTorrent in leechersTorrents)
@@ -309,6 +310,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
         );
         cancellationToken.Register(torrent.Stop);
         await torrent.StartAsync();
+        await torrent.Statistics.Completion;
         await torrent.StopAsync();
     }
 

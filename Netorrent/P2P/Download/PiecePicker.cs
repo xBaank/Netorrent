@@ -106,6 +106,7 @@ internal class PiecePicker(
         {
             // Retry with a fresh buffer
             _pieceBuffers[receiveBlock.Index] = new PieceBuffer(receiveBlock.Index, fileManager);
+            transfer.AddDiscardedBytes(pieceBuffer.Size);
         }
     }
 

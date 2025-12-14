@@ -15,6 +15,8 @@ internal class PieceBuffer : IDisposable
     private readonly int _index;
     private readonly FileManager _fileManager;
 
+    public int Size { get; }
+
     public PieceBuffer(int index, FileManager fileManager)
     {
         _index = index;
@@ -23,6 +25,7 @@ internal class PieceBuffer : IDisposable
         var pieceSize = fileManager.GetPieceSize(index);
         _buffer = new RentedArray<byte>(ArrayPool<byte>.Shared.Rent(pieceSize), pieceSize);
         _blockReceivedFlags = new bool[_blocksCount];
+        Size = pieceSize;
     }
 
     public void AddBlock(Block block)

@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Threading.Channels;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Netorrent.Bencoding;
 using Netorrent.Extensions;
@@ -76,21 +77,10 @@ public sealed class Torrent : IAsyncDisposable
     }
 
     /// <summary>
-    /// Starts and awaits its download completion.
-    /// </summary>
-    /// <remarks>If the operation has already been started, this method has no effect. Throws an exception if
-    /// the object has been disposed.</remarks>
-    public async ValueTask StartAsync()
-    {
-        Start();
-        await Statistics.Completion;
-    }
-
-    /// <summary>
     /// Asynchronously stops the torrent operation and waits for any ongoing tasks to complete.
     /// </summary>
     /// <returns>A task that represents the asynchronous stop operation. The task completes when all related operations have
-    /// finished.</returns>
+    /// finished. This will make Statistics.Completion be canceled if it wasn't completed</returns>
     public async ValueTask StopAsync()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -103,12 +93,13 @@ public sealed class Torrent : IAsyncDisposable
     /// </summary>
     /// <remarks>If the operation has already been started, this method has no effect. Throws an exception if
     /// the object has been disposed.</remarks>
-    public void Start()
+    public async ValueTask StartAsync()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (State == State.Started)
             return;
 
+        await StopAndWaitToFinishAsync();
         Statistics.Completion.Reset();
         _cancellationTokenSource?.Dispose();
         _cancellationTokenSource = new CancellationTokenSource();
@@ -117,8 +108,9 @@ public sealed class Torrent : IAsyncDisposable
     }
 
     /// <summary>
-    /// Stops the torrent without waiting for any ongoing tasks to complete.
+    /// Requests the torrent to be stopped.
     /// </summary>
+    /// <remarks>This will make Statistics.Completion be canceled if it wasn't completed</remarks>
     public void Stop()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
