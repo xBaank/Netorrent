@@ -1,5 +1,5 @@
 ﻿using System.Net;
-using Netorrent.Other;
+using Netorrent.Extensions;
 
 namespace Netorrent.Tracker.Udp;
 

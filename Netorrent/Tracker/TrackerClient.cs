@@ -6,7 +6,6 @@ using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.P2P;
 using Netorrent.Statistics;
-using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker.Http;
 using Netorrent.Tracker.Udp;
 
@@ -19,7 +18,8 @@ internal class TrackerClient(
     TransferStatistics transfer,
     PeerId peerId,
     ChannelWriter<IPEndPoint> trackersChannel,
-    MetaInfo metaInfo,
+    string[] announceList,
+    byte[] infoHash,
     ILogger logger,
     IPAddress? forcedIp
 ) : IAsyncDisposable
@@ -28,7 +28,6 @@ internal class TrackerClient(
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        List<string> announceList = [metaInfo.Announce, .. metaInfo.AnnounceList ?? []];
         var urls =
             announceList
                 .Where(url => !string.IsNullOrWhiteSpace(url))
@@ -54,7 +53,7 @@ internal class TrackerClient(
         {
             var uri = Uri.CreateOrNull(url);
 
-            if (uri == null)
+            if (uri is null)
                 continue;
 
             var trackers = uri.Scheme switch
@@ -66,7 +65,7 @@ internal class TrackerClient(
                         transfer,
                         httpClient,
                         peerId,
-                        metaInfo.Info.InfoHash,
+                        infoHash,
                         url,
                         logger,
                         trackersChannel,
@@ -104,7 +103,7 @@ internal class TrackerClient(
                 transfer,
                 peerId,
                 trackersChannel,
-                metaInfo.Info.InfoHash,
+                infoHash,
                 uri.OriginalString,
                 ipEndpoint,
                 logger,
@@ -122,7 +121,7 @@ internal class TrackerClient(
                 transfer,
                 peerId,
                 trackersChannel,
-                metaInfo.Info.InfoHash,
+                infoHash,
                 uri.OriginalString,
                 ipEndpoint,
                 logger,

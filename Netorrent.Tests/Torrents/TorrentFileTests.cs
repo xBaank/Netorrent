@@ -9,8 +9,8 @@ public class TorrentFileTests
     [Test]
     public async Task Should_Export_Torrent_File(CancellationToken cancellationToken)
     {
-        var torrentClient = new TorrentClient();
-        var torrent = await torrentClient.ImportTorrentAsync(
+        await using var torrentClient = new TorrentClient();
+        await using var torrent = await torrentClient.ImportTorrentAsync(
             "Data/nosferatu.torrent",
             "Output",
             cancellationToken
@@ -56,8 +56,8 @@ public class TorrentFileTests
     [Test]
     public async Task Should_Create_Torrent_File_From_Directory(CancellationToken cancellationToken)
     {
-        var torrentClient = new TorrentClient();
-        var torrent = await torrentClient.CreateTorrentAsync(
+        await using var torrentClient = new TorrentClient();
+        await using var torrent = await torrentClient.CreateTorrentAsync(
             "Data/MultifileTest",
             "http://test.com",
             ["http://test.com"],
@@ -80,8 +80,8 @@ public class TorrentFileTests
     [Test]
     public async Task Should_Create_Torrent_File_From_File(CancellationToken cancellationToken)
     {
-        var torrentClient = new TorrentClient();
-        var torrent = await torrentClient.CreateTorrentAsync(
+        await using var torrentClient = new TorrentClient();
+        await using var torrent = await torrentClient.CreateTorrentAsync(
             "Data/MultifileTest/test.txt",
             "http://test.com",
             ["http://test.com"],

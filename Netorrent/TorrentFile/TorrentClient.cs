@@ -1,10 +1,10 @@
 ﻿using System.Buffers;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging.Abstractions;
 using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
 using Netorrent.Extensions;
-using Netorrent.Other;
 using Netorrent.P2P;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker.Udp;
@@ -23,7 +23,7 @@ public sealed class TorrentClient : IAsyncDisposable
     {
         var options = new TorrentClientOptions(new(), NullLogger.Instance, null);
         _options = action?.Invoke(options) ?? options;
-        _trackerTransactionManager = new(Udp.GetFreeUdpClient(), _options.Logger);
+        _trackerTransactionManager = new(UdpClient.GetFreeUdpClient(), _options.Logger);
         _trackerTransactionManager.Start();
     }
 

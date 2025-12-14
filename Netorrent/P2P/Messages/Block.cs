@@ -1,5 +1,5 @@
-﻿using Netorrent.IO;
-using Netorrent.Other;
+﻿using Netorrent.Extensions;
+using Netorrent.IO;
 
 namespace Netorrent.P2P.Messages;
 

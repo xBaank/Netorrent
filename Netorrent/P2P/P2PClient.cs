@@ -5,7 +5,6 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.IO;
-using Netorrent.Other;
 using Netorrent.P2P.Download;
 using Netorrent.P2P.Messages;
 using Netorrent.P2P.Upload;
@@ -20,7 +19,7 @@ internal class P2PClient : IAsyncDisposable
     const int MAX_ACTIVE_PEER_COUNT = 50;
     const int PEER_TIMEOUT_SECONDS = 120;
 
-    private readonly TcpListener _listener = Tcp.GetFreeTcpListener();
+    private readonly TcpListener _listener = TcpListener.GetFreeTcpListener();
     private readonly MetaInfo _metaInfo;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<PeerEndpoint, PeerConnection> _activePeers = [];
@@ -201,17 +200,8 @@ internal class P2PClient : IAsyncDisposable
 
             if (_activePeers.Count >= MAX_ACTIVE_PEER_COUNT)
             {
-                var worstPeer = GetWorstPeer();
-                if (worstPeer is not null)
-                {
-                    _activePeers.Remove(worstPeer.PeerEndpoint, out _);
-                    await worstPeer.DisposeAsync().ConfigureAwait(false);
-                }
-                else
-                {
-                    _knownPeers.Enqueue(iPEndPoint);
-                    return;
-                }
+                _knownPeers.Enqueue(iPEndPoint);
+                return;
             }
 
             if (_logger.IsEnabled(LogLevel.Information))
@@ -263,38 +253,6 @@ internal class P2PClient : IAsyncDisposable
                     .ConfigureAwait(false);
             }
         }
-    }
-
-    //TODO Use score class to track peers with a score between (0,1)
-    private PeerConnection? GetWorstPeer()
-    {
-        var minAge = 30.Seconds;
-
-        if (_activePeers.IsEmpty)
-            return null;
-
-        var avgSpeedKbps = _activePeers
-            .Values.Select(p => p.DownloadSpeedTracker.CurrentBps.Kbps)
-            .DefaultIfEmpty(0.0)
-            .Average();
-
-        if (double.IsNaN(avgSpeedKbps))
-            avgSpeedKbps = 0.0;
-
-        var minAcceptableSpeed = Math.Max(10.0, avgSpeedKbps * 0.3);
-
-        var candidates = _activePeers
-            .Values.AsValueEnumerable()
-            .Where(p =>
-                p.ConnectionDuration > minAge
-                && (p.DownloadSpeedTracker.CurrentBps.Kbps < minAcceptableSpeed || p.PeerChoking)
-            )
-            .ToList();
-
-        if (candidates.Count == 0)
-            return null;
-
-        return candidates.MinBy(p => p.DownloadSpeedTracker.CurrentBps.Bps);
     }
 
     public async ValueTask DisposeAsync()

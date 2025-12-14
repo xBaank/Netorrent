@@ -1,9 +1,7 @@
 ﻿using System.Buffers;
 using System.Buffers.Binary;
-using System.Threading;
 using System.Threading.Channels;
 using Netorrent.Extensions;
-using Netorrent.Other;
 using Netorrent.P2P;
 using Netorrent.P2P.Messages;
 

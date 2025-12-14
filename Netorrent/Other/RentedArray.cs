@@ -1,7 +1,7 @@
 ﻿using System.Buffers;
 using System.Diagnostics;
 
-namespace Netorrent.Other;
+namespace Netorrent.Extensions;
 
 internal class RentedArray<T>(T[] array, int length, int start = 0) : IDisposable
 {

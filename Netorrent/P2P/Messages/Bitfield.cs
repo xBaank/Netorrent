@@ -1,7 +1,7 @@
 ﻿using System.Buffers;
 using System.Collections;
 using System.Reactive.Subjects;
-using Netorrent.Other;
+using Netorrent.Extensions;
 
 namespace Netorrent.P2P.Messages;
 

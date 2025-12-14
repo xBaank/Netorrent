@@ -9,7 +9,8 @@ using Netorrent.Tracker.Udp.Response;
 
 namespace Netorrent.Tracker.Udp;
 
-internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger) : IAsyncDisposable
+internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
+    : IUdpTrackerTransactionManager
 {
     private const int MAX_RETRIES = 8;
     private readonly ConcurrentDictionary<int, TrackerTransaction> _packetsByTransactionId = [];

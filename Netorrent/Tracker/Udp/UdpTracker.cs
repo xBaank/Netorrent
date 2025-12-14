@@ -10,7 +10,7 @@ using Netorrent.Tracker.Udp.Response;
 namespace Netorrent.Tracker.Udp;
 
 internal class UdpTracker(
-    UdpTrackerTransactionManager transactionManager,
+    IUdpTrackerTransactionManager transactionManager,
     int port,
     TransferStatistics transfer,
     PeerId peerId,

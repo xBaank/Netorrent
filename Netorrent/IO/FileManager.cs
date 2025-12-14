@@ -1,6 +1,6 @@
 ﻿using System.Buffers;
 using System.Security.Cryptography;
-using Netorrent.Other;
+using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
 using ZLinq;

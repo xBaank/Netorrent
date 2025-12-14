@@ -1,5 +1,4 @@
 ﻿using System.Net;
-using Castle.Components.DictionaryAdapter.Xml;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.Tests.Integration.Fixtures;
@@ -8,12 +7,6 @@ using Netorrent.TorrentFile.FileStructure;
 using Shouldly;
 
 namespace Netorrent.Tests.Integration.Torrents;
-
-public enum AnnounceType
-{
-    Http,
-    Udp,
-}
 
 [ClassDataSource<OpenTrackerFixture>(Shared = SharedType.PerClass)]
 [Timeout(5 * 60_000)]

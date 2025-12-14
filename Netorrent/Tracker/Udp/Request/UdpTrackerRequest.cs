@@ -5,7 +5,7 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
-using Netorrent.Other;
+using Netorrent.Extensions;
 using Netorrent.P2P;
 
 internal record UdpTrackerRequest(

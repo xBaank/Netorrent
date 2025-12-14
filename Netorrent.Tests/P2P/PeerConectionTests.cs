@@ -1,16 +1,4 @@
-﻿using System.Buffers;
-using System.Reactive.Linq;
-using Netorrent.Extensions;
-using Netorrent.IO;
-using Netorrent.Other;
-using Netorrent.P2P;
-using Netorrent.P2P.Messages;
-using Netorrent.Tests.Extensions;
-using NSubstitute;
-using NSubstitute.ReceivedExtensions;
-using Shouldly;
-
-namespace Netorrent.Tests.P2P;
+﻿namespace Netorrent.Tests.P2P;
 
 /*
 [Timeout(5_000)]

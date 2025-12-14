@@ -1,6 +1,5 @@
 ﻿using System.Net;
 using System.Threading.Channels;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Netorrent.Bencoding;
 using Netorrent.Extensions;
@@ -70,7 +69,8 @@ public sealed class Torrent : IAsyncDisposable
             _p2pClient.Stats.Transfer,
             peerId,
             trackersChannel.Writer,
-            metaInfo,
+            [metaInfo.Announce, .. metaInfo.AnnounceList ?? []],
+            metaInfo.Info.InfoHash,
             logger,
             forcedIp
         );

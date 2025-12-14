@@ -1,4 +1,4 @@
-﻿namespace Netorrent.Other;
+﻿namespace Netorrent.Extensions;
 
 internal static class TaskUtils
 {

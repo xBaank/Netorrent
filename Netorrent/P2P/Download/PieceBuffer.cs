@@ -1,7 +1,6 @@
 ﻿using System.Buffers;
 using Netorrent.Extensions;
 using Netorrent.IO;
-using Netorrent.Other;
 using Netorrent.P2P.Messages;
 using ZLinq;
 

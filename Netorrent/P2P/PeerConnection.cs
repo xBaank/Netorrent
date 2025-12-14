@@ -5,7 +5,6 @@ using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using Netorrent.Extensions;
 using Netorrent.IO;
-using Netorrent.Other;
 using Netorrent.P2P.Download;
 using Netorrent.P2P.Measurement;
 using Netorrent.P2P.Messages;
@@ -101,10 +100,9 @@ internal class PeerConnection(
             cancellationToken
         );
 
-        // Kick off execution WITHOUT awaiting it
         _runTask = RunAsync(_cancellationTokenSource);
 
-        return _runTask; // Optionally return it if caller wants to await connection exit
+        return _runTask;
     }
 
     private async Task RunAsync(CancellationTokenSource cancellationTokenSource)
