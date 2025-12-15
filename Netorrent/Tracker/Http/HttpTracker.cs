@@ -10,7 +10,7 @@ namespace Netorrent.Tracker.Http;
 internal class HttpTracker(
     int port,
     TransferStatistics transfer,
-    HttpClient client,
+    IHttpTrackerHandler httpTrackerHandler,
     PeerId peerId,
     byte[] infoHash,
     string announceUrl,
@@ -70,7 +70,7 @@ internal class HttpTracker(
                 infoHash,
                 peerId,
                 port,
-                (ulong)transfer.DownloadedBytes.Bytes,
+                (ulong)transfer.CompletedBytes.Bytes,
                 (ulong)transfer.UploadedBytes.Bytes,
                 (ulong)transfer.LeftBytes.Bytes,
                 true,
@@ -80,13 +80,9 @@ internal class HttpTracker(
                 50
             );
 
-            var response = await client
-                .SendAsync(request.GenerateRequest(announceUrl), cancellationToken)
+            return await httpTrackerHandler
+                .SendAsync(announceUrl, request, cancellationToken)
                 .ConfigureAwait(false);
-            var httpTrackerResponse = await HttpTrackerResponse
-                .FromHttpResponseAsync(response, cancellationToken)
-                .ConfigureAwait(false);
-            return httpTrackerResponse;
         }
         catch (Exception ex)
         {

@@ -12,8 +12,8 @@ using Netorrent.Tracker.Udp;
 namespace Netorrent.Tracker;
 
 internal class TrackerClient(
-    HttpClient httpClient,
-    UdpTrackerTransactionManager trackerTransaction,
+    IHttpTrackerHandler httpTrackerHandler,
+    IUdpTrackerTransactionManager trackerTransactionManager,
     int port,
     TransferStatistics transfer,
     PeerId peerId,
@@ -63,7 +63,7 @@ internal class TrackerClient(
                     new HttpTracker(
                         port,
                         transfer,
-                        httpClient,
+                        httpTrackerHandler,
                         peerId,
                         infoHash,
                         url,
@@ -94,11 +94,11 @@ internal class TrackerClient(
         var ipv4 = ips.FirstOrDefault(i => i.AddressFamily == AddressFamily.InterNetwork);
         var ipv6 = ips.FirstOrDefault(i => i.AddressFamily == AddressFamily.InterNetworkV6);
 
-        if (ipv4 != default)
+        if (ipv4 != default && uri.Port > 0)
         {
             var ipEndpoint = new IPEndPoint(ipv4, uri.Port);
             var trackerv4 = new UdpTracker(
-                trackerTransaction,
+                trackerTransactionManager,
                 port,
                 transfer,
                 peerId,
@@ -112,11 +112,11 @@ internal class TrackerClient(
             udpTrackers.Add(trackerv4);
         }
 
-        if (ipv6 != default)
+        if (ipv6 != default && uri.Port > 0)
         {
             var ipEndpoint = new IPEndPoint(ipv6, uri.Port);
             var trackerv6 = new UdpTracker(
-                trackerTransaction,
+                trackerTransactionManager,
                 port,
                 transfer,
                 peerId,

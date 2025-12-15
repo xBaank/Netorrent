@@ -116,9 +116,9 @@ internal class UdpTracker(
                 iPEndPoint,
                 infoHash,
                 peerId,
-                transfer.DownloadedBytes.Bytes,
+                transfer.CompletedBytes.Bytes,
                 transfer.UploadedBytes.Bytes,
-                transfer.LeftBytes.Bytes, //TODO implement
+                transfer.LeftBytes.Bytes,
                 @event,
                 (ushort)port,
                 ConnectionId: connectionId.Value,

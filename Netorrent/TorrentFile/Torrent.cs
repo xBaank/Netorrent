@@ -9,6 +9,7 @@ using Netorrent.P2P.Messages;
 using Netorrent.Statistics;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker;
+using Netorrent.Tracker.Http;
 using Netorrent.Tracker.Udp;
 
 namespace Netorrent.TorrentFile;
@@ -63,7 +64,7 @@ public sealed class Torrent : IAsyncDisposable
             peerIpProxy
         );
         _trackerClient = new TrackerClient(
-            httpClient,
+            new HttpTrackerHandler(httpClient),
             trackerTransaction,
             _p2pClient.EndPoint.Port,
             _p2pClient.Stats.Transfer,

@@ -6,7 +6,7 @@ using Netorrent.Tracker.Udp.Response;
 
 namespace Netorrent.Tests.Fakes;
 
-internal sealed class FakeUdpTrackerTransactionManager(IPEndPoint[] peers)
+internal sealed class FakeUdpTrackerTransactionManager(IPEndPoint[] peers, TimeSpan interval)
     : IUdpTrackerTransactionManager
 {
     private readonly ConcurrentDictionary<Guid, long> _connections = new();
@@ -63,15 +63,14 @@ internal sealed class FakeUdpTrackerTransactionManager(IPEndPoint[] peers)
         {
             if (!_connections.TryGetValue(trackerId, out _))
             {
-                //TODO maybe instead of a throw we should generate a UDPErrorRespose
-                throw new InvalidOperationException($"No connection id for tracker {trackerId}");
+                throw new Exception($"No tracker id for tracker {trackerId}");
             }
         }
 
         IUdpTrackerReceivePacket receivePacket = new UdpTrackerResponse(
-            Action: 1, // Announce
+            Action: 1,
             TransactionId: packet.TransactionId,
-            Interval: 1800,
+            Interval: (int)interval.TotalSeconds,
             Leechers: 0,
             Seeders: peers.Length,
             Peers: peers
