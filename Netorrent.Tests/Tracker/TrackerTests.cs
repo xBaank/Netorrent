@@ -85,7 +85,7 @@ public class TrackerTests
 
         cts.Cancel();
 
-        IPEndPoint[] resultIps = ctx.Ips.Concat(ctx.Ips).ToArray();
+        IPEndPoint[] resultIps = [.. ctx.Ips, .. ctx.Ips];
         ipendpoints.Length.ShouldBe(ctx.Ips.Length * 2);
         ipendpoints.ShouldBeEquivalentTo(resultIps);
         await trackerTask.ShouldThrowAsync<OperationCanceledException>();
@@ -119,7 +119,7 @@ public class TrackerTests
 
         cts.Cancel();
 
-        IPEndPoint[] resultIps = ctx.Ips.Concat(ctx.Ips).ToArray();
+        IPEndPoint[] resultIps = [.. ctx.Ips, .. ctx.Ips];
         ipendpoints.Length.ShouldBe(ctx.Ips.Length * 2);
         ipendpoints.ShouldBeEquivalentTo(resultIps);
         await trackerTask.ShouldThrowAsync<OperationCanceledException>();
@@ -239,7 +239,7 @@ public class TrackerTests
 
         cts.Cancel();
 
-        IPEndPoint[] resultIps = ctx.Ips.Concat(ctx.Ips).Concat(ctx.Ips).Concat(ctx.Ips).ToArray();
+        IPEndPoint[] resultIps = [.. ctx.Ips, .. ctx.Ips, .. ctx.Ips, .. ctx.Ips];
         ipendpoints.Length.ShouldBe(ctx.Ips.Length * 4);
         ipendpoints.ShouldBeEquivalentTo(resultIps);
         await trackerTask.ShouldThrowAsync<OperationCanceledException>();
