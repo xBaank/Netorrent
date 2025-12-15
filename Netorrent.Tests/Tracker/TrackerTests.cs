@@ -10,7 +10,7 @@ using Shouldly;
 
 namespace Netorrent.Tests.Tracker;
 
-[Timeout(5_000)]
+[Timeout(10_000)]
 public class TrackerTests
 {
     [Test]
@@ -26,7 +26,11 @@ public class TrackerTests
         ];
         var channel = Channel.CreateUnbounded<IPEndPoint>();
         var logger = NullLogger.Instance;
-        await using var udptrackerManager = new FakeUdpTrackerTransactionManager(ips, interval);
+        await using var udptrackerManager = new FakeUdpTrackerTransactionManager(
+            ips,
+            interval,
+            false
+        );
         await using var udptracker = new UdpTracker(
             udptrackerManager,
             1,
@@ -71,7 +75,7 @@ public class TrackerTests
         var httpTracker = new HttpTracker(
             1,
             new Statistics.TransferStatistics(3),
-            new FakeHttpTrackerHandler(ips, interval),
+            new FakeHttpTrackerHandler(ips, interval, false),
             new(),
             [1, 2, 3],
             "null",
@@ -95,6 +99,94 @@ public class TrackerTests
     }
 
     [Test]
+    public async Task Should_not_get_peers_from_http_tracker(CancellationToken cancellationToken)
+    {
+        var interval = 1.Seconds;
+        IPEndPoint[] ips =
+        [
+            new IPEndPoint(IPAddress.Parse("127.0.0.1"), 6881),
+            new IPEndPoint(IPAddress.Parse("127.0.0.2"), 6882),
+            new IPEndPoint(IPAddress.Parse("::1"), 6881),
+            new IPEndPoint(IPAddress.Parse("2001:db8::1"), 6882),
+        ];
+        var channel = Channel.CreateUnbounded<IPEndPoint>();
+        var logger = NullLogger.Instance;
+        using var httpClient = new HttpClient();
+        var httpTracker = new HttpTracker(
+            1,
+            new Statistics.TransferStatistics(3),
+            new FakeHttpTrackerHandler(ips, interval, true),
+            new(),
+            [1, 2, 3],
+            "null",
+            logger,
+            channel,
+            null
+        );
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var trackerTask = httpTracker.StartAsync(cts.Token).AsTask();
+
+        await Task.Delay(5.Seconds, cancellationToken);
+        cts.Cancel();
+        channel.Writer.TryComplete();
+
+        var ipendpoints = await channel
+            .Reader.ReadAllAsync(cancellationToken)
+            .ToArrayAsync(cancellationToken: cancellationToken)
+            .AsTask();
+
+        ipendpoints.Length.ShouldBe(0);
+        await trackerTask.ShouldNotThrowAsync();
+    }
+
+    [Test]
+    public async Task Should_not_get_peers_from_udp_tracker(CancellationToken cancellationToken)
+    {
+        var interval = 1.Seconds;
+        IPEndPoint[] ips =
+        [
+            new IPEndPoint(IPAddress.Parse("127.0.0.1"), 6881),
+            new IPEndPoint(IPAddress.Parse("127.0.0.2"), 6882),
+            new IPEndPoint(IPAddress.Parse("::1"), 6881),
+            new IPEndPoint(IPAddress.Parse("2001:db8::1"), 6882),
+        ];
+        var channel = Channel.CreateUnbounded<IPEndPoint>();
+        var logger = NullLogger.Instance;
+        await using var udptrackerManager = new FakeUdpTrackerTransactionManager(
+            ips,
+            interval,
+            true
+        );
+        await using var udptracker = new UdpTracker(
+            udptrackerManager,
+            1,
+            new(3),
+            new(),
+            channel.Writer,
+            [1, 2, 3],
+            "null",
+            new(IPAddress.Loopback, 1),
+            logger,
+            null
+        );
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var trackerTask = udptracker.StartAsync(cts.Token).AsTask();
+        await Task.Delay(5.Seconds, cancellationToken);
+        cts.Cancel();
+        channel.Writer.TryComplete();
+
+        var ipendpoints = await channel
+            .Reader.ReadAllAsync(cancellationToken)
+            .ToArrayAsync(cancellationToken: cancellationToken)
+            .AsTask();
+
+        ipendpoints.Length.ShouldBe(0);
+        await trackerTask.ShouldNotThrowAsync();
+    }
+
+    [Test]
     public async Task Should_get_peers_from_tracker_client(CancellationToken cancellationToken)
     {
         var interval = 1.Seconds;
@@ -107,10 +199,14 @@ public class TrackerTests
         ];
         var channel = Channel.CreateUnbounded<IPEndPoint>();
         var logger = NullLogger.Instance;
-        await using var udptrackerManager = new FakeUdpTrackerTransactionManager(ips, interval);
-        var httpTrackerHandler = new FakeHttpTrackerHandler(ips, interval);
+        await using var udptrackerManager = new FakeUdpTrackerTransactionManager(
+            ips,
+            interval,
+            false
+        );
+        var httpTrackerHandler = new FakeHttpTrackerHandler(ips, interval, false);
 
-        var trackerClient = new TrackerClient(
+        await using var trackerClient = new TrackerClient(
             httpTrackerHandler,
             udptrackerManager,
             1,
