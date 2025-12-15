@@ -21,6 +21,5 @@ namespace Netorrent.Tracker.Udp
             CancellationToken cancellationToken
         )
             where T : IUdpTrackerReceivePacket;
-        void Start();
     }
 }

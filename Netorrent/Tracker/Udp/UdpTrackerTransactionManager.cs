@@ -4,12 +4,13 @@ using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
+using Netorrent.Tracker.Udp.Client;
 using Netorrent.Tracker.Udp.Request;
 using Netorrent.Tracker.Udp.Response;
 
 namespace Netorrent.Tracker.Udp;
 
-internal class UdpTrackerTransactionManager(UdpClient udpClient, ILogger logger)
+internal class UdpTrackerTransactionManager(IUdpClient udpClient, ILogger logger)
     : IUdpTrackerTransactionManager
 {
     private const int MAX_RETRIES = 8;

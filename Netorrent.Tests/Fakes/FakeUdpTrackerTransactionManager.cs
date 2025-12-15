@@ -1,7 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Net;
 using Netorrent.Tracker.Udp;
-using Netorrent.Tracker.Udp.Request;
 using Netorrent.Tracker.Udp.Response;
 
 namespace Netorrent.Tests.Fakes;
@@ -18,11 +17,6 @@ internal sealed class FakeUdpTrackerTransactionManager(
     private long _nextConnectionId = 1;
 
     public Task? TrackerManagerTask { get; } = Task.CompletedTask;
-
-    public void Start()
-    {
-        // No background work required for the fake
-    }
 
     public Task<UdpTrackerConnectResponse> ConnectAsync(
         IPEndPoint endPoint,

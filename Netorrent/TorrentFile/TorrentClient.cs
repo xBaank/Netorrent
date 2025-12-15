@@ -8,6 +8,7 @@ using Netorrent.Extensions;
 using Netorrent.P2P;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker.Udp;
+using Netorrent.Tracker.Udp.Client;
 using ZLinq;
 
 namespace Netorrent.TorrentFile;
@@ -23,7 +24,10 @@ public sealed class TorrentClient : IAsyncDisposable
     {
         var options = new TorrentClientOptions(new(), NullLogger.Instance, null);
         _options = action?.Invoke(options) ?? options;
-        _trackerTransactionManager = new(UdpClient.GetFreeUdpClient(), _options.Logger);
+        _trackerTransactionManager = new(
+            new UdpClientWrapper(UdpClient.GetFreeUdpClient()),
+            _options.Logger
+        );
         _trackerTransactionManager.Start();
     }
 
