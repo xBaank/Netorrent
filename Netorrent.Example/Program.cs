@@ -19,7 +19,7 @@ try
     var statusTask = RunStatusUI(torrent, cts.Token);
 
     await torrent.StartAsync();
-    await torrent.Statistics.Completion;
+    await torrent.Completion;
 
     AnsiConsole.MarkupLine("[green]Download complete.[/]");
 }

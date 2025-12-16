@@ -3,6 +3,9 @@ using Netorrent.P2P.Messages;
 
 namespace Netorrent.Statistics;
 
+/// <summary>
+/// Tracks the completion of the torrent
+/// </summary>
 public class CompletionTracker
 {
     private readonly Bitfield _bitfield;
@@ -46,7 +49,15 @@ public class CompletionTracker
         _stateDisposable.Dispose();
     }
 
+    /// <summary>
+    /// Gets an awaiter that completes when the torrent data is full
+    /// </summary>
+    /// <returns></returns>
     public TaskAwaiter GetAwaiter() => _downloadTaskCompletitionSource.Task.GetAwaiter();
 
+    /// <summary>
+    /// Gets the underlying task that completes when the torrent data is full
+    /// </summary>
+    /// <returns></returns>
     public Task AsTask() => _downloadTaskCompletitionSource.Task;
 }

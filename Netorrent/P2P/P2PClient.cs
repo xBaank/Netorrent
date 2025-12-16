@@ -55,8 +55,7 @@ internal class P2PClient : IAsyncDisposable
         FileManager = fileManager;
         Stats = new TorrentStatisticsClient(
             new TransferStatistics(fileManager.TotalSize),
-            new PeerStatistics(_activePeers),
-            new CompletionTracker(bitField)
+            new PeerStatistics(_activePeers)
         );
         _peerIpProxy = peerIpProxy;
         _requestScheduler = new RequestScheduler(
@@ -265,6 +264,5 @@ internal class P2PClient : IAsyncDisposable
         await _requestScheduler.DisposeAsync().ConfigureAwait(false);
         await _uploadScheduler.DisposeAsync().ConfigureAwait(false);
         _semaphoreSlim.Dispose();
-        Stats.Dispose();
     }
 }

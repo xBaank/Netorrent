@@ -17,9 +17,9 @@ namespace Netorrent.TorrentFile;
 public sealed class Torrent : IAsyncDisposable
 {
     public MetaInfo MetaInfo { get; init; }
+    public CompletionTracker Completion { get; }
     public TorrentStatisticsClient Statistics => _p2pClient.Stats;
     public string OutputDirectory => _fileManager.OutputDirectory;
-
     public State State { get; private set; } = State.Stopped;
 
     private readonly P2PClient _p2pClient;
@@ -75,6 +75,7 @@ public sealed class Torrent : IAsyncDisposable
             logger,
             forcedIp
         );
+        Completion = new CompletionTracker(_myBitfield);
     }
 
     /// <summary>
@@ -101,7 +102,7 @@ public sealed class Torrent : IAsyncDisposable
             return;
 
         await StopAndWaitToFinishAsync();
-        Statistics.Completion.Reset();
+        Completion.Reset();
         _cancellationTokenSource?.Dispose();
         _cancellationTokenSource = new CancellationTokenSource();
         State = State.Started;
@@ -117,7 +118,7 @@ public sealed class Torrent : IAsyncDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         _cancellationTokenSource?.Cancel();
-        Statistics.Completion.TrySetCanceled();
+        Completion.TrySetCanceled();
     }
 
     private async Task StartAndWaitToFinishAsync(CancellationTokenSource cancellationTokenSource)
@@ -133,14 +134,14 @@ public sealed class Torrent : IAsyncDisposable
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            Statistics.Completion.TrySetException(ex);
+            Completion.TrySetException(ex);
             return;
         }
 
         //If no exception was thrown or the token is cancelled then we set it to canceled
         if (cancellationTokenSource.Token.IsCancellationRequested)
         {
-            Statistics.Completion.TrySetCanceled();
+            Completion.TrySetCanceled();
             State = State.Stopped;
         }
     }
@@ -148,7 +149,7 @@ public sealed class Torrent : IAsyncDisposable
     private async ValueTask StopAndWaitToFinishAsync()
     {
         _cancellationTokenSource?.Cancel();
-        Statistics.Completion.TrySetCanceled();
+        Completion.TrySetCanceled();
         if (_runTask is not null)
         {
             try
@@ -190,6 +191,7 @@ public sealed class Torrent : IAsyncDisposable
             _fileManager.Dispose();
             await _p2pClient.DisposeAsync().ConfigureAwait(false);
             await _trackerClient.DisposeAsync().ConfigureAwait(false);
+            Completion.Dispose();
             _cancellationTokenSource?.Dispose();
             _cancellationTokenSource = null;
             _runTask = null;

@@ -108,7 +108,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
             foreach (var leecherTorrent in leechersTorrents)
             {
-                await leecherTorrent.Statistics.Completion.AsTask().ShouldNotThrowAsync();
+                await leecherTorrent.Completion.AsTask().ShouldNotThrowAsync();
             }
 
             foreach (var seederTorrent in seedersTorrents)
@@ -191,14 +191,12 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
             foreach (var seederTorrent in seedersTorrents)
             {
-                await seederTorrent.Statistics.Completion.AsTask().ShouldNotThrowAsync();
+                await seederTorrent.Completion.AsTask().ShouldNotThrowAsync();
             }
 
             foreach (var leecherTorrent in leechersTorrents)
             {
-                await leecherTorrent
-                    .Statistics.Completion.AsTask()
-                    .ShouldThrowAsync<TaskCanceledException>();
+                await leecherTorrent.Completion.AsTask().ShouldThrowAsync<TaskCanceledException>();
             }
         }
         finally
@@ -251,9 +249,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
             foreach (var leecherTorrent in leechersTorrents)
             {
-                leecherTorrent.Statistics.Completion.TrySetException(
-                    new InvalidOperationException()
-                );
+                leecherTorrent.Completion.TrySetException(new InvalidOperationException());
             }
 
             foreach (var seederTorrent in seedersTorrents)
@@ -268,13 +264,13 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
             foreach (var seederTorrent in seedersTorrents)
             {
-                await seederTorrent.Statistics.Completion.AsTask().ShouldNotThrowAsync();
+                await seederTorrent.Completion.AsTask().ShouldNotThrowAsync();
             }
 
             foreach (var leecherTorrent in leechersTorrents)
             {
                 await leecherTorrent
-                    .Statistics.Completion.AsTask()
+                    .Completion.AsTask()
                     .ShouldThrowAsync<InvalidOperationException>();
             }
         }
@@ -303,7 +299,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
         );
         cancellationToken.Register(torrent.Stop);
         await torrent.StartAsync();
-        await torrent.Statistics.Completion;
+        await torrent.Completion;
         await torrent.StopAsync();
     }
 
