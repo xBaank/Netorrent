@@ -44,7 +44,9 @@ internal class PiecePicker(
         }
 
         if (!_requestBlocks.TryGetValue(receiveBlock.Index, out var requestBlocks))
+        {
             return;
+        }
 
         lock (_requestBlocksLock)
         {
@@ -52,7 +54,8 @@ internal class PiecePicker(
             foreach (var requestBlock in requestBlocks)
             {
                 if (
-                    requestBlock.Index == receiveBlock.Index
+                    requestBlock.State != RequestBlockState.Completed
+                    && requestBlock.Index == receiveBlock.Index
                     && requestBlock.Begin == receiveBlock.Begin
                     && requestBlock.Length == receiveBlock.Payload.Length
                     && requestBlock.RequestedFrom.Contains(receiveBlock.FromPeer)
