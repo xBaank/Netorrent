@@ -26,7 +26,9 @@ public sealed class TorrentClient : IAsyncDisposable
         _options = action?.Invoke(options) ?? options;
         _trackerTransactionManager = new(
             new UdpClientWrapper(UdpClient.GetFreeUdpClient()),
-            _options.Logger
+            _options.Logger,
+            15.Seconds,
+            8
         );
         _trackerTransactionManager.Start();
     }

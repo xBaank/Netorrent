@@ -29,7 +29,7 @@ internal sealed class FakeUdpTrackerTransactionManager(
             _ => Interlocked.Increment(ref _nextConnectionId)
         );
 
-        var response = new UdpTrackerConnectResponse(MakeTransactionId(), connectionId, 0);
+        var response = new UdpTrackerConnectResponse(MakeTransactionId(), connectionId);
 
         return Task.FromResult(response);
     }
@@ -62,7 +62,6 @@ internal sealed class FakeUdpTrackerTransactionManager(
         }
 
         IUdpTrackerReceivePacket receivePacket = new UdpTrackerResponse(
-            Action: 1,
             TransactionId: packet.TransactionId,
             Interval: (int)interval.TotalSeconds,
             Leechers: 0,

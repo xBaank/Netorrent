@@ -5,15 +5,19 @@ using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.Tracker.Udp.Client;
+using Netorrent.Tracker.Udp.Exceptions;
 using Netorrent.Tracker.Udp.Request;
 using Netorrent.Tracker.Udp.Response;
 
 namespace Netorrent.Tracker.Udp;
 
-internal class UdpTrackerTransactionManager(IUdpClient udpClient, ILogger logger)
-    : IUdpTrackerTransactionManager
+internal class UdpTrackerTransactionManager(
+    IUdpClient udpClient,
+    ILogger logger,
+    TimeSpan retry,
+    int maxRetries
+) : IUdpTrackerTransactionManager
 {
-    private const int MAX_RETRIES = 8;
     private readonly ConcurrentDictionary<int, TrackerTransaction> _packetsByTransactionId = [];
     private readonly ConcurrentDictionary<long, DateTime> _connectionCreationById = [];
     private readonly ConcurrentDictionary<Guid, long> _connectionIdByTracker = [];
@@ -56,14 +60,17 @@ internal class UdpTrackerTransactionManager(IUdpClient udpClient, ILogger logger
 
                 IUdpTrackerReceivePacket? receivedPacket = actionId switch
                 {
-                    0 => UdpTrackerConnectResponse.From(result.Buffer),
-                    1 => UdpTrackerResponse.From(
+                    UdpTrackerConnectResponse.Action => UdpTrackerConnectResponse.From(
+                        result.Buffer
+                    ),
+                    UdpTrackerResponse.Action => UdpTrackerResponse.From(
                         result.Buffer,
-                        result.RemoteEndPoint.Address.IsIPv4MappedToIPv6
+                        result.RemoteEndPoint.AddressFamily == AddressFamily.InterNetwork
+                        || result.RemoteEndPoint.Address.IsIPv4MappedToIPv6
                             ? AddressFamily.InterNetwork
                             : AddressFamily.InterNetworkV6
                     ),
-                    3 => UdpTrackerErrorResponse.From(result.Buffer),
+                    UdpTrackerErrorResponse.Action => UdpTrackerErrorResponse.From(result.Buffer),
                     _ => null,
                 };
 
@@ -86,7 +93,7 @@ internal class UdpTrackerTransactionManager(IUdpClient udpClient, ILogger logger
                     if (receivedPacket is UdpTrackerErrorResponse udpTrackerErrorResponse)
                     {
                         packet.Response.TrySetException(
-                            new Exception(udpTrackerErrorResponse.Message)
+                            new UdpTrackerException(udpTrackerErrorResponse.Message)
                         );
                     }
                     else
@@ -113,7 +120,7 @@ internal class UdpTrackerTransactionManager(IUdpClient udpClient, ILogger logger
                 var now = DateTime.UtcNow;
                 if (now > transaction.NextRetryTime)
                 {
-                    if (transaction.RetryCount >= MAX_RETRIES)
+                    if (transaction.RetryCount >= maxRetries)
                     {
                         transaction.Response.TrySetException(
                             new TimeoutException("Tracker did not respond")
@@ -136,8 +143,8 @@ internal class UdpTrackerTransactionManager(IUdpClient udpClient, ILogger logger
                         .SendAsync(payload.Memory, transaction.Packet.IPEndPoint, cancellationToken)
                         .ConfigureAwait(false);
                     transaction.RetryCount++;
-                    var seconds = 15 * (transaction.RetryCount + 1);
-                    transaction.NextRetryTime = DateTime.UtcNow + seconds.Seconds;
+                    var seconds = retry * (transaction.RetryCount + 1);
+                    transaction.NextRetryTime = DateTime.UtcNow + seconds;
                 }
             }
 
@@ -229,8 +236,8 @@ internal class UdpTrackerTransactionManager(IUdpClient udpClient, ILogger logger
         }
 
         using var payload = packet.ToMemoryRented();
-        var seconds = 15 * (transaction.RetryCount + 1);
-        transaction.NextRetryTime = DateTime.UtcNow + seconds.Seconds;
+        var seconds = retry * (transaction.RetryCount + 1);
+        transaction.NextRetryTime = DateTime.UtcNow + seconds;
 
         await udpClient
             .SendAsync(payload.Memory, packet.IPEndPoint, cancellationToken)
