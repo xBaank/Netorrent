@@ -31,7 +31,7 @@ internal class RequestScheduler(
 
     private readonly HashSet<PeerConnection> _activePeers = [];
     private readonly List<PeerConnection> _interestedPeers = [];
-    private readonly ConcurrentDictionary<int, PieceBuffer> _pieceBuffers = [];
+    private readonly Dictionary<int, PieceBuffer> _pieceBuffers = [];
     private readonly Lock _activePeersLock = new();
     private int _maxCurrentPeers = MinPeers;
     private CancellationTokenSource? _cts;
@@ -99,7 +99,9 @@ internal class RequestScheduler(
         pieceBuffer.AddBlock(block);
 
         if (!pieceBuffer.IsComplete)
+        {
             return;
+        }
 
         var isWritten = false;
         try
@@ -109,7 +111,7 @@ internal class RequestScheduler(
         finally
         {
             piecePicker.CompletePiece(block.Index);
-            if (_pieceBuffers.TryRemove(block.Index, out var removedBuffer))
+            if (_pieceBuffers.Remove(block.Index, out var removedBuffer))
             {
                 removedBuffer.Dispose();
             }
@@ -303,6 +305,11 @@ internal class RequestScheduler(
             item.Dispose();
 
         await foreach (var _ in _slotsChannel.Reader.ReadAllAsync().ConfigureAwait(false)) { }
+
+        foreach (var item in _pieceBuffers.Values)
+        {
+            item.Dispose();
+        }
     }
 
     public async ValueTask DisposeAsync()

@@ -12,58 +12,36 @@ using ZLinq;
 
 namespace Netorrent.P2P;
 
-internal class P2PClient : IAsyncDisposable
+internal class P2PClient(
+    ReadOnlyMemory<byte> infoHash,
+    PeerId peerId,
+    IRequestScheduler requestScheduler,
+    IUploadScheduler uploadScheduler,
+    int blockSize,
+    Bitfield bitField,
+    ChannelReader<IPEndPoint> trackersChannel,
+    ILogger logger,
+    Func<IPAddress, IPAddress>? peerIpProxy
+) : IAsyncDisposable
 {
     const int MAX_ACTIVE_PEER_COUNT = 50;
     const int PEER_TIMEOUT_SECONDS = 120;
 
     private readonly TcpListener _listener = TcpListener.GetFreeTcpListener();
-    private readonly ILogger _logger;
     private readonly ConcurrentDictionary<PeerEndpoint, PeerConnection> _activePeers = [];
     private readonly ConcurrentQueue<IPEndPoint> _knownPeers = [];
-    private readonly ReadOnlyMemory<byte> _infoHash;
-    private readonly PeerId _peerId;
-    private readonly Bitfield _bitField;
-    private readonly IRequestScheduler _requestScheduler;
-    private readonly IUploadScheduler _uploadScheduler;
-    private readonly int _blockSize;
-    private readonly ChannelReader<IPEndPoint> _trackersChannel;
-    private readonly Func<IPAddress, IPAddress>? _peerIpProxy;
     private readonly SemaphoreSlim _semaphoreSlim = new(1);
     private readonly List<Task> _peerTasks = [];
     public IReadOnlyDictionary<PeerEndpoint, PeerConnection> ActivePeers => _activePeers;
     public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
-
-    public P2PClient(
-        ReadOnlyMemory<byte> infoHash,
-        PeerId peerId,
-        IRequestScheduler requestScheduler,
-        IUploadScheduler uploadScheduler,
-        int blockSize,
-        Bitfield bitField,
-        ChannelReader<IPEndPoint> trackersChannel,
-        ILogger logger,
-        Func<IPAddress, IPAddress>? peerIpProxy
-    )
-    {
-        _peerId = peerId;
-        _bitField = bitField;
-        _infoHash = infoHash;
-        _trackersChannel = trackersChannel;
-        _logger = logger;
-        _peerIpProxy = peerIpProxy;
-        _blockSize = blockSize;
-        _requestScheduler = requestScheduler;
-        _uploadScheduler = uploadScheduler;
-    }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
         await cts.CancelOnFirstCompletionAndAwaitAllAsync([
-                _requestScheduler.StartAsync(cts.Token),
-                _uploadScheduler.StartAsync(cts.Token),
+                requestScheduler.StartAsync(cts.Token),
+                uploadScheduler.StartAsync(cts.Token),
                 ProcessPeersAsync(cts.Token),
                 ListenToPeersAsync(cts.Token),
             ])
@@ -80,11 +58,11 @@ internal class P2PClient : IAsyncDisposable
     {
         List<Task> connectTasks = new(100);
         await foreach (
-            var iPEndPoint in _trackersChannel.ReadAllAsync(cancellationToken).ConfigureAwait(false)
+            var iPEndPoint in trackersChannel.ReadAllAsync(cancellationToken).ConfigureAwait(false)
         )
         {
             var targetEndPoint = new IPEndPoint(
-                _peerIpProxy?.Invoke(iPEndPoint.Address) ?? iPEndPoint.Address,
+                peerIpProxy?.Invoke(iPEndPoint.Address) ?? iPEndPoint.Address,
                 iPEndPoint.Port
             );
             connectTasks.Add(ConnectToPeerAsync(null, targetEndPoint, cancellationToken));
@@ -132,8 +110,8 @@ internal class P2PClient : IAsyncDisposable
             }
             catch (Exception ex)
             {
-                if (_logger.IsEnabled(LogLevel.Debug))
-                    _logger.LogDebug(ex, "Error conecting to {ip}", iPEndPoint);
+                if (logger.IsEnabled(LogLevel.Debug))
+                    logger.LogDebug(ex, "Error conecting to {ip}", iPEndPoint);
                 return;
             }
         }
@@ -144,23 +122,23 @@ internal class P2PClient : IAsyncDisposable
         try
         {
             peerConnection = await PeerConnection.CreatePeerConnectionAsync(
-                _bitField,
-                _uploadScheduler,
-                _requestScheduler,
+                bitField,
+                uploadScheduler,
+                requestScheduler,
                 messageStream,
-                new(_blockSize),
+                new(blockSize),
                 amInitiating,
-                _infoHash,
-                _peerId,
+                infoHash,
+                peerId,
                 iPEndPoint,
                 cancellationToken
             );
         }
         catch (Exception ex)
         {
-            if (_logger.IsEnabled(LogLevel.Debug))
+            if (logger.IsEnabled(LogLevel.Debug))
             {
-                _logger.LogDebug(ex, "Error handshaking to {ip}", iPEndPoint);
+                logger.LogDebug(ex, "Error handshaking to {ip}", iPEndPoint);
             }
 
             return;
@@ -169,10 +147,10 @@ internal class P2PClient : IAsyncDisposable
         await _semaphoreSlim.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (peerConnection.PeerEndpoint.PeerId == _peerId)
+            if (peerConnection.PeerEndpoint.PeerId == peerId)
             {
-                if (_logger.IsEnabled(LogLevel.Information))
-                    _logger.LogInformation("Ignored self connection to {EndPoint}", iPEndPoint);
+                if (logger.IsEnabled(LogLevel.Information))
+                    logger.LogInformation("Ignored self connection to {EndPoint}", iPEndPoint);
                 await peerConnection.DisposeAsync().ConfigureAwait(false);
                 return;
             }
@@ -184,8 +162,8 @@ internal class P2PClient : IAsyncDisposable
                     .Any(i => i.PeerId == peerConnection.PeerEndpoint.PeerId)
             )
             {
-                if (_logger.IsEnabled(LogLevel.Information))
-                    _logger.LogInformation("Ignored active peer from {EndPoint}", iPEndPoint);
+                if (logger.IsEnabled(LogLevel.Information))
+                    logger.LogInformation("Ignored active peer from {EndPoint}", iPEndPoint);
                 await peerConnection.DisposeAsync().ConfigureAwait(false);
                 return;
             }
@@ -196,8 +174,8 @@ internal class P2PClient : IAsyncDisposable
                 return;
             }
 
-            if (_logger.IsEnabled(LogLevel.Information))
-                _logger.LogInformation(
+            if (logger.IsEnabled(LogLevel.Information))
+                logger.LogInformation(
                     "Connected to peer {PeerId}",
                     peerConnection.PeerEndpoint.PeerId
                 );
@@ -227,9 +205,9 @@ internal class P2PClient : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            if (_logger.IsEnabled(LogLevel.Debug))
+            if (logger.IsEnabled(LogLevel.Debug))
             {
-                _logger.LogDebug(
+                logger.LogDebug(
                     ex,
                     "Exception on peer {peerId}",
                     peerConnection.PeerEndpoint.PeerId
@@ -254,8 +232,8 @@ internal class P2PClient : IAsyncDisposable
         {
             await item.Value.DisposeAsync().ConfigureAwait(false);
         }
-        await _requestScheduler.DisposeAsync().ConfigureAwait(false);
-        await _uploadScheduler.DisposeAsync().ConfigureAwait(false);
+        await requestScheduler.DisposeAsync().ConfigureAwait(false);
+        await uploadScheduler.DisposeAsync().ConfigureAwait(false);
         _semaphoreSlim.Dispose();
     }
 }
