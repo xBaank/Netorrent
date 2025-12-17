@@ -232,7 +232,7 @@ static async Task RunStatusUI(Torrent torrent, CancellationToken token) =>
                 var t = torrent.Statistics.Transfer;
                 var p = torrent.Statistics.Peers;
 
-                progressTask.Value(t.DownloadedBytes.Bytes);
+                progressTask.Value(t.VerifiedBytes.Bytes);
 
                 progressTask.Description =
                     $@"[green]{(torrent.MetaInfo.Title ?? torrent.MetaInfo.Info.Name).EscapeMarkup()}[/]";

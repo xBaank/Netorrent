@@ -70,7 +70,7 @@ internal class HttpTracker(
                 infoHash,
                 peerId,
                 port,
-                (ulong)transfer.CompletedBytes.Bytes,
+                (ulong)transfer.DownloadedBytes.Bytes,
                 (ulong)transfer.UploadedBytes.Bytes,
                 (ulong)transfer.LeftBytes.Bytes,
                 true,

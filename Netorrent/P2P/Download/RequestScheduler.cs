@@ -96,9 +96,7 @@ internal class RequestScheduler(
         block.FromPeer.PeerRequestWindow.CalculateRtt(rtt);
         block.FromPeer.DecrementRequestedBlock();
         piecePicker.CompleteRequestBlock(requestedBlock);
-
         pieceBuffer.AddBlock(block);
-        transfer.AddDownloadedBytes(block.Payload.Length);
 
         if (!pieceBuffer.IsComplete)
             return;
@@ -119,7 +117,11 @@ internal class RequestScheduler(
 
         if (isWritten)
         {
-            myBitfield.SetPiece(block.Index);
+            if (!myBitfield.HasPiece(block.Index))
+            {
+                transfer.AddVerifiedBytes(pieceBuffer.Size);
+                myBitfield.SetPiece(block.Index);
+            }
         }
         else
         {
