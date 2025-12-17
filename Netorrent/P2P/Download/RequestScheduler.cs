@@ -1,5 +1,4 @@
 ﻿using System.Collections.Concurrent;
-using System.Threading;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
@@ -14,7 +13,7 @@ internal class RequestScheduler(
     PiecePicker piecePicker,
     Bitfield myBitfield,
     TransferStatistics transfer,
-    IPieceWriter _pieceWriter,
+    IPieceStorage pieceStorage,
     ILogger logger
 ) : IRequestScheduler
 {
@@ -87,7 +86,7 @@ internal class RequestScheduler(
 
         if (!_pieceBuffers.TryGetValue(block.Index, out var pieceBuffer))
         {
-            pieceBuffer = new PieceBuffer(block.Index, _pieceWriter);
+            pieceBuffer = new PieceBuffer(block.Index, pieceStorage, piecePicker);
             _pieceBuffers[block.Index] = pieceBuffer;
         }
 
@@ -125,7 +124,7 @@ internal class RequestScheduler(
         else
         {
             // Retry with a fresh buffer
-            _pieceBuffers[block.Index] = new PieceBuffer(block.Index, _pieceWriter);
+            _pieceBuffers[block.Index] = new PieceBuffer(block.Index, pieceStorage, piecePicker);
             transfer.AddDiscardedBytes(pieceBuffer.Size);
         }
     }

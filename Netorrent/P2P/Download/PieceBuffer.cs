@@ -13,16 +13,18 @@ internal class PieceBuffer : IDisposable
     private readonly bool[] _blockReceivedFlags; //TODO use bitarray or bitmask (long)?
     private readonly int _blocksCount;
     private readonly int _index;
-    private readonly IPieceWriter _pieceWriter;
+    private readonly IPieceStorage _pieceWriter;
+    private readonly int _blockSize;
 
     public int Size { get; }
 
-    public PieceBuffer(int index, IPieceWriter pieceWriter)
+    public PieceBuffer(int index, IPieceStorage pieceWriter, PiecePicker piecePicker)
     {
         _index = index;
         _pieceWriter = pieceWriter;
-        _blocksCount = pieceWriter.GetBlockCountByPieceIndex(index);
-        var pieceSize = pieceWriter.GetPieceSize(index);
+        _blockSize = piecePicker.BlockSize;
+        _blocksCount = piecePicker.GetBlockCountByPieceIndex(index);
+        var pieceSize = piecePicker.GetPieceSize(index);
         _buffer = new RentedArray<byte>(ArrayPool<byte>.Shared.Rent(pieceSize), pieceSize);
         _blockReceivedFlags = new bool[_blocksCount];
         Size = pieceSize;
@@ -30,7 +32,7 @@ internal class PieceBuffer : IDisposable
 
     public void AddBlock(Block block)
     {
-        var blockIndex = block.Begin / _pieceWriter.BlockSize;
+        var blockIndex = block.Begin / _blockSize;
         if (_blockReceivedFlags[blockIndex])
         {
             block.Dispose();

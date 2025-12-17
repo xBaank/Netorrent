@@ -15,7 +15,7 @@ internal class TrackerClient(
     IHttpTrackerHandler httpTrackerHandler,
     IUdpTrackerTransactionManager trackerTransactionManager,
     int port,
-    TransferStatistics transfer,
+    TransferStatistics transferStatistics,
     PeerId peerId,
     ChannelWriter<IPEndPoint> trackersChannel,
     string[] announceList,
@@ -62,7 +62,7 @@ internal class TrackerClient(
                 [
                     new HttpTracker(
                         port,
-                        transfer,
+                        transferStatistics,
                         httpTrackerHandler,
                         peerId,
                         infoHash,
@@ -100,7 +100,7 @@ internal class TrackerClient(
             var trackerv4 = new UdpTracker(
                 trackerTransactionManager,
                 port,
-                transfer,
+                transferStatistics,
                 peerId,
                 trackersChannel,
                 infoHash,
@@ -118,7 +118,7 @@ internal class TrackerClient(
             var trackerv6 = new UdpTracker(
                 trackerTransactionManager,
                 port,
-                transfer,
+                transferStatistics,
                 peerId,
                 trackersChannel,
                 infoHash,

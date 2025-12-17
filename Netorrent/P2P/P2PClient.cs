@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Channels;
@@ -9,7 +8,6 @@ using Netorrent.IO;
 using Netorrent.P2P.Download;
 using Netorrent.P2P.Messages;
 using Netorrent.P2P.Upload;
-using Netorrent.Statistics;
 using ZLinq;
 
 namespace Netorrent.P2P;
@@ -26,42 +24,37 @@ internal class P2PClient : IAsyncDisposable
     private readonly ReadOnlyMemory<byte> _infoHash;
     private readonly PeerId _peerId;
     private readonly Bitfield _bitField;
-    private readonly RequestScheduler _requestScheduler;
-    private readonly UploadScheduler _uploadScheduler;
+    private readonly IRequestScheduler _requestScheduler;
+    private readonly IUploadScheduler _uploadScheduler;
+    private readonly int _blockSize;
     private readonly ChannelReader<IPEndPoint> _trackersChannel;
     private readonly Func<IPAddress, IPAddress>? _peerIpProxy;
     private readonly SemaphoreSlim _semaphoreSlim = new(1);
     private readonly List<Task> _peerTasks = [];
-    private readonly IPieceWriter _pieceWriter;
-    public ConcurrentDictionary<PeerEndpoint, PeerConnection> ActivePeers => _activePeers;
+    public IReadOnlyDictionary<PeerEndpoint, PeerConnection> ActivePeers => _activePeers;
     public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
 
     public P2PClient(
         ReadOnlyMemory<byte> infoHash,
         PeerId peerId,
-        IPieceWriter pieceWriter,
+        IRequestScheduler requestScheduler,
+        IUploadScheduler uploadScheduler,
+        int blockSize,
         Bitfield bitField,
         ChannelReader<IPEndPoint> trackersChannel,
-        TransferStatistics transferStatistics,
         ILogger logger,
         Func<IPAddress, IPAddress>? peerIpProxy
     )
     {
         _peerId = peerId;
-        _pieceWriter = pieceWriter;
         _bitField = bitField;
         _infoHash = infoHash;
         _trackersChannel = trackersChannel;
         _logger = logger;
         _peerIpProxy = peerIpProxy;
-        _requestScheduler = new RequestScheduler(
-            new PiecePicker(bitField, pieceWriter),
-            bitField,
-            transferStatistics,
-            pieceWriter,
-            logger
-        );
-        _uploadScheduler = new UploadScheduler(pieceWriter, bitField, transferStatistics, logger);
+        _blockSize = blockSize;
+        _requestScheduler = requestScheduler;
+        _uploadScheduler = uploadScheduler;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -155,9 +148,9 @@ internal class P2PClient : IAsyncDisposable
                 _uploadScheduler,
                 _requestScheduler,
                 messageStream,
+                new(_blockSize),
                 amInitiating,
                 _infoHash,
-                _pieceWriter.BlockSize,
                 _peerId,
                 iPEndPoint,
                 cancellationToken

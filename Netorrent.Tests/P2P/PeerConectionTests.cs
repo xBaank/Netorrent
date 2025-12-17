@@ -1,7 +1,4 @@
-﻿using Netorrent.P2P;
-using Netorrent.P2P.Messages;
-
-namespace Netorrent.Tests.P2P;
+﻿namespace Netorrent.Tests.P2P;
 
 /**
 

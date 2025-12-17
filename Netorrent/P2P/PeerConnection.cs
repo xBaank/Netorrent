@@ -5,7 +5,6 @@ using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using Netorrent.Extensions;
 using Netorrent.IO;
-using Netorrent.IO.Disk;
 using Netorrent.Other;
 using Netorrent.P2P.Download;
 using Netorrent.P2P.Measurement;
@@ -20,7 +19,7 @@ internal class PeerConnection(
     IUploadScheduler uploadScheduler,
     IRequestScheduler requestScheduler,
     IMessageStream messageStream,
-    int blockSize,
+    PeerRequestWindow peerRequestWindow,
     bool amChoking = true,
     bool amInterested = false,
     bool peerChoking = true,
@@ -46,7 +45,7 @@ internal class PeerConnection(
     public bool PeerInterested { get; private set; } = peerInterested;
     public Bitfield? PeerBitField { get; private set; }
     public PeerEndpoint PeerEndpoint { get; } = peerEndpoint;
-    public PeerRequestWindow PeerRequestWindow { get; } = new(blockSize);
+    public PeerRequestWindow PeerRequestWindow { get; } = peerRequestWindow;
     public IObservable<PeerConnection> StateChanged => _stateChanged;
 
     private int _requestedBlocksCount;
@@ -62,9 +61,9 @@ internal class PeerConnection(
         IUploadScheduler uploadScheduler,
         IRequestScheduler requestScheduler,
         IMessageStream messageStream,
+        PeerRequestWindow peerRequestWindow,
         bool amInitiating,
         ReadOnlyMemory<byte> infoHash,
-        int blockSize,
         PeerId myPeerId,
         IPEndPoint peerEndPoint,
         CancellationToken cancellationToken
@@ -91,7 +90,7 @@ internal class PeerConnection(
             uploadScheduler,
             requestScheduler,
             messageStream,
-            blockSize
+            peerRequestWindow
         );
     }
 

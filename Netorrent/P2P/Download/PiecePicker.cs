@@ -1,13 +1,13 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Netorrent.Extensions;
-using Netorrent.IO;
 using Netorrent.P2P.Messages;
 using ZLinq;
 
 namespace Netorrent.P2P.Download;
 
-internal class PiecePicker(Bitfield myBitfield, IPieceWriter pieceWriter) : IAsyncDisposable
+internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, long totalSize)
+    : IAsyncDisposable
 {
     public const int TimeoutSeconds = 10;
 
@@ -15,6 +15,7 @@ internal class PiecePicker(Bitfield myBitfield, IPieceWriter pieceWriter) : IAsy
     private readonly Lock _requestBlocksLock = new();
     private readonly ConcurrentDictionary<int, RequestBlock[]> _requestBlocks = [];
     private readonly ConcurrentDictionary<int, PieceBuffer> _pieceBuffers = [];
+    public int BlockSize => blockSize;
 
     public void IncreaseRarity(int index)
     {
@@ -95,7 +96,7 @@ internal class PiecePicker(Bitfield myBitfield, IPieceWriter pieceWriter) : IAsy
         if (piece is null)
             return null;
 
-        var blockCount = pieceWriter.GetBlockCountByPieceIndex(piece.Value);
+        var blockCount = GetBlockCountByPieceIndex(piece.Value);
 
         lock (_requestBlocksLock)
         {
@@ -106,7 +107,7 @@ internal class PiecePicker(Bitfield myBitfield, IPieceWriter pieceWriter) : IAsy
 
                 for (int i = 0; i < blockCount; i++)
                 {
-                    requestBlocks[i] = pieceWriter.GetRequestBlockByBlockIndex(piece.Value, i);
+                    requestBlocks[i] = GetRequestBlockByBlockIndex(piece.Value, i);
                 }
             }
 
@@ -193,6 +194,47 @@ internal class PiecePicker(Bitfield myBitfield, IPieceWriter pieceWriter) : IAsy
             .First();
 
         return selectedPiece.index;
+    }
+
+    public int GetBlockCountByPieceIndex(int pieceIndex)
+    {
+        var pieceSize = GetPieceSize(pieceIndex);
+        int blockCount = (pieceSize + BlockSize - 1) / BlockSize;
+        return blockCount;
+    }
+
+    public int GetPieceSize(int pieceIndex)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(pieceIndex);
+
+        var pieceCount = (totalSize + pieceLenght - 1) / pieceLenght;
+        if (pieceIndex >= pieceCount)
+            throw new ArgumentOutOfRangeException(nameof(pieceIndex));
+
+        var pieceLength =
+            (pieceIndex == pieceCount - 1)
+                ? totalSize - (long)pieceIndex * pieceLenght
+                : pieceLenght;
+
+        return (int)pieceLength;
+    }
+
+    public RequestBlock GetRequestBlockByBlockIndex(int pieceIndex, int blockIndex)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(pieceIndex);
+        ArgumentOutOfRangeException.ThrowIfNegative(blockIndex);
+        var pieceCount = (totalSize + pieceLenght - 1) / pieceLenght;
+        if (pieceIndex >= pieceCount)
+            throw new ArgumentOutOfRangeException(nameof(pieceIndex));
+        var pieceLength =
+            (pieceIndex == pieceCount - 1)
+                ? totalSize - (long)pieceIndex * pieceLenght
+                : pieceLenght;
+        int blockCount = (int)((pieceLength + BlockSize - 1) / BlockSize);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(blockIndex, blockCount);
+        int begin = blockIndex * BlockSize;
+        int length = (int)Math.Min(BlockSize, pieceLength - begin);
+        return new RequestBlock(pieceIndex, begin, length);
     }
 
     public async ValueTask DisposeAsync()

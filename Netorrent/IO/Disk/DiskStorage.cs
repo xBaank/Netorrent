@@ -2,35 +2,30 @@
 using System.Security.Cryptography;
 using Netorrent.Extensions;
 using Netorrent.Other;
-using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
 using ZLinq;
 
 namespace Netorrent.IO.Disk;
 
-internal class DiskWriter : IPieceWriter
+internal class DiskStorage : IPieceStorage
 {
     private readonly string _outputDirectory;
     private readonly List<TorrentFileEntry> _files = [];
     private readonly int _pieceLength;
     private readonly List<byte[]> _pieceHashes;
 
-    public int BlockSize { get; } = 16 * 1024;
-    public long TotalSize { get; }
     public string OutputDirectory => _outputDirectory;
 
-    public DiskWriter(
+    public DiskStorage(
         string outputDirectory,
         List<InfoFile> torrentFiles,
         int pieceLength,
-        long totalSize,
         List<byte[]> pieceHashes
     )
     {
         _outputDirectory = outputDirectory;
         _pieceLength = pieceLength;
         _pieceHashes = pieceHashes;
-        TotalSize = totalSize;
 
         long offset = 0;
         foreach (var item in torrentFiles)
@@ -51,47 +46,6 @@ internal class DiskWriter : IPieceWriter
             _files.Add(new TorrentFileEntry(fullPath, offset, item.Length, handle));
             offset += item.Length;
         }
-    }
-
-    public int GetBlockCountByPieceIndex(int pieceIndex)
-    {
-        var pieceSize = GetPieceSize(pieceIndex);
-        int blockCount = (pieceSize + BlockSize - 1) / BlockSize;
-        return blockCount;
-    }
-
-    public int GetPieceSize(int pieceIndex)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegative(pieceIndex);
-
-        var pieceCount = (TotalSize + _pieceLength - 1) / _pieceLength;
-        if (pieceIndex >= pieceCount)
-            throw new ArgumentOutOfRangeException(nameof(pieceIndex));
-
-        var pieceLength =
-            (pieceIndex == pieceCount - 1)
-                ? TotalSize - (long)pieceIndex * _pieceLength
-                : _pieceLength;
-
-        return (int)pieceLength;
-    }
-
-    public RequestBlock GetRequestBlockByBlockIndex(int pieceIndex, int blockIndex)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegative(pieceIndex);
-        ArgumentOutOfRangeException.ThrowIfNegative(blockIndex);
-        var pieceCount = (TotalSize + _pieceLength - 1) / _pieceLength;
-        if (pieceIndex >= pieceCount)
-            throw new ArgumentOutOfRangeException(nameof(pieceIndex));
-        var pieceLength =
-            (pieceIndex == pieceCount - 1)
-                ? TotalSize - (long)pieceIndex * _pieceLength
-                : _pieceLength;
-        int blockCount = (int)((pieceLength + BlockSize - 1) / BlockSize);
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(blockIndex, blockCount);
-        int begin = blockIndex * BlockSize;
-        int length = (int)Math.Min(BlockSize, pieceLength - begin);
-        return new RequestBlock(pieceIndex, begin, length);
     }
 
     public async ValueTask WriteAsync(
