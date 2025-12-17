@@ -1,4 +1,5 @@
-﻿using System.Collections.Concurrent;
+﻿using System;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Channels;
@@ -9,7 +10,6 @@ using Netorrent.P2P.Download;
 using Netorrent.P2P.Messages;
 using Netorrent.P2P.Upload;
 using Netorrent.Statistics;
-using Netorrent.TorrentFile.FileStructure;
 using ZLinq;
 
 namespace Netorrent.P2P;
@@ -20,10 +20,10 @@ internal class P2PClient : IAsyncDisposable
     const int PEER_TIMEOUT_SECONDS = 120;
 
     private readonly TcpListener _listener = TcpListener.GetFreeTcpListener();
-    private readonly MetaInfo _metaInfo;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<PeerEndpoint, PeerConnection> _activePeers = [];
     private readonly ConcurrentQueue<IPEndPoint> _knownPeers = [];
+    private readonly ReadOnlyMemory<byte> _infoHash;
     private readonly PeerId _peerId;
     private readonly Bitfield _bitField;
     private readonly RequestScheduler _requestScheduler;
@@ -32,37 +32,36 @@ internal class P2PClient : IAsyncDisposable
     private readonly Func<IPAddress, IPAddress>? _peerIpProxy;
     private readonly SemaphoreSlim _semaphoreSlim = new(1);
     private readonly List<Task> _peerTasks = [];
-
-    public FileManager FileManager { get; }
-    public TorrentStatisticsClient Stats { get; }
+    private readonly IPieceWriter _pieceWriter;
+    public ConcurrentDictionary<PeerEndpoint, PeerConnection> ActivePeers => _activePeers;
     public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
 
     public P2PClient(
-        MetaInfo metaInfo,
+        ReadOnlyMemory<byte> infoHash,
         PeerId peerId,
-        FileManager fileManager,
+        IPieceWriter pieceWriter,
         Bitfield bitField,
         ChannelReader<IPEndPoint> trackersChannel,
+        TransferStatistics transferStatistics,
         ILogger logger,
         Func<IPAddress, IPAddress>? peerIpProxy
     )
     {
         _peerId = peerId;
+        _pieceWriter = pieceWriter;
         _bitField = bitField;
+        _infoHash = infoHash;
         _trackersChannel = trackersChannel;
-        _metaInfo = metaInfo;
         _logger = logger;
-        FileManager = fileManager;
-        Stats = new TorrentStatisticsClient(
-            new TransferStatistics(fileManager.TotalSize),
-            new PeerStatistics(_activePeers)
-        );
         _peerIpProxy = peerIpProxy;
         _requestScheduler = new RequestScheduler(
-            new PiecePicker(_bitField, fileManager, Stats.Transfer),
+            new PiecePicker(bitField, pieceWriter),
+            bitField,
+            transferStatistics,
+            pieceWriter,
             logger
         );
-        _uploadScheduler = new UploadScheduler(fileManager, bitField, Stats.Transfer, logger);
+        _uploadScheduler = new UploadScheduler(pieceWriter, bitField, transferStatistics, logger);
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -157,7 +156,8 @@ internal class P2PClient : IAsyncDisposable
                 _requestScheduler,
                 messageStream,
                 amInitiating,
-                _metaInfo.Info.InfoHash,
+                _infoHash,
+                _pieceWriter.BlockSize,
                 _peerId,
                 iPEndPoint,
                 cancellationToken

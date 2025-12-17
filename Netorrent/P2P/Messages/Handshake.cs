@@ -1,6 +1,7 @@
 ﻿using System.Buffers;
 using System.Text;
 using Netorrent.Extensions;
+using Netorrent.Other;
 
 namespace Netorrent.P2P.Messages;
 

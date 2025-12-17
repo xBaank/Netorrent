@@ -1,12 +1,22 @@
-﻿using System.Threading.Channels;
+﻿using System.Collections.Concurrent;
+using System.Threading;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
+using Netorrent.IO;
 using Netorrent.P2P.Messages;
+using Netorrent.Statistics;
 using ZLinq;
 
 namespace Netorrent.P2P.Download;
 
-internal class RequestScheduler(PiecePicker piecePicker, ILogger logger) : IRequestScheduler
+internal class RequestScheduler(
+    PiecePicker piecePicker,
+    Bitfield myBitfield,
+    TransferStatistics transfer,
+    IPieceWriter _pieceWriter,
+    ILogger logger
+) : IRequestScheduler
 {
     const int MinPeersForRarity = 6;
     const int WarmupTimeoutSecods = 8;
@@ -22,6 +32,7 @@ internal class RequestScheduler(PiecePicker piecePicker, ILogger logger) : IRequ
 
     private readonly HashSet<PeerConnection> _activePeers = [];
     private readonly List<PeerConnection> _interestedPeers = [];
+    private readonly ConcurrentDictionary<int, PieceBuffer> _pieceBuffers = [];
     private readonly Lock _activePeersLock = new();
     private int _maxCurrentPeers = MinPeers;
     private CancellationTokenSource? _cts;
@@ -60,10 +71,62 @@ internal class RequestScheduler(PiecePicker piecePicker, ILogger logger) : IRequ
         )
         {
             using var block = receiveBlock;
-            await piecePicker.ReceiveBlockAsync(block, cancellationToken).ConfigureAwait(false);
+            await ProcessBlockAsync(block, cancellationToken).ConfigureAwait(false);
             await _slotsChannel
                 .Writer.WriteAsync(block.FromPeer, cancellationToken)
                 .ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask ProcessBlockAsync(Block block, CancellationToken cancellationToken)
+    {
+        if (!piecePicker.TryGetRequestedBlock(block, out var requestedBlock))
+        {
+            return;
+        }
+
+        if (!_pieceBuffers.TryGetValue(block.Index, out var pieceBuffer))
+        {
+            pieceBuffer = new PieceBuffer(block.Index, _pieceWriter);
+            _pieceBuffers[block.Index] = pieceBuffer;
+        }
+
+        var rtt = requestedBlock.RequestedAt.HasValue
+            ? block.ReceivedAt - requestedBlock.RequestedAt.Value
+            : PiecePicker.TimeoutSeconds.Seconds;
+        block.FromPeer.PeerRequestWindow.CalculateRtt(rtt);
+        block.FromPeer.DecrementRequestedBlock();
+        piecePicker.CompleteRequestBlock(requestedBlock);
+
+        pieceBuffer.AddBlock(block);
+        transfer.AddDownloadedBytes(block.Payload.Length);
+
+        if (!pieceBuffer.IsComplete)
+            return;
+
+        var isWritten = false;
+        try
+        {
+            isWritten = await pieceBuffer.WritePieceAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            piecePicker.CompletePiece(block.Index);
+            if (_pieceBuffers.TryRemove(block.Index, out var removedBuffer))
+            {
+                removedBuffer.Dispose();
+            }
+        }
+
+        if (isWritten)
+        {
+            myBitfield.SetPiece(block.Index);
+        }
+        else
+        {
+            // Retry with a fresh buffer
+            _pieceBuffers[block.Index] = new PieceBuffer(block.Index, _pieceWriter);
+            transfer.AddDiscardedBytes(pieceBuffer.Size);
         }
     }
 

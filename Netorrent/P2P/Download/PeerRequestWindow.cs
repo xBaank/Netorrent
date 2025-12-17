@@ -1,4 +1,6 @@
-﻿namespace Netorrent.P2P.Download;
+﻿using Netorrent.P2P.Measurement;
+
+namespace Netorrent.P2P.Download;
 
 internal class PeerRequestWindow(int blockSize)
 {
@@ -14,13 +16,18 @@ internal class PeerRequestWindow(int blockSize)
 
     public int MaxInFlightRequests => Volatile.Read(ref _maxInFlightRequests);
 
-    //TODO Split into rtt calculate method and calculate window. rtt method should be called each request block arrives and calculate window each 500ms with speed tracker
-    public void CalculateWindow(long bytesPerSecond, TimeSpan rtt)
+    public void CalculateRtt(TimeSpan rtt)
     {
         lock (_windowLock)
         {
-            _smoothedRttSeconds = 0.875 * _smoothedRttSeconds + 0.125 * rtt.TotalSeconds;
+            _smoothedRttSeconds = 0.875 * _smoothedRttSeconds + 0.2 * rtt.TotalSeconds;
+        }
+    }
 
+    private void CalculateWindow(long bytesPerSecond)
+    {
+        lock (_windowLock)
+        {
             if (bytesPerSecond <= 0 || _smoothedRttSeconds <= 0)
                 _maxInFlightRequests = MinRequests;
 
@@ -33,5 +40,15 @@ internal class PeerRequestWindow(int blockSize)
 
             _maxInFlightRequests = Math.Clamp(window, MinRequests, MaxRequests);
         }
+    }
+
+    public Timer StartSampling(TimeSpan period, SpeedTracker speedTracker)
+    {
+        return new Timer(
+            _ => CalculateWindow((long)speedTracker.CurrentBps.Bps),
+            null,
+            TimeSpan.Zero,
+            period
+        );
     }
 }

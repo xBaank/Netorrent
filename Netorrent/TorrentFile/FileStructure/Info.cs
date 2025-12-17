@@ -35,9 +35,6 @@ public record Info(
 
     public List<InfoFile> NormalizedFiles() =>
         Type == InfoType.Single ? [new InfoFile(Length ?? 0, [Name], Md5sum)] : Files ?? [];
-
-    public ulong GetAllFilesSize() =>
-        (ulong)(Type == InfoType.Single ? Length ?? 0 : Files?.Sum(f => f.Length) ?? 0);
 }
 
 public record InfoFile(long Length, List<string> Path, string? Md5sum = null);

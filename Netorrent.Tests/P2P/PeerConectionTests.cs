@@ -1,6 +1,10 @@
-﻿namespace Netorrent.Tests.P2P;
+﻿using Netorrent.P2P;
+using Netorrent.P2P.Messages;
 
-/*
+namespace Netorrent.Tests.P2P;
+
+/**
+
 [Timeout(5_000)]
 public class PeerConectionTests
 {
@@ -11,4 +15,4 @@ public class PeerConectionTests
         var initiator = await PeerConnection.CreatePeerConnectionAsync();
     }
 }
-*/
+**/

@@ -1,17 +1,13 @@
 ﻿using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.P2P.Messages;
-using Netorrent.Statistics;
 using ZLinq;
 
 namespace Netorrent.P2P.Download;
 
-internal class PiecePicker(
-    Bitfield myBitfield,
-    FileManager fileManager,
-    TransferStatistics transfer
-) : IAsyncDisposable
+internal class PiecePicker(Bitfield myBitfield, IPieceWriter pieceWriter) : IAsyncDisposable
 {
     public const int TimeoutSeconds = 10;
 
@@ -19,8 +15,6 @@ internal class PiecePicker(
     private readonly Lock _requestBlocksLock = new();
     private readonly ConcurrentDictionary<int, RequestBlock[]> _requestBlocks = [];
     private readonly ConcurrentDictionary<int, PieceBuffer> _pieceBuffers = [];
-
-    public Bitfield Bitfield => myBitfield;
 
     public void IncreaseRarity(int index)
     {
@@ -32,85 +26,49 @@ internal class PiecePicker(
         Interlocked.Decrement(ref _pieceRarity[index]);
     }
 
-    public async ValueTask ReceiveBlockAsync(
-        Block receiveBlock,
-        CancellationToken cancellationToken
-    )
+    public void CompleteRequestBlock(RequestBlock requestBlock)
     {
-        if (!_pieceBuffers.TryGetValue(receiveBlock.Index, out var pieceBuffer))
-        {
-            pieceBuffer = new PieceBuffer(receiveBlock.Index, fileManager);
-            _pieceBuffers[receiveBlock.Index] = pieceBuffer;
-        }
-
-        if (!_requestBlocks.TryGetValue(receiveBlock.Index, out var requestBlocks))
-        {
-            return;
-        }
-
         lock (_requestBlocksLock)
         {
-            RequestBlock? requestedBlock = null;
-            foreach (var requestBlock in requestBlocks)
+            requestBlock.State = RequestBlockState.Completed;
+            requestBlock.RequestedAt = null;
+            requestBlock.RequestedFrom.Clear();
+        }
+    }
+
+    public void CompletePiece(int index)
+    {
+        _requestBlocks.TryRemove(index, out _);
+    }
+
+    public bool TryGetRequestedBlock(
+        Block receiveBlock,
+        [NotNullWhen(true)] out RequestBlock? requestBlock
+    )
+    {
+        if (_requestBlocks.TryGetValue(receiveBlock.Index, out var requestBlocks))
+        {
+            lock (_requestBlocksLock)
             {
-                if (
-                    requestBlock.State != RequestBlockState.Completed
-                    && requestBlock.Index == receiveBlock.Index
-                    && requestBlock.Begin == receiveBlock.Begin
-                    && requestBlock.Length == receiveBlock.Payload.Length
-                    && requestBlock.RequestedFrom.Contains(receiveBlock.FromPeer)
-                )
+                foreach (var requestedBlock in requestBlocks)
                 {
-                    requestedBlock = requestBlock;
-                    break;
+                    if (
+                        requestedBlock.State != RequestBlockState.Completed
+                        && requestedBlock.Index == receiveBlock.Index
+                        && requestedBlock.Begin == receiveBlock.Begin
+                        && requestedBlock.Length == receiveBlock.Payload.Length
+                        && requestedBlock.RequestedFrom.Contains(receiveBlock.FromPeer)
+                    )
+                    {
+                        requestBlock = requestedBlock;
+                        return true;
+                    }
                 }
             }
-
-            if (requestedBlock is not null)
-            {
-                var rtt = requestedBlock.RequestedAt.HasValue
-                    ? receiveBlock.ReceivedAt - requestedBlock.RequestedAt.Value
-                    : TimeoutSeconds.Seconds;
-                receiveBlock.FromPeer.PeerRequestWindow.CalculateWindow(
-                    (long)receiveBlock.FromPeer.DownloadSpeedTracker.CurrentBps.Bps,
-                    rtt
-                );
-                receiveBlock.FromPeer.DecrementRequestedBlock();
-                requestedBlock.State = RequestBlockState.Completed;
-                requestedBlock.RequestedAt = null;
-                requestedBlock.RequestedFrom.Clear();
-                pieceBuffer.AddBlock(receiveBlock);
-                transfer.AddDownloadedBytes(receiveBlock.Payload.Length);
-            }
         }
 
-        if (!pieceBuffer.IsComplete)
-            return;
-
-        var isWritten = false;
-        try
-        {
-            isWritten = await pieceBuffer.WritePieceAsync(cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            _requestBlocks.TryRemove(receiveBlock.Index, out _);
-            if (_pieceBuffers.TryRemove(receiveBlock.Index, out var removedBuffer))
-            {
-                removedBuffer.Dispose();
-            }
-        }
-
-        if (isWritten)
-        {
-            myBitfield.SetPiece(receiveBlock.Index);
-        }
-        else
-        {
-            // Retry with a fresh buffer
-            _pieceBuffers[receiveBlock.Index] = new PieceBuffer(receiveBlock.Index, fileManager);
-            transfer.AddDiscardedBytes(pieceBuffer.Size);
-        }
+        requestBlock = null;
+        return false;
     }
 
     public RequestBlock? GetBlock(Bitfield bitfield)
@@ -137,7 +95,7 @@ internal class PiecePicker(
         if (piece is null)
             return null;
 
-        var blockCount = fileManager.GetBlockCountByPieceIndex(piece.Value);
+        var blockCount = pieceWriter.GetBlockCountByPieceIndex(piece.Value);
 
         lock (_requestBlocksLock)
         {
@@ -148,7 +106,7 @@ internal class PiecePicker(
 
                 for (int i = 0; i < blockCount; i++)
                 {
-                    requestBlocks[i] = fileManager.GetRequestBlockByBlockIndex(piece.Value, i);
+                    requestBlocks[i] = pieceWriter.GetRequestBlockByBlockIndex(piece.Value, i);
                 }
             }
 

@@ -1,6 +1,6 @@
 ﻿using Microsoft.Win32.SafeHandles;
 
-namespace Netorrent.IO;
+namespace Netorrent.IO.Disk;
 
 internal sealed record TorrentFileEntry(
     string FullPath,

@@ -8,7 +8,7 @@ using Netorrent.Statistics;
 namespace Netorrent.P2P.Upload;
 
 internal class UploadScheduler(
-    FileManager fileManager,
+    IPieceWriter pieceWriter,
     Bitfield bitfield,
     TransferStatistics transfer,
     ILogger logger
@@ -88,7 +88,7 @@ internal class UploadScheduler(
 
             try
             {
-                var pieceData = await fileManager
+                var pieceData = await pieceWriter
                     .ReadAsync(
                         requestBlock.Index,
                         requestBlock.Begin,

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Netorrent.Bencoding;
 using Netorrent.Extensions;
 using Netorrent.IO;
+using Netorrent.IO.Disk;
 using Netorrent.P2P;
 using Netorrent.P2P.Messages;
 using Netorrent.Statistics;
@@ -11,6 +12,7 @@ using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker;
 using Netorrent.Tracker.Http;
 using Netorrent.Tracker.Udp;
+using ZLinq;
 
 namespace Netorrent.TorrentFile;
 
@@ -18,13 +20,13 @@ public sealed class Torrent : IAsyncDisposable
 {
     public MetaInfo MetaInfo { get; init; }
     public CompletionTracker Completion { get; }
-    public TorrentStatisticsClient Statistics => _p2pClient.Stats;
-    public string OutputDirectory => _fileManager.OutputDirectory;
+    public TorrentStatisticsClient Statistics { get; }
+    public string OutputDirectory { get; }
     public State State { get; private set; } = State.Stopped;
 
     private readonly P2PClient _p2pClient;
     private readonly TrackerClient _trackerClient;
-    private readonly FileManager _fileManager;
+    private readonly DiskWriter _pieceWriter;
     private readonly Bitfield _myBitfield;
     private Task? _runTask;
     private CancellationTokenSource? _cancellationTokenSource;
@@ -43,23 +45,28 @@ public sealed class Torrent : IAsyncDisposable
     )
     {
         MetaInfo = metaInfo;
+        OutputDirectory = Path.Combine(outputDirectory, MetaInfo.Title ?? "");
         _myBitfield = new Bitfield(metaInfo.Info.Pieces.Length / 20, bitfieldInitialized);
-        _fileManager = new FileManager(
-            Path.Combine(outputDirectory, MetaInfo.Title ?? ""),
-            metaInfo.Info.NormalizedFiles(),
+        var files = metaInfo.Info.NormalizedFiles();
+        var totalSize = files.AsValueEnumerable().Sum(i => i.Length);
+        _pieceWriter = new DiskWriter(
+            OutputDirectory,
+            files,
             (int)metaInfo.Info.PieceLength,
-            [.. metaInfo.Info.Pieces.Chunk(20)],
-            _myBitfield
+            totalSize,
+            [.. metaInfo.Info.Pieces.AsValueEnumerable().Chunk(20)]
         );
         var trackersChannel = Channel.CreateBounded<IPEndPoint>(
             new BoundedChannelOptions(100) { SingleWriter = false, SingleReader = true }
         );
+        var transferStatistics = new TransferStatistics(_pieceWriter.TotalSize);
         _p2pClient = new P2PClient(
-            metaInfo,
+            metaInfo.Info.InfoHash,
             peerId,
-            _fileManager,
+            _pieceWriter,
             _myBitfield,
             trackersChannel.Reader,
+            transferStatistics,
             logger,
             peerIpProxy
         );
@@ -67,7 +74,7 @@ public sealed class Torrent : IAsyncDisposable
             new HttpTrackerHandler(httpClient),
             trackerTransaction,
             _p2pClient.EndPoint.Port,
-            _p2pClient.Stats.Transfer,
+            transferStatistics,
             peerId,
             trackersChannel.Writer,
             [metaInfo.Announce, .. metaInfo.AnnounceList ?? []],
@@ -76,6 +83,10 @@ public sealed class Torrent : IAsyncDisposable
             forcedIp
         );
         Completion = new CompletionTracker(_myBitfield);
+        Statistics = new TorrentStatisticsClient(
+            transferStatistics,
+            new PeerStatistics(_p2pClient)
+        );
     }
 
     /// <summary>
@@ -188,7 +199,7 @@ public sealed class Torrent : IAsyncDisposable
         {
             _disposed = true;
             await StopAndWaitToFinishAsync().ConfigureAwait(false);
-            _fileManager.Dispose();
+            _pieceWriter.Dispose();
             await _p2pClient.DisposeAsync().ConfigureAwait(false);
             await _trackerClient.DisposeAsync().ConfigureAwait(false);
             Completion.Dispose();

@@ -1,6 +1,7 @@
 ﻿using System.Buffers;
 using Netorrent.Extensions;
 using Netorrent.IO;
+using Netorrent.Other;
 using Netorrent.P2P.Messages;
 using ZLinq;
 
@@ -12,16 +13,16 @@ internal class PieceBuffer : IDisposable
     private readonly bool[] _blockReceivedFlags; //TODO use bitarray or bitmask (long)?
     private readonly int _blocksCount;
     private readonly int _index;
-    private readonly FileManager _fileManager;
+    private readonly IPieceWriter _pieceWriter;
 
     public int Size { get; }
 
-    public PieceBuffer(int index, FileManager fileManager)
+    public PieceBuffer(int index, IPieceWriter pieceWriter)
     {
         _index = index;
-        _fileManager = fileManager;
-        _blocksCount = fileManager.GetBlockCountByPieceIndex(index);
-        var pieceSize = fileManager.GetPieceSize(index);
+        _pieceWriter = pieceWriter;
+        _blocksCount = pieceWriter.GetBlockCountByPieceIndex(index);
+        var pieceSize = pieceWriter.GetPieceSize(index);
         _buffer = new RentedArray<byte>(ArrayPool<byte>.Shared.Rent(pieceSize), pieceSize);
         _blockReceivedFlags = new bool[_blocksCount];
         Size = pieceSize;
@@ -29,7 +30,7 @@ internal class PieceBuffer : IDisposable
 
     public void AddBlock(Block block)
     {
-        var blockIndex = block.BlockIndex;
+        var blockIndex = block.Begin / _pieceWriter.BlockSize;
         if (_blockReceivedFlags[blockIndex])
         {
             block.Dispose();
@@ -48,13 +49,13 @@ internal class PieceBuffer : IDisposable
             return false;
         }
 
-        var isOK = await _fileManager
+        var isOK = await _pieceWriter
             .VerifyPieceAsync(_index, _buffer.Memory, cancellationToken)
             .ConfigureAwait(false);
 
         if (isOK)
         {
-            await _fileManager
+            await _pieceWriter
                 .WriteAsync(_index, 0, _buffer.Memory, cancellationToken)
                 .ConfigureAwait(false);
         }

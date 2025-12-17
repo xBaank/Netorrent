@@ -1,38 +1,36 @@
 ﻿using System.Buffers;
 using System.Security.Cryptography;
 using Netorrent.Extensions;
+using Netorrent.Other;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
 using ZLinq;
 
-namespace Netorrent.IO;
+namespace Netorrent.IO.Disk;
 
-internal class FileManager : IDisposable
+internal class DiskWriter : IPieceWriter
 {
     private readonly string _outputDirectory;
     private readonly List<TorrentFileEntry> _files = [];
     private readonly int _pieceLength;
     private readonly List<byte[]> _pieceHashes;
-    public Bitfield BitField { get; private set; }
 
-    public const int BlockSize = 16 * 1024;
-
+    public int BlockSize { get; } = 16 * 1024;
     public long TotalSize { get; }
-    public int MaxBlocksByPiece { get; }
     public string OutputDirectory => _outputDirectory;
 
-    public FileManager(
+    public DiskWriter(
         string outputDirectory,
         List<InfoFile> torrentFiles,
         int pieceLength,
-        List<byte[]> pieceHashes,
-        Bitfield bitField
+        long totalSize,
+        List<byte[]> pieceHashes
     )
     {
         _outputDirectory = outputDirectory;
         _pieceLength = pieceLength;
         _pieceHashes = pieceHashes;
-        BitField = bitField;
+        TotalSize = totalSize;
 
         long offset = 0;
         foreach (var item in torrentFiles)
@@ -53,15 +51,12 @@ internal class FileManager : IDisposable
             _files.Add(new TorrentFileEntry(fullPath, offset, item.Length, handle));
             offset += item.Length;
         }
-
-        TotalSize = _files.AsValueEnumerable().Sum(f => f.Length);
-        MaxBlocksByPiece = _pieceLength / BlockSize;
     }
 
     public int GetBlockCountByPieceIndex(int pieceIndex)
     {
         var pieceSize = GetPieceSize(pieceIndex);
-        int blockCount = (int)((pieceSize + BlockSize - 1) / BlockSize);
+        int blockCount = (pieceSize + BlockSize - 1) / BlockSize;
         return blockCount;
     }
 
@@ -113,14 +108,11 @@ internal class FileManager : IDisposable
 
     public async ValueTask<bool> VerifyPieceAsync(
         int pieceIndex,
-        Memory<byte> pieceData,
-        CancellationToken ct = default
+        ReadOnlyMemory<byte> pieceData,
+        CancellationToken ct
     )
     {
         var expectedHash = _pieceHashes[pieceIndex];
-        long offset = (long)pieceIndex * _pieceLength;
-        int length = _pieceLength;
-
         var actualHash =
             pieceData.Length > 1024 * 1024
                 ? await Task.Run(() => SHA1.HashData(pieceData.Span), ct).ConfigureAwait(false)
@@ -169,7 +161,7 @@ internal class FileManager : IDisposable
         int pieceIndex,
         int begin,
         int length,
-        CancellationToken ct = default
+        CancellationToken ct
     )
     {
         long offset = (long)pieceIndex * _pieceLength;

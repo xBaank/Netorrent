@@ -5,6 +5,8 @@ using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using Netorrent.Extensions;
 using Netorrent.IO;
+using Netorrent.IO.Disk;
+using Netorrent.Other;
 using Netorrent.P2P.Download;
 using Netorrent.P2P.Measurement;
 using Netorrent.P2P.Messages;
@@ -18,6 +20,7 @@ internal class PeerConnection(
     IUploadScheduler uploadScheduler,
     IRequestScheduler requestScheduler,
     IMessageStream messageStream,
+    int blockSize,
     bool amChoking = true,
     bool amInterested = false,
     bool peerChoking = true,
@@ -43,7 +46,7 @@ internal class PeerConnection(
     public bool PeerInterested { get; private set; } = peerInterested;
     public Bitfield? PeerBitField { get; private set; }
     public PeerEndpoint PeerEndpoint { get; } = peerEndpoint;
-    public PeerRequestWindow PeerRequestWindow { get; } = new(FileManager.BlockSize);
+    public PeerRequestWindow PeerRequestWindow { get; } = new(blockSize);
     public IObservable<PeerConnection> StateChanged => _stateChanged;
 
     private int _requestedBlocksCount;
@@ -61,6 +64,7 @@ internal class PeerConnection(
         IMessageStream messageStream,
         bool amInitiating,
         ReadOnlyMemory<byte> infoHash,
+        int blockSize,
         PeerId myPeerId,
         IPEndPoint peerEndPoint,
         CancellationToken cancellationToken
@@ -86,7 +90,8 @@ internal class PeerConnection(
             myBitField,
             uploadScheduler,
             requestScheduler,
-            messageStream
+            messageStream,
+            blockSize
         );
     }
 
@@ -120,6 +125,9 @@ internal class PeerConnection(
             .ConfigureAwait(false);
         await using var uploadTimer = UploadSpeedTracker
             .StartSampling(500.Milliseconds)
+            .ConfigureAwait(false);
+        await using var requestWindowTimer = PeerRequestWindow
+            .StartSampling(500.Milliseconds, DownloadSpeedTracker)
             .ConfigureAwait(false);
 
         try
