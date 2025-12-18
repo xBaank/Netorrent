@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Reactive.Subjects;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
@@ -17,7 +18,7 @@ internal class P2PClient(
     PeerId peerId,
     IRequestScheduler requestScheduler,
     IUploadScheduler uploadScheduler,
-    int blockSize,
+    IPiecePicker piecePicker,
     Bitfield bitField,
     ChannelReader<IPEndPoint> trackersChannel,
     ILogger logger,
@@ -32,6 +33,9 @@ internal class P2PClient(
     private readonly ConcurrentQueue<IPEndPoint> _knownPeers = [];
     private readonly SemaphoreSlim _semaphoreSlim = new(1);
     private readonly List<Task> _peerTasks = [];
+    private readonly Subject<PeerEndpoint> _peerConnected = new();
+
+    public IObservable<PeerEndpoint> PeerConnected => _peerConnected;
     public IReadOnlyDictionary<PeerEndpoint, PeerConnection> ActivePeers => _activePeers;
     public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
 
@@ -126,7 +130,8 @@ internal class P2PClient(
                 uploadScheduler,
                 requestScheduler,
                 messageStream,
-                new(blockSize),
+                new(piecePicker.BlockSize),
+                piecePicker,
                 amInitiating,
                 infoHash,
                 peerId,
@@ -196,6 +201,7 @@ internal class P2PClient(
     {
         try
         {
+            _peerConnected.OnNext(peerConnection.PeerEndpoint);
             await peerConnection.StartAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)

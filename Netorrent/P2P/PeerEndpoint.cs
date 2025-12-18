@@ -2,4 +2,4 @@
 
 namespace Netorrent.P2P;
 
-record struct PeerEndpoint(IPEndPoint EndPoint, PeerId PeerId);
+public record struct PeerEndpoint(IPEndPoint EndPoint, PeerId PeerId);

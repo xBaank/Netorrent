@@ -62,10 +62,9 @@ public sealed class Torrent : IAsyncDisposable
         );
 
         var transferStatistics = new TransferStatistics(totalSize);
-        var blockSize = 16 * 1024; //This should be constant?
         var piecePicker = new PiecePicker(
             _myBitfield,
-            blockSize,
+            16 * 1024, //This should be constant?
             (int)metaInfo.Info.PieceLength,
             totalSize
         );
@@ -87,7 +86,7 @@ public sealed class Torrent : IAsyncDisposable
             peerId,
             requestScheduler,
             uploadScheduler,
-            blockSize,
+            piecePicker,
             _myBitfield,
             trackersChannel.Reader,
             logger,

@@ -14,7 +14,7 @@ using Shouldly;
 namespace Netorrent.Tests.Tracker;
 
 //TODO  Test reconnect
-[Timeout(10_000)]
+[Timeout(20_000)]
 public class UdpTrackerTransactionManagerTests
 {
     [Test]

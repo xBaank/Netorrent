@@ -80,13 +80,10 @@ internal readonly record struct Message(byte Id, RentedArray<byte>? Payload) : I
     /// </summary>
     public static Message From(byte[] array, int length, byte id)
     {
-        if (array.Length < 4)
-            throw new ArgumentException("Message too short");
-
         if (array.Length < length)
             throw new ArgumentException("Incomplete message");
 
-        if (length == 1)
+        if (length == 0)
             return new Message(id, null);
 
         return new Message(id, new RentedArray<byte>(array, length));

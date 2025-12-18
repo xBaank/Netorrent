@@ -1,5 +1,4 @@
-﻿using System.Collections.Concurrent;
-using System.Threading.Channels;
+﻿using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.IO;
@@ -285,10 +284,6 @@ internal class RequestScheduler(
                 .ConfigureAwait(false);
         }
     }
-
-    public void IncreaseRarity(int index) => piecePicker.IncreaseRarity(index);
-
-    public void DecreaseRarity(int index) => piecePicker.DecreaseRarity(index);
 
     public async ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken)
     {

@@ -7,7 +7,7 @@ using ZLinq;
 namespace Netorrent.P2P.Download;
 
 internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, long totalSize)
-    : IAsyncDisposable
+    : IPiecePicker
 {
     public const int TimeoutSeconds = 10;
 
