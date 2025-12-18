@@ -56,8 +56,7 @@ public class TrackerTests
 
         await using var udptrackerManager = new FakeUdpTrackerTransactionManager(
             ctx.Ips,
-            ctx.Interval,
-            false
+            ctx.Interval
         );
 
         await using var udptracker = new UdpTracker(
@@ -97,7 +96,7 @@ public class TrackerTests
         var httpTracker = new HttpTracker(
             1,
             new Statistics.TransferStatistics(3),
-            new FakeHttpTrackerHandler(ctx.Ips, ctx.Interval, false),
+            new FakeHttpTrackerHandler(ctx.Ips, ctx.Interval),
             new(),
             [1, 2, 3],
             "null",
@@ -130,7 +129,7 @@ public class TrackerTests
         var httpTracker = new HttpTracker(
             1,
             new Statistics.TransferStatistics(3),
-            new FakeHttpTrackerHandler(ctx.Ips, ctx.Interval, true),
+            new FakeHttpTrackerHandler(ctx.Ips, ctx.Interval, new Exception()),
             new(),
             [1, 2, 3],
             "null",
@@ -162,7 +161,7 @@ public class TrackerTests
         await using var udptrackerManager = new FakeUdpTrackerTransactionManager(
             ctx.Ips,
             ctx.Interval,
-            true
+            new Exception()
         );
 
         await using var udptracker = new UdpTracker(
@@ -200,11 +199,10 @@ public class TrackerTests
 
         await using var udptrackerManager = new FakeUdpTrackerTransactionManager(
             ctx.Ips,
-            ctx.Interval,
-            false
+            ctx.Interval
         );
 
-        var httpTrackerHandler = new FakeHttpTrackerHandler(ctx.Ips, ctx.Interval, false);
+        var httpTrackerHandler = new FakeHttpTrackerHandler(ctx.Ips, ctx.Interval);
 
         await using var trackerClient = new TrackerClient(
             httpTrackerHandler,

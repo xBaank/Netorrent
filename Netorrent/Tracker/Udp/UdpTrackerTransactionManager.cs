@@ -14,7 +14,8 @@ namespace Netorrent.Tracker.Udp;
 internal class UdpTrackerTransactionManager(
     IUdpClient udpClient,
     ILogger logger,
-    TimeSpan retry,
+    TimeSpan retryDelay,
+    TimeSpan retryLoopDelay,
     int maxRetries
 ) : IUdpTrackerTransactionManager
 {
@@ -143,12 +144,12 @@ internal class UdpTrackerTransactionManager(
                         .SendAsync(payload.Memory, transaction.Packet.IPEndPoint, cancellationToken)
                         .ConfigureAwait(false);
                     transaction.RetryCount++;
-                    var seconds = retry * (transaction.RetryCount + 1);
+                    var seconds = retryDelay * (transaction.RetryCount + 1);
                     transaction.NextRetryTime = DateTime.UtcNow + seconds;
                 }
             }
 
-            await Task.Delay(1.Seconds, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(retryLoopDelay, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -236,7 +237,7 @@ internal class UdpTrackerTransactionManager(
         }
 
         using var payload = packet.ToMemoryRented();
-        var seconds = retry * (transaction.RetryCount + 1);
+        var seconds = retryLoopDelay * (transaction.RetryCount + 1);
         transaction.NextRetryTime = DateTime.UtcNow + seconds;
 
         await udpClient

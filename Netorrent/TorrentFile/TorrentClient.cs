@@ -28,6 +28,7 @@ public sealed class TorrentClient : IAsyncDisposable
             new UdpClientWrapper(UdpClient.GetFreeUdpClient()),
             _options.Logger,
             15.Seconds,
+            1.Seconds,
             8
         );
         _trackerTransactionManager.Start();

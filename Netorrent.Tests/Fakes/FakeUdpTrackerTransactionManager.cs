@@ -8,7 +8,7 @@ namespace Netorrent.Tests.Fakes;
 internal sealed class FakeUdpTrackerTransactionManager(
     IPEndPoint[] peers,
     TimeSpan interval,
-    bool error
+    Exception? error = null
 ) : IUdpTrackerTransactionManager
 {
     private readonly ConcurrentDictionary<Guid, long> _connections = new();
@@ -56,9 +56,9 @@ internal sealed class FakeUdpTrackerTransactionManager(
     )
         where T : IUdpTrackerReceivePacket
     {
-        if (error)
+        if (error is not null)
         {
-            return Task.FromException<T>(new Exception());
+            return Task.FromException<T>(error);
         }
 
         IUdpTrackerReceivePacket receivePacket = new UdpTrackerResponse(

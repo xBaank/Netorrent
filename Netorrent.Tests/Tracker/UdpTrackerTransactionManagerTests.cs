@@ -14,7 +14,7 @@ using Shouldly;
 namespace Netorrent.Tests.Tracker;
 
 //TODO  Test reconnect
-[Timeout(20_000)]
+[Timeout(10_000)]
 public class UdpTrackerTransactionManagerTests
 {
     [Test]
@@ -35,7 +35,13 @@ public class UdpTrackerTransactionManagerTests
         var fakeUdp = new FakeUdpClient();
         var logger = NullLogger.Instance;
 
-        await using var manager = new UdpTrackerTransactionManager(fakeUdp, logger, 15.Seconds, 8);
+        await using var manager = new UdpTrackerTransactionManager(
+            fakeUdp,
+            logger,
+            15.Seconds,
+            1.Seconds,
+            8
+        );
         manager.Start();
 
         var endpoint = new IPEndPoint(
@@ -100,7 +106,13 @@ public class UdpTrackerTransactionManagerTests
         var fakeUdp = new FakeUdpClient();
         var logger = NullLogger.Instance;
 
-        await using var manager = new UdpTrackerTransactionManager(fakeUdp, logger, 15.Seconds, 8);
+        await using var manager = new UdpTrackerTransactionManager(
+            fakeUdp,
+            logger,
+            15.Seconds,
+            1.Seconds,
+            8
+        );
         manager.Start();
 
         var endpoint = new IPEndPoint(IPAddress.IPv6Loopback, 6969);
@@ -154,6 +166,7 @@ public class UdpTrackerTransactionManagerTests
         await using var manager = new UdpTrackerTransactionManager(
             fakeUdp,
             logger,
+            0.01.Seconds,
             0.01.Seconds,
             8
         );

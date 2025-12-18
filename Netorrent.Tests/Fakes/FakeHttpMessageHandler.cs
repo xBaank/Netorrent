@@ -3,7 +3,7 @@ using Netorrent.Tracker.Http;
 
 namespace Netorrent.Tests.Fakes;
 
-internal class FakeHttpTrackerHandler(IPEndPoint[] ips, TimeSpan interval, bool error)
+internal class FakeHttpTrackerHandler(IPEndPoint[] ips, TimeSpan interval, Exception? error = null)
     : IHttpTrackerHandler
 {
     public ValueTask<HttpTrackerResponse> SendAsync(
@@ -11,9 +11,8 @@ internal class FakeHttpTrackerHandler(IPEndPoint[] ips, TimeSpan interval, bool 
         HttpTrackerRequest httpTrackerRequest,
         CancellationToken cancellationToken
     ) =>
-        error
-            ? ValueTask.FromException<HttpTrackerResponse>(new Exception())
-            : ValueTask.FromResult(
+        error is null
+            ? ValueTask.FromResult(
                 new HttpTrackerResponse
                 {
                     Interval = (int)interval.TotalSeconds,
@@ -21,5 +20,6 @@ internal class FakeHttpTrackerHandler(IPEndPoint[] ips, TimeSpan interval, bool 
                     Incomplete = 0,
                     Peers = [.. ips],
                 }
-            );
+            )
+            : ValueTask.FromException<HttpTrackerResponse>(error);
 }

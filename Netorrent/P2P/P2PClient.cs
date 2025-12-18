@@ -241,5 +241,6 @@ internal class P2PClient(
         await requestScheduler.DisposeAsync().ConfigureAwait(false);
         await uploadScheduler.DisposeAsync().ConfigureAwait(false);
         _semaphoreSlim.Dispose();
+        _peerConnected.OnCompleted();
     }
 }
