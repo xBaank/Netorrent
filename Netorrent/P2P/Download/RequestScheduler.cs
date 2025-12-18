@@ -176,7 +176,9 @@ internal class RequestScheduler(
             int minPeersReady;
             lock (_activePeersLock)
             {
-                minPeersReady = _activePeers.Count(i => i.AmInterested && !i.PeerChoking);
+                minPeersReady = _activePeers.Count(i =>
+                    i.AmInterested.Value && !i.PeerChoking.Value
+                );
             }
 
             if (minPeersReady >= MinPeersForRarity)

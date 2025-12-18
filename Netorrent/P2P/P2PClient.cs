@@ -1,7 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
-using System.Reactive.Subjects;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
@@ -9,6 +8,7 @@ using Netorrent.IO;
 using Netorrent.P2P.Download;
 using Netorrent.P2P.Messages;
 using Netorrent.P2P.Upload;
+using R3;
 using ZLinq;
 
 namespace Netorrent.P2P;
@@ -35,7 +35,7 @@ internal class P2PClient(
     private readonly List<Task> _peerTasks = [];
     private readonly Subject<PeerEndpoint> _peerConnected = new();
 
-    public IObservable<PeerEndpoint> PeerConnected => _peerConnected;
+    public Observable<PeerEndpoint> PeerConnected => _peerConnected;
     public IReadOnlyDictionary<PeerEndpoint, PeerConnection> ActivePeers => _activePeers;
     public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
 

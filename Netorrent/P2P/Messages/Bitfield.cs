@@ -1,8 +1,8 @@
 ﻿using System.Buffers;
 using System.Collections;
-using System.Reactive.Subjects;
 using Netorrent.Extensions;
 using Netorrent.Other;
+using R3;
 
 namespace Netorrent.P2P.Messages;
 
@@ -11,7 +11,7 @@ internal class Bitfield
     private readonly Lock _lock = new();
     private readonly BitArray _bits;
     private readonly Subject<int> _stateChanged = new();
-    public IObservable<int> StateChanged => _stateChanged;
+    public Subject<int> StateChanged => _stateChanged;
 
     internal Bitfield(int pieceCount, bool isInitialized = false)
     {

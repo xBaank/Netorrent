@@ -1,6 +1,4 @@
 ﻿using System.Net;
-using System.Reactive.Linq;
-using System.Reactive.Threading.Tasks;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -8,6 +6,7 @@ using Netorrent.P2P;
 using Netorrent.P2P.Messages;
 using Netorrent.Tests.Extensions;
 using Netorrent.Tests.Fakes;
+using R3;
 using Shouldly;
 
 namespace Netorrent.Tests.P2P;
@@ -34,15 +33,12 @@ internal class P2PClientTests
             .Select(i => new IPEndPoint(IPAddress.IPv6Loopback, i.EndPoint.Port))
             .OrderBy(i => i.Port)
             .ToList();
-        var peerEndpointsObservable = p2pClient
-            .PeerConnected.Take(number)
-            .Select(i => i.EndPoint)
-            .ToList();
+        var peerEndpointsObservable = p2pClient.PeerConnected.Take(number).Select(i => i.EndPoint);
 
         await StartAsync(p2pClients, cts.Token);
         await WriteToChannelAsync(channel, p2pClients, cts.Token);
         var p2pTask = p2pClient.StartAsync(cts.Token);
-        var peerEndpoints = (await peerEndpointsObservable.ToTask(cts.Token))
+        var peerEndpoints = (await peerEndpointsObservable.ToListAsync(cts.Token))
             .OrderBy(i => i.Port)
             .ToList();
         cts.Cancel();

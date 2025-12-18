@@ -1,8 +1,6 @@
 ﻿using System.Buffers;
 using System.Buffers.Binary;
 using System.Net;
-using System.Reactive.Linq;
-using System.Reactive.Subjects;
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.Other;
@@ -10,6 +8,7 @@ using Netorrent.P2P.Download;
 using Netorrent.P2P.Measurement;
 using Netorrent.P2P.Messages;
 using Netorrent.P2P.Upload;
+using R3;
 
 namespace Netorrent.P2P;
 
@@ -27,7 +26,6 @@ internal class PeerConnection(
     bool peerInterested = false
 ) : IAsyncDisposable
 {
-    private readonly Subject<PeerConnection> _stateChanged = new();
     private readonly SemaphoreSlim _stateSemaphoreSlim = new(1);
     private DateTimeOffset _lastKeepAlive;
     private CancellationTokenSource? _cancellationTokenSource;
@@ -38,14 +36,13 @@ internal class PeerConnection(
     public SpeedTracker DownloadSpeedTracker { get; } = new();
     public SpeedTracker UploadSpeedTracker { get; } = new();
     public Bitfield MyBitField { get; } = myBitField;
-    public bool AmChoking { get; private set; } = amChoking;
-    public bool AmInterested { get; private set; } = amInterested;
-    public bool PeerChoking { get; private set; } = peerChoking;
-    public bool PeerInterested { get; private set; } = peerInterested;
+    public ReactiveProperty<bool> AmChoking { get; private set; } = new(amChoking);
+    public ReactiveProperty<bool> AmInterested { get; private set; } = new(amInterested);
+    public ReactiveProperty<bool> PeerChoking { get; private set; } = new(peerChoking);
+    public ReactiveProperty<bool> PeerInterested { get; private set; } = new(peerInterested);
     public Bitfield? PeerBitField { get; private set; }
     public PeerEndpoint PeerEndpoint { get; } = peerEndpoint;
     public PeerRequestWindow PeerRequestWindow { get; } = peerRequestWindow;
-    public IObservable<PeerConnection> StateChanged => _stateChanged;
 
     private int _requestedBlocksCount;
     private int _uploadRequestedCount;
@@ -116,7 +113,7 @@ internal class PeerConnection(
 
         using var stateChangedDisposable = MyBitField
             .StateChanged.SelectMany(i =>
-                Observable.FromAsync(() => SendHaveAsync(i, cancellationTokenSource.Token))
+                Observable.FromAsync(async (ct) => await SendHaveAsync(i, ct))
             )
             .Subscribe();
 
@@ -252,31 +249,28 @@ internal class PeerConnection(
 
     private async ValueTask ReceiveInterestedAsync(CancellationToken cancellationToken)
     {
-        if (!PeerInterested)
+        if (!PeerInterested.Value)
         {
-            PeerInterested = true;
+            PeerInterested.Value = true;
             await uploadScheduler.RequestSlotAsync(this, cancellationToken).ConfigureAwait(false);
-            _stateChanged.OnNext(this);
         }
     }
 
     private async ValueTask ReceiveNotInterestedAsync(CancellationToken cancellationToken)
     {
-        if (PeerInterested)
+        if (PeerInterested.Value)
         {
-            PeerInterested = false;
+            PeerInterested.Value = false;
             await SendChokedAsync(cancellationToken).ConfigureAwait(false);
-            _stateChanged.OnNext(this);
         }
     }
 
     private async ValueTask ReceiveChokeAsync(CancellationToken cancellationToken)
     {
-        if (!PeerChoking)
+        if (!PeerChoking.Value)
         {
-            PeerChoking = true;
+            PeerChoking.Value = true;
             await requestScheduler.FreeSlotAsync(this, cancellationToken).ConfigureAwait(false);
-            _stateChanged.OnNext(this);
         }
     }
 
@@ -296,11 +290,10 @@ internal class PeerConnection(
 
     private async ValueTask ReceiveUnchokeAsync(CancellationToken cancellationToken)
     {
-        if (PeerChoking)
+        if (PeerChoking.Value)
         {
-            PeerChoking = false;
+            PeerChoking.Value = false;
             await requestScheduler.RequestSlotAsync(this, cancellationToken).ConfigureAwait(false);
-            _stateChanged.OnNext(this);
         }
     }
 
@@ -309,7 +302,7 @@ internal class PeerConnection(
         CancellationToken cancellationToken
     )
     {
-        if (AmChoking)
+        if (AmChoking.Value)
         {
             return;
         }
@@ -400,9 +393,9 @@ internal class PeerConnection(
                 return;
 
             var interest = MyBitField.HasAnyMissingPiece(PeerBitField);
-            if (interest != AmInterested)
+            if (interest != AmInterested.Value)
             {
-                AmInterested = interest;
+                AmInterested.Value = interest;
                 if (!interest)
                 {
                     var message = Message.CreateNotInterested();
@@ -413,11 +406,10 @@ internal class PeerConnection(
                 }
                 if (interest)
                 {
-                    AmInterested = interest;
+                    AmInterested.Value = interest;
                     var message = Message.CreateInterested();
                     await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
                 }
-                _stateChanged.OnNext(this);
             }
         }
         finally
@@ -428,24 +420,22 @@ internal class PeerConnection(
 
     private async Task SendChokedAsync(CancellationToken cancellationToken)
     {
-        if (AmChoking != true)
+        if (AmChoking.Value != true)
         {
-            AmChoking = true;
+            AmChoking.Value = true;
             var message = Message.CreateChoke();
             await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
             await uploadScheduler.FreeSlotAsync(this, cancellationToken).ConfigureAwait(false);
-            _stateChanged.OnNext(this);
         }
     }
 
     public async Task SendUnchokedAsync(CancellationToken cancellationToken)
     {
-        if (AmChoking != false)
+        if (AmChoking.Value != false)
         {
-            AmChoking = false;
+            AmChoking.Value = false;
             var message = Message.CreateUnchoke();
             await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
-            _stateChanged.OnNext(this);
         }
     }
 
