@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using System.Net.Sockets;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Bencoding;
@@ -40,6 +41,7 @@ public sealed class Torrent : IAsyncDisposable
         PeerId peerId,
         string outputDirectory,
         ILogger logger,
+        TcpListener tcpListener,
         IPAddress? forcedIp = null,
         bool bitfieldInitialized = false,
         Func<IPAddress, IPAddress>? peerIpProxy = null
@@ -90,6 +92,7 @@ public sealed class Torrent : IAsyncDisposable
             _myBitfield,
             trackersChannel.Reader,
             logger,
+            tcpListener,
             peerIpProxy
         );
         _trackerClient = new TrackerClient(

@@ -98,7 +98,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
             }
 
             //This is needed because if seeder and leecher announce at the same time, they don't see each other
-            await Task.Delay(3000, cancellationToken);
+            await Task.Delay(5000, cancellationToken);
 
             foreach (var leecherTorrent in leechersTorrents)
             {

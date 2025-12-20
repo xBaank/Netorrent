@@ -1,7 +1,9 @@
 ﻿using System.Net;
+using System.Net.Sockets;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Netorrent.Extensions;
 using Netorrent.P2P;
 using Netorrent.P2P.Messages;
 using Netorrent.Tests.Extensions;
@@ -108,6 +110,7 @@ internal class P2PClientTests
             new Bitfield(5),
             channel,
             logger,
+            TcpListener.GetFreeTcpListener(),
             null
         );
 }

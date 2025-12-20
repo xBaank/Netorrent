@@ -19,6 +19,7 @@ public sealed class TorrentClient : IAsyncDisposable
     private readonly TorrentClientOptions _options;
     private readonly List<Torrent> torrents = [];
     private readonly UdpTrackerTransactionManager _trackerTransactionManager;
+    private readonly TcpListener _tcpListener = TcpListener.GetFreeTcpListener();
 
     public TorrentClient(Func<TorrentClientOptions, TorrentClientOptions>? action = null)
     {
@@ -65,6 +66,7 @@ public sealed class TorrentClient : IAsyncDisposable
             _peerId,
             Path.GetFullPath(outputDirectory),
             _options.Logger,
+            _tcpListener,
             peerIpProxy: _options.PeerIpProxy
         );
         torrents.Add(torrent);
@@ -86,6 +88,7 @@ public sealed class TorrentClient : IAsyncDisposable
             _peerId,
             Path.GetFullPath(outputDirectory),
             _options.Logger,
+            _tcpListener,
             _options.ForcedIp,
             peerIpProxy: _options.PeerIpProxy
         );
@@ -131,6 +134,7 @@ public sealed class TorrentClient : IAsyncDisposable
             _peerId,
             Path.GetFullPath(Path.GetDirectoryName(path) ?? ""),
             _options.Logger,
+            _tcpListener,
             _options.ForcedIp,
             true,
             peerIpProxy: _options.PeerIpProxy
@@ -444,6 +448,7 @@ public sealed class TorrentClient : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _tcpListener.Dispose();
         await _trackerTransactionManager.DisposeAsync().ConfigureAwait(false);
         await Task.WhenAll(
                 torrents.AsValueEnumerable().Select(i => i.DisposeAsync().AsTask()).ToArray()

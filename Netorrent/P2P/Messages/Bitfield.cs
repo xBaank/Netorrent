@@ -103,10 +103,18 @@ internal class Bitfield
         {
             int byteCount = (_bits.Length + 7) / 8;
             var array = ArrayPool<byte>.Shared.Rent(byteCount);
-            var memory = array.AsSpan()[..byteCount];
-            PackBitsBigEndian(memory);
+            try
+            {
+                var memory = array.AsSpan()[..byteCount];
+                PackBitsBigEndian(memory);
 
-            return new RentedArray<byte>(array, byteCount);
+                return new RentedArray<byte>(array, byteCount);
+            }
+            catch
+            {
+                ArrayPool<byte>.Shared.Return(array);
+                throw;
+            }
         }
     }
 

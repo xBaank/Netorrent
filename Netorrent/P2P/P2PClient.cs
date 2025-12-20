@@ -22,13 +22,13 @@ internal class P2PClient(
     Bitfield bitField,
     ChannelReader<IPEndPoint> trackersChannel,
     ILogger logger,
+    TcpListener tcpListener,
     Func<IPAddress, IPAddress>? peerIpProxy
 ) : IAsyncDisposable
 {
     const int MAX_ACTIVE_PEER_COUNT = 50;
     const int PEER_TIMEOUT_SECONDS = 120;
 
-    private readonly TcpListener _listener = TcpListener.GetFreeTcpListener();
     private readonly ConcurrentDictionary<PeerEndpoint, PeerConnection> _activePeers = [];
     private readonly ConcurrentQueue<IPEndPoint> _knownPeers = [];
     private readonly SemaphoreSlim _semaphoreSlim = new(1);
@@ -37,7 +37,7 @@ internal class P2PClient(
 
     public Observable<PeerEndpoint> PeerConnected => _peerConnected;
     public IReadOnlyDictionary<PeerEndpoint, PeerConnection> ActivePeers => _activePeers;
-    public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
+    public IPEndPoint EndPoint => (IPEndPoint)tcpListener.LocalEndpoint;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -81,10 +81,10 @@ internal class P2PClient(
 
     private async Task ListenToPeersAsync(CancellationToken cancellationToken)
     {
-        _listener.Start();
+        tcpListener.Start();
         while (!cancellationToken.IsCancellationRequested)
         {
-            var tcpClient = await _listener
+            var tcpClient = await tcpListener
                 .AcceptTcpClientAsync(cancellationToken)
                 .ConfigureAwait(false);
             var remoteEndPoint = (IPEndPoint)tcpClient.Client.RemoteEndPoint!;
@@ -233,7 +233,6 @@ internal class P2PClient(
 
     public async ValueTask DisposeAsync()
     {
-        _listener.Stop();
         foreach (var item in _activePeers)
         {
             await item.Value.DisposeAsync().ConfigureAwait(false);
