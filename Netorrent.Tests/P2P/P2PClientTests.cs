@@ -8,6 +8,7 @@ using Netorrent.Tests.Extensions;
 using Netorrent.Tests.Fakes;
 using R3;
 using Shouldly;
+using ZLinq;
 
 namespace Netorrent.Tests.P2P;
 
@@ -16,7 +17,7 @@ internal class P2PClientTests
 {
     [Test]
     [MatrixDataSource]
-    public async Task Should_connect_to_peers(
+    public async Task Should_Connect_To_Peers(
         [MatrixRange<int>(1, 10)] int number,
         CancellationToken cancellationToken
     )
@@ -62,7 +63,7 @@ internal class P2PClientTests
         ChannelReader<IPEndPoint> channel,
         ILogger logger
     ) =>
-        Enumerable
+        ValueEnumerable
             .Range(0, number)
             .Select(i => CreateP2PClient(infoHash, channel, logger))
             .ToArray();

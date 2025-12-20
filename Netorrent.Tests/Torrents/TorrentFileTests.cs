@@ -10,7 +10,7 @@ public class TorrentFileTests
     public async Task Should_Export_Torrent_File(CancellationToken cancellationToken)
     {
         await using var torrentClient = new TorrentClient();
-        await using var torrent = await torrentClient.ImportTorrentAsync(
+        await using var torrent = await torrentClient.LoadTorrentAsync(
             "Data/nosferatu.torrent",
             "Output",
             cancellationToken

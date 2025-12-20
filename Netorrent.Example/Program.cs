@@ -14,7 +14,7 @@ try
     var outputPath = await BrowseForOutputDir(cts.Token);
 
     await using var client = new TorrentClient();
-    await using var torrent = await client.ImportTorrentAsync(torrentPath, outputPath);
+    await using var torrent = await client.LoadTorrentAsync(torrentPath, outputPath);
     cts.Token.Register(torrent.Stop);
     var statusTask = RunStatusUI(torrent, cts.Token);
 

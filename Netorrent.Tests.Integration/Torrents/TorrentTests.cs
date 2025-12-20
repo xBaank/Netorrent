@@ -292,7 +292,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
     public async Task Should_Download_Real_Torrent(CancellationToken cancellationToken)
     {
         await using var torrentClient = new TorrentClient(o => o with { Logger = Logger });
-        await using var torrent = await torrentClient.ImportTorrentAsync(
+        await using var torrent = await torrentClient.LoadTorrentAsync(
             "Data/debian-13.2.0-amd64-netinst.iso.torrent",
             "Output",
             cancellationToken
@@ -346,7 +346,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
             );
 
             var pathName = Guid.NewGuid().ToString();
-            var leecherTorrent = leecher.ImportTorrent(metaInfo, $"Output/Test_{pathName}");
+            var leecherTorrent = leecher.LoadTorrent(metaInfo, $"Output/Test_{pathName}");
 
             yield return (leecherTorrent, leecher);
         }

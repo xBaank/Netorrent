@@ -19,10 +19,7 @@ internal class FakePiecePicker : IPiecePicker
         throw new NotImplementedException();
     }
 
-    public void DecreaseRarity(int index)
-    {
-        throw new NotImplementedException();
-    }
+    public void DecreaseRarity(int index) { }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
@@ -56,10 +53,7 @@ internal class FakePiecePicker : IPiecePicker
         throw new NotImplementedException();
     }
 
-    public void IncreaseRarity(int index)
-    {
-        throw new NotImplementedException();
-    }
+    public void IncreaseRarity(int index) { }
 
     public void SetBlockToPending(RequestBlock requestBlock)
     {

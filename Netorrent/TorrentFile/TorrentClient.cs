@@ -42,7 +42,7 @@ public sealed class TorrentClient : IAsyncDisposable
     /// <param name="cancellationToken">A cancellation token that can be used to cancel the import operation.</param>
     /// <returns>A task that represents the asynchronous operation. The task result contains the imported Torrent instance.</returns>
     /// <exception cref="InvalidDataException">Thrown if the specified file does not contain a valid bencoded torrent dictionary.</exception>
-    public async ValueTask<Torrent> ImportTorrentAsync(
+    public async ValueTask<Torrent> LoadTorrentAsync(
         string path,
         string outputDirectory,
         CancellationToken cancellationToken = default
@@ -77,7 +77,7 @@ public sealed class TorrentClient : IAsyncDisposable
     /// <param name="metaInfo">The metadata information describing the torrent to import. Cannot be null.</param>
     /// <param name="outputDirectory">The path to the directory where the torrent's data will be stored. Must be a valid file system path.</param>
     /// <returns>A Torrent instance representing the imported torrent.</returns>
-    public Torrent ImportTorrent(MetaInfo metaInfo, string outputDirectory)
+    public Torrent LoadTorrent(MetaInfo metaInfo, string outputDirectory)
     {
         var torrent = new Torrent(
             metaInfo,
