@@ -81,6 +81,7 @@ internal class P2PClient(
 
     private async Task ListenToPeersAsync(CancellationToken cancellationToken)
     {
+        //TODO THIS IS COMPLETLY WRONG. we should receive the connections from outside -> receive the infohash from the handshake -> check if we have that torrent -> then connect to peer
         tcpListener.Start();
         while (!cancellationToken.IsCancellationRequested)
         {
