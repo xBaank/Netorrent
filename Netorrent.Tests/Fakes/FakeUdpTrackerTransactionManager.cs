@@ -16,7 +16,7 @@ internal sealed class FakeUdpTrackerTransactionManager(
     private int _transactionId;
     private long _nextConnectionId = 1;
 
-    public Task? TrackerManagerTask { get; } = Task.CompletedTask;
+    public Task? _runTask { get; } = Task.CompletedTask;
 
     public Task<UdpTrackerConnectResponse> ConnectAsync(
         IPEndPoint endPoint,

@@ -24,9 +24,13 @@ internal class UdpTrackerTransactionManager(
     private readonly ConcurrentDictionary<Guid, long> _connectionIdByTracker = [];
     private CancellationTokenSource? _cancellationTokenSource;
     private bool _disposed;
-    public Task? TrackerManagerTask { get; private set; }
+    private Task? _runTask;
 
-    public void Start() => TrackerManagerTask = StartAsync();
+    public void Start()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _runTask = StartAsync();
+    }
 
     private async Task StartAsync()
     {
@@ -286,8 +290,14 @@ internal class UdpTrackerTransactionManager(
         if (!_disposed)
         {
             _cancellationTokenSource?.Cancel();
-            if (TrackerManagerTask is not null)
-                await TrackerManagerTask.ConfigureAwait(false);
+            try
+            {
+                if (_runTask is not null)
+                {
+                    await _runTask.ConfigureAwait(false);
+                }
+            }
+            catch { }
             _packetsByTransactionId.Clear();
             _connectionCreationById.Clear();
             _connectionIdByTracker.Clear();

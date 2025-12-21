@@ -13,42 +13,6 @@ namespace Netorrent.Tests.P2P;
 public class PeerConectionTests
 {
     [Test]
-    [Arguments(true)]
-    [Arguments(false)]
-    public async Task Should_Handshake_To_Peer(
-        bool amInitiating,
-        CancellationToken cancellationToken
-    )
-    {
-        var infoHash = new byte[20];
-        var ipEndpoint = new IPEndPoint(IPAddress.Loopback, 6881);
-        var otherPeerId = new PeerId();
-        var messages = Channel.CreateUnbounded<Message>();
-        var bitfield = new Bitfield(10, true);
-
-        await using var peerConnection = await PeerConnection.CreatePeerConnectionAsync(
-            bitfield,
-            new FakeUploadScheduler(),
-            new FakeRequestScheduler(),
-            new FakeMessageStream(otherPeerId, messages.Reader, messages.Writer),
-            new PeerRequestWindow(16 * 1024),
-            new FakePiecePicker(),
-            amInitiating,
-            infoHash,
-            new PeerId(),
-            ipEndpoint,
-            cancellationToken
-        );
-
-        peerConnection.PeerEndpoint.EndPoint.ShouldBe(ipEndpoint);
-        peerConnection.PeerEndpoint.PeerId.ShouldBe(otherPeerId);
-        peerConnection.PeerChoking.Value.ShouldBeTrue();
-        peerConnection.AmChoking.Value.ShouldBeTrue();
-        peerConnection.PeerInterested.Value.ShouldBeFalse();
-        peerConnection.AmInterested.Value.ShouldBeFalse();
-    }
-
-    [Test]
     public async Task Should_Receive_Unchoke(CancellationToken cancellationToken)
     {
         var ipEndpoint = new IPEndPoint(IPAddress.Loopback, 6881);

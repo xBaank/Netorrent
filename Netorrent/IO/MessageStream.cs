@@ -4,10 +4,11 @@ using System.Threading.Channels;
 using Netorrent.Extensions;
 using Netorrent.P2P;
 using Netorrent.P2P.Messages;
+using ZLinq;
 
 namespace Netorrent.IO;
 
-internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
+internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream, IHandshakeStream
 {
     private readonly Channel<Message> _incomingMessages = Channel.CreateBounded<Message>(
         new BoundedChannelOptions(256) { SingleWriter = true, SingleReader = true }
@@ -33,38 +34,60 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
         ]);
     }
 
-    public async ValueTask<PeerId> PerformHandshakeAsync(
+    public async ValueTask<Handshake> PerformHandshakeAsync(
         ReadOnlyMemory<byte> infoHash,
         PeerId peerId,
         CancellationToken cancellationToken
     )
     {
-        using var timeoutCts = new CancellationTokenSource(timeout);
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            timeoutCts.Token
-        );
-        await SendHandHandshake(infoHash, peerId, linkedCts.Token).ConfigureAwait(false);
-        var receivedHandshake = await ReceiveHandshakeAsync(linkedCts.Token).ConfigureAwait(false);
+        using var timeoutCts = cancellationToken.WithTimeout(10.Seconds);
+        await SendHandHandshake(infoHash, peerId, timeoutCts.Token).ConfigureAwait(false);
+        var receivedHandshake = await ReceiveHandshakeAsync(timeoutCts.Token).ConfigureAwait(false);
 
-        return ValidateHandshake(infoHash, receivedHandshake);
+        return receivedHandshake.InfoHash.SequenceEqual(infoHash.Span)
+            ? receivedHandshake
+            : throw new InvalidOperationException("InfoHash do not match");
     }
 
-    public async ValueTask<PeerId> ReceiveHandshakeAsync(
-        ReadOnlyMemory<byte> infoHash,
+    public async ValueTask<Handshake> ReceiveHandshakeAsync(
+        ICollection<ReadOnlyMemory<byte>> infoHashes,
         PeerId peerId,
         CancellationToken cancellationToken
     )
     {
-        using var timeoutCts = new CancellationTokenSource(timeout);
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            timeoutCts.Token
-        );
+        if (infoHashes.Count == 0)
+        {
+            throw new ArgumentException(
+                "InfoHashes collection cannot be empty.",
+                nameof(infoHashes)
+            );
+        }
 
-        var receivedHandshake = await ReceiveHandshakeAsync(linkedCts.Token).ConfigureAwait(false);
-        await SendHandHandshake(infoHash, peerId, linkedCts.Token).ConfigureAwait(false);
-        return ValidateHandshake(infoHash, receivedHandshake);
+        using var timeoutCts = cancellationToken.WithTimeout(10.Seconds);
+
+        var receivedHandshake = await ReceiveHandshakeAsync(timeoutCts.Token).ConfigureAwait(false);
+
+        ReadOnlyMemory<byte>? selectedInfoHash = null;
+        foreach (var infoHash in infoHashes)
+        {
+            if (receivedHandshake.InfoHash.SequenceEqual(infoHash.Span))
+            {
+                selectedInfoHash = infoHash;
+                break;
+            }
+        }
+
+        if (selectedInfoHash is null)
+        {
+            throw new InvalidOperationException(
+                "Received handshake contains an unknown info hash."
+            );
+        }
+
+        await SendHandHandshake(selectedInfoHash.Value, peerId, timeoutCts.Token)
+            .ConfigureAwait(false);
+
+        return receivedHandshake;
     }
 
     private async Task ReadLoopAsync(CancellationToken cancellationToken)
@@ -160,16 +183,13 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream
         await stream.FlushAsync(cts.Token).ConfigureAwait(false);
     }
 
-    private static PeerId ValidateHandshake(
+    private static Handshake? ValidateHandshake(
         ReadOnlyMemory<byte> infoHash,
         Handshake receivedHandshake
-    )
-    {
-        if (receivedHandshake.InfoHash.AsSpan().SequenceEqual(infoHash.Span) is false)
-            throw new InvalidDataException("InfoHash mismatch in handshake.");
-
-        return new PeerId(receivedHandshake.PeerId);
-    }
+    ) =>
+        !receivedHandshake.InfoHash.SequenceEqual(infoHash.Span)
+            ? throw new ArgumentException("")
+            : receivedHandshake;
 
     private async ValueTask DrainChannelsAsync()
     {

@@ -1,5 +1,4 @@
 ﻿using System.Net;
-using System.Net.Sockets;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Bencoding;
@@ -25,8 +24,10 @@ public sealed class Torrent : IAsyncDisposable
     public TorrentStatisticsClient Statistics { get; }
     public string OutputDirectory { get; }
     public State State { get; private set; } = State.Stopped;
+    internal PeersClient PeersClient => _peersClient;
 
-    private readonly P2PClient _p2pClient;
+    private readonly PeersClient _peersClient;
+    private readonly PeersListener _peersListener;
     private readonly TrackerClient _trackerClient;
     private readonly DiskStorage _pieceStorage;
     private readonly Bitfield _myBitfield;
@@ -41,7 +42,7 @@ public sealed class Torrent : IAsyncDisposable
         PeerId peerId,
         string outputDirectory,
         ILogger logger,
-        TcpListener tcpListener,
+        PeersListener peersListener,
         IPAddress? forcedIp = null,
         bool bitfieldInitialized = false,
         Func<IPAddress, IPAddress>? peerIpProxy = null
@@ -55,6 +56,7 @@ public sealed class Torrent : IAsyncDisposable
 
         MetaInfo = metaInfo;
         OutputDirectory = Path.Combine(outputDirectory, MetaInfo.Title ?? "");
+        _peersListener = peersListener;
         _myBitfield = new Bitfield(metaInfo.Info.Pieces.Length / 20, bitfieldInitialized);
         _pieceStorage = new DiskStorage(
             OutputDirectory,
@@ -83,7 +85,7 @@ public sealed class Torrent : IAsyncDisposable
             transferStatistics,
             logger
         );
-        _p2pClient = new P2PClient(
+        _peersClient = new PeersClient(
             metaInfo.Info.InfoHash,
             peerId,
             requestScheduler,
@@ -92,13 +94,12 @@ public sealed class Torrent : IAsyncDisposable
             _myBitfield,
             trackersChannel.Reader,
             logger,
-            tcpListener,
             peerIpProxy
         );
         _trackerClient = new TrackerClient(
             new HttpTrackerHandler(httpClient),
             trackerTransaction,
-            _p2pClient.EndPoint.Port,
+            peersListener.EndPoint.Port,
             transferStatistics,
             peerId,
             trackersChannel.Writer,
@@ -110,7 +111,7 @@ public sealed class Torrent : IAsyncDisposable
         Completion = new CompletionTracker(_myBitfield);
         Statistics = new TorrentStatisticsClient(
             transferStatistics,
-            new PeerStatistics(_p2pClient)
+            new PeerStatistics(_peersClient)
         );
     }
 
@@ -142,6 +143,7 @@ public sealed class Torrent : IAsyncDisposable
         _cancellationTokenSource?.Dispose();
         _cancellationTokenSource = new CancellationTokenSource();
         State = State.Started;
+        _peersListener.AddPeersClient(MetaInfo.Info.InfoHash, _peersClient);
         _runTask = StartAndWaitToFinishAsync(_cancellationTokenSource);
     }
 
@@ -155,6 +157,7 @@ public sealed class Torrent : IAsyncDisposable
 
         _cancellationTokenSource?.Cancel();
         Completion.TrySetCanceled();
+        _peersListener.RemovePeersClient(MetaInfo.Info.InfoHash);
     }
 
     private async Task StartAndWaitToFinishAsync(CancellationTokenSource cancellationTokenSource)
@@ -163,22 +166,23 @@ public sealed class Torrent : IAsyncDisposable
         {
             await cancellationTokenSource
                 .CancelOnFirstCompletionAndAwaitAllAsync([
-                    _p2pClient.StartAsync(cancellationTokenSource.Token),
+                    _peersClient.StartAsync(cancellationTokenSource.Token),
                     _trackerClient.StartAsync(cancellationTokenSource.Token),
                 ])
                 .ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
-            Completion.TrySetException(ex);
-            return;
-        }
-
-        //If no exception was thrown or the token is cancelled then we set it to canceled
-        if (cancellationTokenSource.Token.IsCancellationRequested)
-        {
-            Completion.TrySetCanceled();
-            State = State.Stopped;
+            if (ex is not OperationCanceledException)
+            {
+                Completion.TrySetException(ex);
+            }
+            //If no exception was thrown or the token is cancelled then we set it to canceled
+            if (cancellationTokenSource.Token.IsCancellationRequested)
+            {
+                Completion.TrySetCanceled();
+                State = State.Stopped;
+            }
         }
     }
 
@@ -186,6 +190,7 @@ public sealed class Torrent : IAsyncDisposable
     {
         _cancellationTokenSource?.Cancel();
         Completion.TrySetCanceled();
+        _peersListener.RemovePeersClient(MetaInfo.Info.InfoHash);
         if (_runTask is not null)
         {
             try
@@ -225,7 +230,7 @@ public sealed class Torrent : IAsyncDisposable
             _disposed = true;
             await StopAndWaitToFinishAsync().ConfigureAwait(false);
             _pieceStorage.Dispose();
-            await _p2pClient.DisposeAsync().ConfigureAwait(false);
+            await _peersClient.DisposeAsync().ConfigureAwait(false);
             await _trackerClient.DisposeAsync().ConfigureAwait(false);
             Completion.Dispose();
             _cancellationTokenSource?.Dispose();

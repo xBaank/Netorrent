@@ -1,6 +1,5 @@
 ﻿using System.Buffers;
 using System.Buffers.Binary;
-using System.Net;
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.Other;
@@ -51,46 +50,6 @@ internal class PeerConnection(
     public int UploadRequestedBlocksCount => Volatile.Read(ref _uploadRequestedCount);
 
     public TimeSpan ConnectionDuration => DateTime.UtcNow - _startedConnectionTime;
-
-    public static async ValueTask<PeerConnection> CreatePeerConnectionAsync(
-        Bitfield myBitField,
-        IUploadScheduler uploadScheduler,
-        IRequestScheduler requestScheduler,
-        IMessageStream messageStream,
-        PeerRequestWindow peerRequestWindow,
-        IPiecePicker piecePicker,
-        bool amInitiating,
-        ReadOnlyMemory<byte> infoHash,
-        PeerId myPeerId,
-        IPEndPoint peerEndPoint,
-        CancellationToken cancellationToken
-    )
-    {
-        PeerId peerId;
-
-        if (amInitiating)
-        {
-            peerId = await messageStream
-                .PerformHandshakeAsync(infoHash, myPeerId, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        else
-        {
-            peerId = await messageStream
-                .ReceiveHandshakeAsync(infoHash, myPeerId, cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        return new PeerConnection(
-            new PeerEndpoint(peerEndPoint, peerId),
-            myBitField,
-            uploadScheduler,
-            requestScheduler,
-            messageStream,
-            peerRequestWindow,
-            piecePicker
-        );
-    }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -151,6 +110,7 @@ internal class PeerConnection(
             {
                 await WriteMessageAsync(Message.KeepAlive, cancellationToken).ConfigureAwait(false);
             }
+
             await Task.Delay(waitTime, cancellationToken).ConfigureAwait(false);
         }
     }
@@ -166,7 +126,9 @@ internal class PeerConnection(
             using var message = item;
 
             if (message.Id == 255) //Keep-alive
+            {
                 continue;
+            }
 
             if (message.Id == Message.Bitfield)
             {
@@ -238,7 +200,9 @@ internal class PeerConnection(
     )
     {
         if (PeerBitField is not null)
+        {
             throw new InvalidOperationException("Second bitfield received, dropping connection");
+        }
 
         var bitfieldBytes = message.Payload!.Memory;
         PeerBitField = new Bitfield(bitfieldBytes.Span, MyBitField.Length);
@@ -280,7 +244,9 @@ internal class PeerConnection(
         int pieceIndex = BinaryPrimitives.ReadInt32BigEndian(message.Payload!.Memory.Span);
         //If the have was already sent or we already know that he has that piece we omit this message
         if (PeerBitField.HasPiece(pieceIndex))
+        {
             return;
+        }
 
         RegisterPiece(pieceIndex);
         PeerBitField.SetPiece(pieceIndex);
@@ -389,7 +355,9 @@ internal class PeerConnection(
         try
         {
             if (PeerBitField is null)
+            {
                 return;
+            }
 
             var interest = MyBitField.HasAnyMissingPiece(PeerBitField);
             if (interest != AmInterested.Value)
@@ -460,7 +428,9 @@ internal class PeerConnection(
         for (int i = 0; i < bitfield.Length; i++)
         {
             if (bitfield.HasPiece(i))
+            {
                 piecePicker.IncreaseRarity(i);
+            }
         }
     }
 
@@ -469,7 +439,9 @@ internal class PeerConnection(
         for (int i = 0; i < bitfield.Length; i++)
         {
             if (bitfield.HasPiece(i))
+            {
                 piecePicker.DecreaseRarity(i);
+            }
         }
     }
 
@@ -488,7 +460,9 @@ internal class PeerConnection(
             _disposed = true;
 
             if (PeerBitField is not null)
+            {
                 UnregisterPieces(PeerBitField);
+            }
 
             await uploadScheduler.FreeSlotAsync(this, default).ConfigureAwait(false);
             await requestScheduler.FreeSlotAsync(this, default).ConfigureAwait(false);
@@ -498,7 +472,9 @@ internal class PeerConnection(
             try
             {
                 if (_runTask is not null)
+                {
                     await _runTask.ConfigureAwait(false);
+                }
             }
             catch { }
 

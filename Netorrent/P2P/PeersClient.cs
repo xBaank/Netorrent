@@ -13,7 +13,7 @@ using ZLinq;
 
 namespace Netorrent.P2P;
 
-internal class P2PClient(
+internal class PeersClient(
     ReadOnlyMemory<byte> infoHash,
     PeerId peerId,
     IRequestScheduler requestScheduler,
@@ -22,22 +22,19 @@ internal class P2PClient(
     Bitfield bitField,
     ChannelReader<IPEndPoint> trackersChannel,
     ILogger logger,
-    TcpListener tcpListener,
     Func<IPAddress, IPAddress>? peerIpProxy
 ) : IAsyncDisposable
 {
     const int MAX_ACTIVE_PEER_COUNT = 50;
-    const int PEER_TIMEOUT_SECONDS = 120;
 
     private readonly ConcurrentDictionary<PeerEndpoint, PeerConnection> _activePeers = [];
-    private readonly ConcurrentQueue<IPEndPoint> _knownPeers = [];
+    private readonly ConcurrentQueue<PeerEndpoint> _knownPeers = [];
     private readonly SemaphoreSlim _semaphoreSlim = new(1);
     private readonly List<Task> _peerTasks = [];
     private readonly Subject<PeerEndpoint> _peerConnected = new();
 
     public Observable<PeerEndpoint> PeerConnected => _peerConnected;
     public IReadOnlyDictionary<PeerEndpoint, PeerConnection> ActivePeers => _activePeers;
-    public IPEndPoint EndPoint => (IPEndPoint)tcpListener.LocalEndpoint;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -47,7 +44,6 @@ internal class P2PClient(
                 requestScheduler.StartAsync(cts.Token),
                 uploadScheduler.StartAsync(cts.Token),
                 ProcessPeersAsync(cts.Token),
-                ListenToPeersAsync(cts.Token),
             ])
             .ConfigureAwait(false);
 
@@ -61,6 +57,7 @@ internal class P2PClient(
     private async Task ProcessPeersAsync(CancellationToken cancellationToken)
     {
         List<Task> connectTasks = new(100);
+
         await foreach (
             var iPEndPoint in trackersChannel.ReadAllAsync(cancellationToken).ConfigureAwait(false)
         )
@@ -69,82 +66,83 @@ internal class P2PClient(
                 peerIpProxy?.Invoke(iPEndPoint.Address) ?? iPEndPoint.Address,
                 iPEndPoint.Port
             );
-            connectTasks.Add(ConnectToPeerAsync(null, targetEndPoint, cancellationToken));
+            try
+            {
+                var (messageStream, peerEndpoint) = await HandShakeAsync(
+                        targetEndPoint,
+                        cancellationToken
+                    )
+                    .ConfigureAwait(false);
+
+                connectTasks.Add(AddPeerAsync(messageStream, peerEndpoint, cancellationToken));
+            }
+            catch (Exception ex)
+            {
+                if (logger.IsEnabled(LogLevel.Debug))
+                {
+                    logger.LogDebug(ex, "Error connecting to {ip}", targetEndPoint);
+                }
+            }
 
             if (connectTasks.Count >= 100)
             {
                 await Task.WhenAll(connectTasks).ConfigureAwait(false);
             }
         }
+
         await Task.WhenAll(connectTasks).ConfigureAwait(false);
     }
 
-    private async Task ListenToPeersAsync(CancellationToken cancellationToken)
+    private static async ValueTask<TcpMessageStream> GetTcpMessageStream(
+        IPEndPoint iPEndPoint,
+        CancellationToken cancellationToken
+    )
     {
-        //TODO THIS IS COMPLETLY WRONG. we should receive the connections from outside -> receive the infohash from the handshake -> check if we have that torrent -> then connect to peer
-        tcpListener.Start();
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            var tcpClient = await tcpListener
-                .AcceptTcpClientAsync(cancellationToken)
-                .ConfigureAwait(false);
-            var remoteEndPoint = (IPEndPoint)tcpClient.Client.RemoteEndPoint!;
-
-            await ConnectToPeerAsync(tcpClient, remoteEndPoint, cancellationToken)
-                .ConfigureAwait(false);
-        }
+        using var cts = cancellationToken.WithTimeout(10.Seconds);
+        var tcpClient = new TcpClient();
+        await tcpClient.ConnectAsync(iPEndPoint, cts.Token).ConfigureAwait(false);
+        return tcpClient.GetMessageStream();
     }
 
-    private async Task ConnectToPeerAsync(
-        TcpClient? client,
-        IPEndPoint iPEndPoint,
+    private async ValueTask<(
+        TcpMessageStream messageStream,
+        PeerEndpoint peerEndpoint
+    )> HandShakeAsync(IPEndPoint targetEndPoint, CancellationToken cancellationToken)
+    {
+        var messageStream = await GetTcpMessageStream(targetEndPoint, cancellationToken)
+            .ConfigureAwait(false);
+        var handshake = await messageStream
+            .PerformHandshakeAsync(infoHash, peerId, cancellationToken)
+            .ConfigureAwait(false);
+        var peerEndpoint = new PeerEndpoint(targetEndPoint, handshake.PeerId);
+        return (messageStream, peerEndpoint);
+    }
+
+    public async Task AddPeerAsync(
+        IMessageStream messageStream,
+        PeerEndpoint peerEndpoint,
         CancellationToken cancellationToken = default
     )
     {
-        var amInitiating = client is null;
-
-        //If im initiaing the connection
-        if (amInitiating)
-        {
-            client = new TcpClient();
-
-            try
-            {
-                using var cts = cancellationToken.WithTimeout(10.Seconds);
-                await client.ConnectAsync(iPEndPoint, cts.Token).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                if (logger.IsEnabled(LogLevel.Debug))
-                    logger.LogDebug(ex, "Error conecting to {ip}", iPEndPoint);
-                return;
-            }
-        }
-
-        var messageStream = new MessageStream(client!.GetStream(), PEER_TIMEOUT_SECONDS.Seconds);
         PeerConnection peerConnection;
 
         try
         {
-            peerConnection = await PeerConnection.CreatePeerConnectionAsync(
+            peerConnection = new PeerConnection(
+                peerEndpoint,
                 bitField,
                 uploadScheduler,
                 requestScheduler,
                 messageStream,
-                new(piecePicker.BlockSize),
-                piecePicker,
-                amInitiating,
-                infoHash,
-                peerId,
-                iPEndPoint,
-                cancellationToken
+                new PeerRequestWindow(piecePicker.BlockSize),
+                piecePicker
             );
         }
         catch (Exception ex)
         {
             if (logger.IsEnabled(LogLevel.Debug))
             {
-                logger.LogDebug(ex, "Error handshaking to {ip}", iPEndPoint);
+                logger.LogDebug(ex, "Error handshaking to {ip}", peerEndpoint);
             }
 
             return;
@@ -156,7 +154,10 @@ internal class P2PClient(
             if (peerConnection.PeerEndpoint.PeerId == peerId)
             {
                 if (logger.IsEnabled(LogLevel.Information))
-                    logger.LogInformation("Ignored self connection to {EndPoint}", iPEndPoint);
+                {
+                    logger.LogInformation("Ignored self connection to {EndPoint}", peerEndpoint);
+                }
+
                 await peerConnection.DisposeAsync().ConfigureAwait(false);
                 return;
             }
@@ -169,14 +170,15 @@ internal class P2PClient(
             )
             {
                 if (logger.IsEnabled(LogLevel.Information))
-                    logger.LogInformation("Ignored active peer from {EndPoint}", iPEndPoint);
+                    logger.LogInformation("Ignored active peer from {EndPoint}", peerEndpoint);
                 await peerConnection.DisposeAsync().ConfigureAwait(false);
                 return;
             }
 
             if (_activePeers.Count >= MAX_ACTIVE_PEER_COUNT)
             {
-                _knownPeers.Enqueue(iPEndPoint);
+                _knownPeers.Enqueue(peerEndpoint);
+                await peerConnection.DisposeAsync().ConfigureAwait(false);
                 return;
             }
 
@@ -224,12 +226,43 @@ internal class P2PClient(
             _activePeers.Remove(peerConnection.PeerEndpoint, out _);
             await peerConnection.DisposeAsync().ConfigureAwait(false);
 
-            if (_knownPeers.TryDequeue(out var nextEndpoint))
+            await TryAddNextPeerAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask TryAddNextPeerAsync(CancellationToken cancellationToken)
+    {
+        var hasError = false;
+        var hasEndpoint = _knownPeers.TryDequeue(out var nextEndpoint);
+
+        if (!hasEndpoint)
+        {
+            return;
+        }
+
+        do
+        {
+            try
             {
-                await ConnectToPeerAsync(null, nextEndpoint, cancellationToken)
+                var (messageStream, _) = await HandShakeAsync(
+                        nextEndpoint.EndPoint,
+                        cancellationToken
+                    )
+                    .ConfigureAwait(false);
+
+                await AddPeerAsync(messageStream, nextEndpoint, cancellationToken)
                     .ConfigureAwait(false);
             }
-        }
+            catch (Exception ex)
+            {
+                hasError = true;
+                if (logger.IsEnabled(LogLevel.Debug))
+                {
+                    logger.LogDebug(ex, "Error connecting to {ip}", nextEndpoint.EndPoint);
+                }
+                continue;
+            }
+        } while (hasError && _knownPeers.TryDequeue(out nextEndpoint));
     }
 
     public async ValueTask DisposeAsync()

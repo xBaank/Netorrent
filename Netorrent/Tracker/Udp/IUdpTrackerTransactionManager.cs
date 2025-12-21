@@ -5,8 +5,6 @@ namespace Netorrent.Tracker.Udp
 {
     internal interface IUdpTrackerTransactionManager : IAsyncDisposable
     {
-        Task? TrackerManagerTask { get; }
-
         Task<UdpTrackerConnectResponse> ConnectAsync(
             IPEndPoint endPoint,
             Guid trackerId,

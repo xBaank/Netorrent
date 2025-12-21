@@ -7,23 +7,23 @@ namespace Netorrent.Statistics;
 
 public class PeerStatistics
 {
-    private readonly P2PClient _p2pClient;
+    private readonly PeersClient _peersClient;
 
-    internal PeerStatistics(P2PClient p2PClient)
+    internal PeerStatistics(PeersClient peersClient)
     {
-        _p2pClient = p2PClient;
+        _peersClient = peersClient;
     }
 
     private ValueEnumerable<
         Where<FromEnumerable<PeerConnection>, PeerConnection>,
         PeerConnection
     > PeersNotChocking =>
-        _p2pClient
+        _peersClient
             .ActivePeers.Values.AsValueEnumerable()
             .Where(i => !i.PeerChoking.Value && i.AmInterested.Value);
 
     public int ActivePeers => PeersNotChocking.Count();
-    public int TotalPeers => _p2pClient.ActivePeers.Values.AsValueEnumerable().Count();
+    public int TotalPeers => _peersClient.ActivePeers.Values.AsValueEnumerable().Count();
 
     public DownloadSpeed DownloadSpeed =>
         PeersNotChocking.Sum(p => p.DownloadSpeedTracker.CurrentBps.Bps);
