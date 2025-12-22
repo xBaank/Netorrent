@@ -315,7 +315,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 o with
                 {
                     PeerIpProxy = FixDockerAdress,
-                    //     Logger = logger,
+                    Logger = logger,
                 }
             );
 
@@ -341,7 +341,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 o with
                 {
                     PeerIpProxy = FixDockerAdress,
-                    //     Logger = logger,
+                    Logger = logger,
                 }
             );
 

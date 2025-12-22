@@ -1,4 +1,5 @@
-﻿using System.Net.Sockets;
+﻿using System.Net;
+using System.Net.Sockets;
 using System.Threading.Channels;
 using Netorrent.Extensions;
 using Netorrent.P2P;

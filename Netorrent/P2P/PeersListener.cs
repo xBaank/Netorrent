@@ -64,7 +64,7 @@ internal class PeersListener(PeerId peerId, ILogger logger) : IAsyncDisposable
 
                 await selectedPeersClient
                     .AddPeerAsync(
-                        tcpClient.GetMessageStream(handShake.PeerId),
+                        tcpClient.GetMessageStream(handShake),
                         remoteEndPoint,
                         _cancellationTokenSource.Token
                     )
