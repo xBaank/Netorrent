@@ -19,12 +19,12 @@ internal class FakeUploadScheduler : IUploadScheduler
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public ValueTask FreeSlotAsync(
-        PeerConnection peerConnection,
+        IPeerConnection peerConnection,
         CancellationToken cancellationToken
     ) => ValueTask.CompletedTask;
 
     public ValueTask RequestSlotAsync(
-        PeerConnection peerConnection,
+        IPeerConnection peerConnection,
         CancellationToken cancellationToken
     )
     {

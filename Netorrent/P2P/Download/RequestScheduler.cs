@@ -24,12 +24,13 @@ internal class RequestScheduler(
     private readonly Channel<Block> _receiveBlocksChannel = Channel.CreateBounded<Block>(
         new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
     );
-    private readonly Channel<PeerConnection> _slotsChannel = Channel.CreateBounded<PeerConnection>(
-        new BoundedChannelOptions(256) { SingleReader = true, SingleWriter = false }
-    );
+    private readonly Channel<IPeerConnection> _slotsChannel =
+        Channel.CreateBounded<IPeerConnection>(
+            new BoundedChannelOptions(256) { SingleReader = true, SingleWriter = false }
+        );
 
-    private readonly HashSet<PeerConnection> _activePeers = [];
-    private readonly List<PeerConnection> _interestedPeers = [];
+    private readonly HashSet<IPeerConnection> _activePeers = [];
+    private readonly List<IPeerConnection> _interestedPeers = [];
     private readonly Dictionary<int, PieceBuffer> _pieceBuffers = [];
     private readonly Lock _activePeersLock = new();
     private int _maxCurrentPeers = MinPeers;
@@ -142,7 +143,7 @@ internal class RequestScheduler(
                 piecePicker.SetBlockToPending(requestBlock);
                 lastRequestedFrom.DecrementRequestedBlock();
 
-                PeerConnection? freePeer = null;
+                IPeerConnection? freePeer = null;
 
                 lock (_activePeersLock)
                 {
@@ -189,7 +190,7 @@ internal class RequestScheduler(
     }
 
     private async ValueTask ScheduleRequests(
-        PeerConnection peerConnection,
+        IPeerConnection peerConnection,
         CancellationToken cancellationToken
     )
     {
@@ -234,7 +235,7 @@ internal class RequestScheduler(
     }
 
     public async ValueTask RequestSlotAsync(
-        PeerConnection peerConnection,
+        IPeerConnection peerConnection,
         CancellationToken cancellationToken
     )
     {
@@ -260,11 +261,11 @@ internal class RequestScheduler(
     }
 
     public async ValueTask FreeSlotAsync(
-        PeerConnection peerConnection,
+        IPeerConnection peerConnection,
         CancellationToken cancellationToken
     )
     {
-        PeerConnection? nextPeer = null;
+        IPeerConnection? nextPeer = null;
 
         lock (_activePeersLock)
         {

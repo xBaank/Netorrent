@@ -2,9 +2,7 @@
 using System.Buffers.Binary;
 using System.Threading.Channels;
 using Netorrent.Extensions;
-using Netorrent.P2P;
 using Netorrent.P2P.Messages;
-using ZLinq;
 
 namespace Netorrent.IO;
 
@@ -17,9 +15,10 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
         new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
     );
 
+    public Handshake Handshake => handshake;
+
     public ChannelReader<Message> IncomingMessages => _incomingMessages.Reader;
     public ChannelWriter<Message> OutgoingMessages => _outgoingMessages.Writer;
-    public PeerId PeerId => handshake.PeerId;
 
     private readonly byte[] _lengthBuffer = new byte[4];
     private readonly byte[] _idBuffer = new byte[1];

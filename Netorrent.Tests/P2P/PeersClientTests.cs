@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Netorrent.Extensions;
 using Netorrent.P2P;
 using Netorrent.P2P.Messages;
+using Netorrent.P2P.Tcp;
 using Netorrent.Tests.Extensions;
 using Netorrent.Tests.Fakes;
 using R3;
@@ -29,8 +30,8 @@ internal class PeersClientTests
         var logger = NullLogger.Instance;
         var peerId = new PeerId();
         await using var peerListener = CreatePeersListener(peerId, logger);
-        await using var peersClient = CreatePeersClient(peerId, infoHash, unusedChannel, logger);
-        var peersClients = CreatePeersClients(number, infoHash, logger);
+        await using var peersClient = CreatePeersClient(peerId, logger);
+        var peersClients = CreatePeersClients(number, logger);
         var p2pTask = peersClient.StartAsync(cts.Token);
         peerListener.Start();
         peerListener.AddPeersClient(infoHash, peersClient);
@@ -39,29 +40,36 @@ internal class PeersClientTests
             .PeerConnected.Take(number)
             .Select(i => i.EndPoint);
 
-        await StartAsync(peersClients.Select(i => i.peersClient), cts.Token);
-        await WriteToChannels(peerListener, peersClients.Select(i => i.channel), cts.Token);
+        await StartAsync(peersClients, cts.Token);
+        await WriteToChannels(peerListener, peersClients, infoHash, cts.Token);
 
         var peerEndpointsCount = await peerEndpointsObservable.CountAsync(cts.Token);
         cts.Cancel();
-        await DisposeP2pClients(peersClients.Select(i => i.peersClient));
+        await DisposeP2pClients(peersClients);
 
         peerEndpointsCount.ShouldBe(number);
         await p2pTask.ShouldThrowAsync<OperationCanceledException>();
     }
 
     private static async Task WriteToChannels(
-        PeersListener peerListener,
-        IEnumerable<Channel<IPEndPoint>> channels,
+        TcpPeersListener peerListener,
+        IEnumerable<PeersClient> peersClients,
+        ReadOnlyMemory<byte> infoHash,
         CancellationToken cancellationToken
     )
     {
-        foreach (var channel in channels)
+        foreach (var peersClient in peersClients)
         {
-            await channel.Writer.WriteAsync(
-                new IPEndPoint(IPAddress.Loopback, peerListener.EndPoint.Port),
-                cancellationToken
-            );
+            await peersClient
+                .AddPeerAsync(
+                    new TcpPeer(
+                        new IPEndPoint(IPAddress.Loopback, peerListener.EndPoint.Port),
+                        peersClient.PeerId,
+                        infoHash
+                    ),
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
         }
     }
 
@@ -73,19 +81,8 @@ internal class PeersClientTests
         }
     }
 
-    private static (PeersClient peersClient, Channel<IPEndPoint> channel)[] CreatePeersClients(
-        int number,
-        ReadOnlyMemory<byte> infoHash,
-        ILogger logger
-    ) =>
-        ValueEnumerable
-            .Range(0, number)
-            .Select(i =>
-            {
-                var channel = Channel.CreateUnbounded<IPEndPoint>();
-                return (CreatePeersClient(new(), infoHash, channel, logger), channel);
-            })
-            .ToArray();
+    private static PeersClient[] CreatePeersClients(int number, ILogger logger) =>
+        ValueEnumerable.Range(0, number).Select(i => CreatePeersClient(new(), logger)).ToArray();
 
     private static async Task StartAsync(
         IEnumerable<PeersClient> p2pClients,
@@ -98,24 +95,16 @@ internal class PeersClientTests
         }
     }
 
-    private static PeersClient CreatePeersClient(
-        PeerId peerId,
-        ReadOnlyMemory<byte> infoHash,
-        ChannelReader<IPEndPoint> channel,
-        ILogger logger
-    ) =>
+    private static PeersClient CreatePeersClient(PeerId peerId, ILogger logger) =>
         new(
-            infoHash,
             peerId,
             new FakeRequestScheduler(),
             new FakeUploadScheduler(),
             new FakePiecePicker(),
             new Bitfield(5),
-            channel,
-            logger,
-            null
+            logger
         );
 
-    private static PeersListener CreatePeersListener(PeerId peerId, ILogger logger) =>
+    private static TcpPeersListener CreatePeersListener(PeerId peerId, ILogger logger) =>
         new(peerId, logger);
 }

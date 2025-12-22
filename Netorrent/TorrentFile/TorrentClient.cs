@@ -6,6 +6,7 @@ using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
 using Netorrent.Extensions;
 using Netorrent.P2P;
+using Netorrent.P2P.Tcp;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker.Udp;
 using Netorrent.Tracker.Udp.Client;
@@ -19,7 +20,7 @@ public sealed class TorrentClient : IAsyncDisposable
     private readonly TorrentClientOptions _options;
     private readonly List<Torrent> _torrents = [];
     private readonly UdpTrackerTransactionManager _trackerTransactionManager;
-    private readonly PeersListener _peersListener;
+    private readonly TcpPeersListener _peersListener;
 
     public TorrentClient(Func<TorrentClientOptions, TorrentClientOptions>? action = null)
     {

@@ -1,6 +1,5 @@
 ﻿using System.Net.Sockets;
 using Netorrent.IO;
-using Netorrent.P2P;
 using Netorrent.P2P.Messages;
 
 namespace Netorrent.Extensions;

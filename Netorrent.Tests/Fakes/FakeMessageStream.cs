@@ -17,6 +17,8 @@ internal class FakeMessageStream(
 
     public PeerId PeerId { get; } = new();
 
+    public Handshake Handshake => new();
+
     public ValueTask<PeerId> PerformHandshakeAsync(
         ReadOnlyMemory<byte> infoHash,
         PeerId peerId,

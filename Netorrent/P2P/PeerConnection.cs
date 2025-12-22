@@ -23,7 +23,7 @@ internal class PeerConnection(
     bool amInterested = false,
     bool peerChoking = true,
     bool peerInterested = false
-) : IAsyncDisposable
+) : IPeerConnection
 {
     private readonly SemaphoreSlim _stateSemaphoreSlim = new(1);
     private DateTimeOffset _lastKeepAlive;
@@ -98,7 +98,7 @@ internal class PeerConnection(
         catch (OperationCanceledException) { }
     }
 
-    public async Task CheckTimeoutAsync(CancellationToken cancellationToken)
+    private async Task CheckTimeoutAsync(CancellationToken cancellationToken)
     {
         var waitTime = 10.Seconds;
         var keepAliveThreshold = 1.Minutes;

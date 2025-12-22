@@ -1,10 +1,7 @@
 ﻿using System.Collections.Concurrent;
-using System.Net;
-using System.Net.Sockets;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
-using Netorrent.IO;
 using Netorrent.P2P.Download;
 using Netorrent.P2P.Messages;
 using Netorrent.P2P.Upload;
@@ -14,15 +11,12 @@ using ZLinq;
 namespace Netorrent.P2P;
 
 internal class PeersClient(
-    ReadOnlyMemory<byte> infoHash,
     PeerId peerId,
     IRequestScheduler requestScheduler,
     IUploadScheduler uploadScheduler,
     IPiecePicker piecePicker,
     Bitfield bitField,
-    ChannelReader<IPEndPoint> trackersChannel,
-    ILogger logger,
-    Func<IPAddress, IPAddress>? peerIpProxy
+    ILogger logger
 ) : IAsyncDisposable
 {
     const int MAX_ACTIVE_PEER_COUNT = 50;
@@ -36,6 +30,7 @@ internal class PeersClient(
             new BoundedChannelOptions(100) { SingleReader = true, SingleWriter = false }
         );
 
+    public PeerId PeerId => peerId;
     public Observable<PeerEndpoint> PeerConnected => _peerConnected;
     public IReadOnlyDictionary<PeerEndpoint, PeerConnection> ActivePeers => _activePeers;
 
@@ -47,7 +42,6 @@ internal class PeersClient(
                 requestScheduler.StartAsync(cts.Token),
                 uploadScheduler.StartAsync(cts.Token),
                 ProcessPeersAsync(cts.Token),
-                ProcessEndpointsAsync(cts.Token),
             ])
             .ConfigureAwait(false);
 
@@ -75,79 +69,11 @@ internal class PeersClient(
         }
     }
 
-    private async Task ProcessEndpointsAsync(CancellationToken cancellationToken)
+    public async ValueTask AddPeerAsync(IPeer peer, CancellationToken cancellationToken)
     {
-        List<Task> tasks = [];
-        try
-        {
-            await foreach (
-                var iPEndPoint in trackersChannel
-                    .ReadAllAsync(cancellationToken)
-                    .ConfigureAwait(false)
-            )
-            {
-                var targetEndPoint = new IPEndPoint(
-                    peerIpProxy?.Invoke(iPEndPoint.Address) ?? iPEndPoint.Address,
-                    iPEndPoint.Port
-                );
-                try
-                {
-                    tasks.Add(AddPeerAsync(targetEndPoint, cancellationToken).AsTask());
-
-                    if (tasks.Count >= 100)
-                    {
-                        try
-                        {
-                            await Task.WhenAll(tasks).ConfigureAwait(false);
-                        }
-                        finally
-                        {
-                            tasks.Clear();
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    if (logger.IsEnabled(LogLevel.Debug))
-                    {
-                        logger.LogDebug(ex, "Error connecting to {ip}", targetEndPoint);
-                    }
-                }
-            }
-        }
-        finally
-        {
-            try
-            {
-                await Task.WhenAll(tasks).ConfigureAwait(false);
-            }
-            catch { }
-        }
-    }
-
-    private async ValueTask AddPeerAsync(IPEndPoint iPEndPoint, CancellationToken cancellationToken)
-    {
-        using var cts = cancellationToken.WithTimeout(10.Seconds);
-        var tcpClient = new TcpClient();
-        await tcpClient.ConnectAsync(iPEndPoint, cts.Token).ConfigureAwait(false);
-        var stream = tcpClient.GetStream();
-
-        var handshake = await Handshake
-            .PerformHandshakeAsync(tcpClient.GetStream(), infoHash, peerId, cancellationToken)
-            .ConfigureAwait(false);
-
-        await AddPeerAsync(tcpClient.GetMessageStream(handshake), iPEndPoint, cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public async ValueTask AddPeerAsync(
-        IMessageStream messageStream,
-        IPEndPoint iPEndPoint,
-        CancellationToken cancellationToken
-    )
-    {
+        var messageStream = await peer.ConnectAsync(cancellationToken).ConfigureAwait(false);
         var peerConnection = new PeerConnection(
-            new(iPEndPoint, messageStream.PeerId),
+            new(peer.PeerEndPoint, messageStream.Handshake.PeerId),
             bitField,
             uploadScheduler,
             requestScheduler,
@@ -189,8 +115,6 @@ internal class PeersClient(
 
             _activePeers.Remove(peerConnection.PeerEndpoint, out _);
             await peerConnection.DisposeAsync().ConfigureAwait(false);
-
-            await TryAddNextPeerAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -238,34 +162,6 @@ internal class PeersClient(
 
         _activePeers[peerConnection.PeerEndpoint] = peerConnection;
         return true;
-    }
-
-    private async ValueTask TryAddNextPeerAsync(CancellationToken cancellationToken)
-    {
-        var hasError = false;
-        var hasEndpoint = _knownPeers.TryDequeue(out var nextEndpoint);
-
-        if (!hasEndpoint)
-        {
-            return;
-        }
-
-        do
-        {
-            try
-            {
-                await AddPeerAsync(nextEndpoint.EndPoint, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                hasError = true;
-                if (logger.IsEnabled(LogLevel.Debug))
-                {
-                    logger.LogDebug(ex, "Error connecting to {ip}", nextEndpoint.EndPoint);
-                }
-                continue;
-            }
-        } while (hasError && _knownPeers.TryDequeue(out nextEndpoint));
     }
 
     public async ValueTask DisposeAsync()

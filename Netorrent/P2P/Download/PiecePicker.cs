@@ -136,7 +136,7 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         }
     }
 
-    public PeerConnection GetLastRequester(RequestBlock requestBlock)
+    public IPeerConnection GetLastRequester(RequestBlock requestBlock)
     {
         lock (_requestBlocksLock)
         {
@@ -153,7 +153,7 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         }
     }
 
-    public void SetBlockToRequested(RequestBlock requestBlock, PeerConnection peerConnection)
+    public void SetBlockToRequested(RequestBlock requestBlock, IPeerConnection peerConnection)
     {
         lock (_requestBlocksLock)
         {

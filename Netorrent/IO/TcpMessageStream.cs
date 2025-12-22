@@ -1,8 +1,6 @@
-﻿using System.Net;
-using System.Net.Sockets;
+﻿using System.Net.Sockets;
 using System.Threading.Channels;
 using Netorrent.Extensions;
-using Netorrent.P2P;
 using Netorrent.P2P.Messages;
 
 namespace Netorrent.IO;
@@ -20,7 +18,7 @@ internal class TcpMessageStream(TcpClient tcpClient, Handshake handshake) : IMes
     public ChannelReader<Message> IncomingMessages => stream.IncomingMessages;
 
     public ChannelWriter<Message> OutgoingMessages => stream.OutgoingMessages;
-    public PeerId PeerId => stream.PeerId;
+    public Handshake Handshake => stream.Handshake;
 
     public async ValueTask DisposeAsync()
     {

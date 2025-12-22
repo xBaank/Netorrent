@@ -7,6 +7,7 @@ using Netorrent.IO.Disk;
 using Netorrent.P2P;
 using Netorrent.P2P.Download;
 using Netorrent.P2P.Messages;
+using Netorrent.P2P.Tcp;
 using Netorrent.P2P.Upload;
 using Netorrent.Statistics;
 using Netorrent.TorrentFile.FileStructure;
@@ -25,8 +26,9 @@ public sealed class Torrent : IAsyncDisposable
     public string OutputDirectory { get; }
     public State State { get; private set; } = State.Stopped;
 
+    private readonly TcpPeersConnector _peerConnector;
     private readonly PeersClient _peersClient;
-    private readonly PeersListener _peersListener;
+    private readonly TcpPeersListener _peersListener;
     private readonly TrackerClient _trackerClient;
     private readonly DiskStorage _pieceStorage;
     private readonly Bitfield _myBitfield;
@@ -41,7 +43,7 @@ public sealed class Torrent : IAsyncDisposable
         PeerId peerId,
         string outputDirectory,
         ILogger logger,
-        PeersListener peersListener,
+        TcpPeersListener peersListener,
         IPAddress? forcedIp = null,
         bool bitfieldInitialized = false,
         Func<IPAddress, IPAddress>? peerIpProxy = null
@@ -84,16 +86,14 @@ public sealed class Torrent : IAsyncDisposable
             transferStatistics,
             logger
         );
+
         _peersClient = new PeersClient(
-            metaInfo.Info.InfoHash,
             peerId,
             requestScheduler,
             uploadScheduler,
             piecePicker,
             _myBitfield,
-            trackersChannel.Reader,
-            logger,
-            peerIpProxy
+            logger
         );
         _trackerClient = new TrackerClient(
             new HttpTrackerHandler(httpClient),
@@ -107,6 +107,15 @@ public sealed class Torrent : IAsyncDisposable
             logger,
             forcedIp
         );
+        _peerConnector = new TcpPeersConnector(
+            _peersClient,
+            metaInfo.Info.InfoHash,
+            peerId,
+            trackersChannel,
+            peerIpProxy,
+            logger
+        );
+
         Completion = new CompletionTracker(_myBitfield);
         Statistics = new TorrentStatisticsClient(
             transferStatistics,
@@ -167,6 +176,7 @@ public sealed class Torrent : IAsyncDisposable
                 .CancelOnFirstCompletionAndAwaitAllAsync([
                     _peersClient.StartAsync(cancellationTokenSource.Token),
                     _trackerClient.StartAsync(cancellationTokenSource.Token),
+                    _peerConnector.StartAsync(cancellationTokenSource.Token),
                 ])
                 .ConfigureAwait(false);
         }

@@ -9,7 +9,7 @@ internal class FakeRequestScheduler : IRequestScheduler
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public ValueTask FreeSlotAsync(
-        PeerConnection peerConnection,
+        IPeerConnection peerConnection,
         CancellationToken cancellationToken
     ) => ValueTask.CompletedTask;
 
@@ -19,7 +19,7 @@ internal class FakeRequestScheduler : IRequestScheduler
     }
 
     public ValueTask RequestSlotAsync(
-        PeerConnection peerConnection,
+        IPeerConnection peerConnection,
         CancellationToken cancellationToken
     ) => ValueTask.CompletedTask;
 

@@ -20,12 +20,13 @@ internal class UploadScheduler(
     private readonly Channel<RequestBlock> _pendingRequests = Channel.CreateBounded<RequestBlock>(
         new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
     );
-    private readonly Channel<PeerConnection> _slotsRequests = Channel.CreateBounded<PeerConnection>(
-        new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
-    );
+    private readonly Channel<IPeerConnection> _slotsRequests =
+        Channel.CreateBounded<IPeerConnection>(
+            new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
+        );
 
-    private readonly List<PeerConnection> _interestedPeers = [];
-    private readonly HashSet<PeerConnection> _unchokedPeers = [];
+    private readonly List<IPeerConnection> _interestedPeers = [];
+    private readonly HashSet<IPeerConnection> _unchokedPeers = [];
     private readonly Lock _unchokedSlotsLock = new();
 
     private CancellationTokenSource? _cts;
@@ -128,7 +129,7 @@ internal class UploadScheduler(
     }
 
     public async ValueTask RequestSlotAsync(
-        PeerConnection peerConnection,
+        IPeerConnection peerConnection,
         CancellationToken cancellationToken
     )
     {
@@ -155,11 +156,11 @@ internal class UploadScheduler(
     }
 
     public async ValueTask FreeSlotAsync(
-        PeerConnection peerConnection,
+        IPeerConnection peerConnection,
         CancellationToken cancellationToken
     )
     {
-        PeerConnection? nextPeer = null;
+        IPeerConnection? nextPeer = null;
 
         lock (_unchokedSlotsLock)
         {

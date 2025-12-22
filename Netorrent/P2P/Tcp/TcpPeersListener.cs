@@ -6,9 +6,9 @@ using Netorrent.Extensions;
 using Netorrent.Other;
 using Netorrent.P2P.Messages;
 
-namespace Netorrent.P2P;
+namespace Netorrent.P2P.Tcp;
 
-internal class PeersListener(PeerId peerId, ILogger logger) : IAsyncDisposable
+internal class TcpPeersListener(PeerId peerId, ILogger logger) : IAsyncDisposable
 {
     private readonly TcpListener _tcpListener = TcpListener.GetFreeTcpListener();
     private readonly ConcurrentDictionary<
@@ -65,8 +65,7 @@ internal class PeersListener(PeerId peerId, ILogger logger) : IAsyncDisposable
 
                 await selectedPeersClient
                     .AddPeerAsync(
-                        tcpClient.GetMessageStream(handShake),
-                        remoteEndPoint,
+                        new TcpReceivedPeer(tcpClient, remoteEndPoint, peerId, handShake),
                         _cancellationTokenSource.Token
                     )
                     .ConfigureAwait(false);

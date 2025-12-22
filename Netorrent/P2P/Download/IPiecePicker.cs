@@ -12,13 +12,13 @@ internal interface IPiecePicker : IAsyncDisposable
     void DecreaseRarity(int index);
     RequestBlock? GetBlock(Bitfield bitfield);
     int GetBlockCountByPieceIndex(int pieceIndex);
-    PeerConnection GetLastRequester(RequestBlock requestBlock);
+    IPeerConnection GetLastRequester(RequestBlock requestBlock);
     int GetPieceSize(int pieceIndex);
     RequestBlock GetRequestBlockByBlockIndex(int pieceIndex, int blockIndex);
     RequestBlock[] GetTimeoutRequestBlocks();
     void IncreaseRarity(int index);
     void SetBlockToPending(RequestBlock requestBlock);
-    void SetBlockToRequested(RequestBlock requestBlock, PeerConnection peerConnection);
+    void SetBlockToRequested(RequestBlock requestBlock, IPeerConnection peerConnection);
     bool TryGetRequestedBlock(
         Block receiveBlock,
         [NotNullWhen(true)] out RequestBlock? requestBlock

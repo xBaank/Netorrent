@@ -33,7 +33,7 @@ internal class FakePiecePicker : IPiecePicker
         throw new NotImplementedException();
     }
 
-    public PeerConnection GetLastRequester(RequestBlock requestBlock)
+    public IPeerConnection GetLastRequester(RequestBlock requestBlock)
     {
         throw new NotImplementedException();
     }
@@ -60,7 +60,7 @@ internal class FakePiecePicker : IPiecePicker
         throw new NotImplementedException();
     }
 
-    public void SetBlockToRequested(RequestBlock requestBlock, PeerConnection peerConnection)
+    public void SetBlockToRequested(RequestBlock requestBlock, IPeerConnection peerConnection)
     {
         throw new NotImplementedException();
     }
