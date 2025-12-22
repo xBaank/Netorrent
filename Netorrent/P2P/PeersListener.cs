@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.Other;
+using Netorrent.P2P.Messages;
 
 namespace Netorrent.P2P;
 
@@ -42,9 +43,9 @@ internal class PeersListener(PeerId peerId, ILogger logger) : IAsyncDisposable
 
             try
             {
-                var handShake = await tcpClient
-                    .GetStream()
+                var handShake = await Handshake
                     .ReceiveHandshakeAsync(
+                        tcpClient.GetStream(),
                         _peersClientByInfoHash.Keys,
                         peerId,
                         _cancellationTokenSource.Token

@@ -130,9 +130,8 @@ internal class PeersClient(
         await tcpClient.ConnectAsync(iPEndPoint, cts.Token).ConfigureAwait(false);
         var stream = tcpClient.GetStream();
 
-        var handshake = await tcpClient
-            .GetStream()
-            .PerformHandshakeAsync(infoHash, peerId, cancellationToken)
+        var handshake = await Handshake
+            .PerformHandshakeAsync(tcpClient.GetStream(), infoHash, peerId, cancellationToken)
             .ConfigureAwait(false);
 
         await AddPeerAsync(tcpClient.GetMessageStream(handshake), iPEndPoint, cancellationToken)

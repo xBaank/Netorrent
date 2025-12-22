@@ -4,22 +4,21 @@ using Netorrent.P2P.Messages;
 
 namespace Netorrent.Extensions;
 
-internal static class StreamExtensions
+internal static class HandshakeExtensions
 {
-    extension(Stream stream)
+    extension(Handshake)
     {
-        public async ValueTask<Handshake> PerformHandshakeAsync(
+        public static async ValueTask<Handshake> PerformHandshakeAsync(
+            Stream stream,
             ReadOnlyMemory<byte> infoHash,
             PeerId peerId,
             CancellationToken cancellationToken
         )
         {
             using var timeoutCts = cancellationToken.WithTimeout(10.Seconds);
-            await stream
-                .SendHandshakeInternalAsync(infoHash, peerId, timeoutCts.Token)
+            await SendHandshakeInternalAsync(stream, infoHash, peerId, timeoutCts.Token)
                 .ConfigureAwait(false);
-            var receivedHandshake = await stream
-                .ReceiveHandshakeInternalAsync(timeoutCts.Token)
+            var receivedHandshake = await ReceiveHandshakeInternalAsync(stream, timeoutCts.Token)
                 .ConfigureAwait(false);
 
             return receivedHandshake.InfoHash.SequenceEqual(infoHash.Span)
@@ -27,7 +26,8 @@ internal static class StreamExtensions
                 : throw new InvalidOperationException("InfoHash do not match");
         }
 
-        public async ValueTask<Handshake> ReceiveHandshakeAsync(
+        public static async ValueTask<Handshake> ReceiveHandshakeAsync(
+            Stream stream,
             ICollection<ReadOnlyMemory<byte>> infoHashes,
             PeerId peerId,
             CancellationToken cancellationToken
@@ -43,8 +43,7 @@ internal static class StreamExtensions
 
             using var timeoutCts = cancellationToken.WithTimeout(10.Seconds);
 
-            var receivedHandshake = await stream
-                .ReceiveHandshakeInternalAsync(timeoutCts.Token)
+            var receivedHandshake = await ReceiveHandshakeInternalAsync(stream, timeoutCts.Token)
                 .ConfigureAwait(false);
 
             ReadOnlyMemory<byte>? selectedInfoHash = null;
@@ -64,14 +63,19 @@ internal static class StreamExtensions
                 );
             }
 
-            await stream
-                .SendHandshakeInternalAsync(selectedInfoHash.Value, peerId, timeoutCts.Token)
+            await SendHandshakeInternalAsync(
+                    stream,
+                    selectedInfoHash.Value,
+                    peerId,
+                    timeoutCts.Token
+                )
                 .ConfigureAwait(false);
 
             return receivedHandshake;
         }
 
-        private async ValueTask<Handshake> ReceiveHandshakeInternalAsync(
+        private static async ValueTask<Handshake> ReceiveHandshakeInternalAsync(
+            Stream stream,
             CancellationToken cancellationToken
         )
         {
@@ -82,7 +86,8 @@ internal static class StreamExtensions
             return receivedHandshake;
         }
 
-        private async ValueTask SendHandshakeInternalAsync(
+        private static async ValueTask SendHandshakeInternalAsync(
+            Stream stream,
             ReadOnlyMemory<byte> infoHash,
             PeerId peerId,
             CancellationToken cancellationToken
