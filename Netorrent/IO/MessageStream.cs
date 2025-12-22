@@ -8,8 +8,7 @@ using ZLinq;
 
 namespace Netorrent.IO;
 
-//TODO get peer id and create another class or extension method only to handshake
-internal class MessageStream(Stream stream, PeerId peerId, TimeSpan timeout) : IMessageStream
+internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeout) : IMessageStream
 {
     private readonly Channel<Message> _incomingMessages = Channel.CreateBounded<Message>(
         new BoundedChannelOptions(256) { SingleWriter = true, SingleReader = true }
@@ -20,7 +19,7 @@ internal class MessageStream(Stream stream, PeerId peerId, TimeSpan timeout) : I
 
     public ChannelReader<Message> IncomingMessages => _incomingMessages.Reader;
     public ChannelWriter<Message> OutgoingMessages => _outgoingMessages.Writer;
-    public PeerId PeerId => peerId;
+    public PeerId PeerId => handshake.PeerId;
 
     private readonly byte[] _lengthBuffer = new byte[4];
     private readonly byte[] _idBuffer = new byte[1];

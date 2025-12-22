@@ -7,13 +7,13 @@ using Netorrent.P2P.Messages;
 
 namespace Netorrent.IO;
 
-internal class TcpMessageStream(TcpClient tcpClient, PeerId peerId) : IMessageStream
+internal class TcpMessageStream(TcpClient tcpClient, Handshake handshake) : IMessageStream
 {
     const int PEER_TIMEOUT_SECONDS = 120;
 
     private readonly MessageStream stream = new(
         tcpClient.GetStream(),
-        peerId,
+        handshake,
         PEER_TIMEOUT_SECONDS.Seconds
     );
 

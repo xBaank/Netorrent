@@ -9,7 +9,6 @@ internal static class TcpClientExtensions
 {
     extension(TcpClient tcpClient)
     {
-        public TcpMessageStream GetMessageStream(Handshake handshake) =>
-            new(tcpClient, handshake.PeerId);
+        public TcpMessageStream GetMessageStream(Handshake handshake) => new(tcpClient, handshake);
     }
 }
