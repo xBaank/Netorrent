@@ -27,7 +27,7 @@ internal class TcpPeer(IPEndPoint iPEndPoint, PeerId peerId, ReadOnlyMemory<byte
             .PerformHandshakeAsync(tcpClient.GetStream(), infoHash, peerId, cancellationToken)
             .ConfigureAwait(false);
 
-        return tcpClient.GetMessageStream(handshake);
+        return _tcpMessageStream = tcpClient.GetMessageStream(handshake);
     }
 
     public async ValueTask DisconnectAsync(CancellationToken cancellationToken)
