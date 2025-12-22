@@ -4,7 +4,6 @@ using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.Other;
-using ZLinq;
 
 namespace Netorrent.P2P;
 
@@ -40,14 +39,16 @@ internal class PeersListener(PeerId peerId, ILogger logger) : IAsyncDisposable
                 .ConfigureAwait(false);
 
             var remoteEndPoint = (IPEndPoint)tcpClient.Client.RemoteEndPoint!;
-            var messageStream = tcpClient.GetMessageStream();
-
-            var infoHashes = _peersClientByInfoHash.Keys.ToArray();
 
             try
             {
-                var handShake = await messageStream
-                    .ReceiveHandshakeAsync(infoHashes, peerId, _cancellationTokenSource.Token)
+                var handShake = await tcpClient
+                    .GetStream()
+                    .ReceiveHandshakeAsync(
+                        _peersClientByInfoHash.Keys,
+                        peerId,
+                        _cancellationTokenSource.Token
+                    )
                     .ConfigureAwait(false);
 
                 if (
@@ -57,14 +58,14 @@ internal class PeersListener(PeerId peerId, ILogger logger) : IAsyncDisposable
                     )
                 )
                 {
-                    await messageStream.DisposeAsync().ConfigureAwait(false);
+                    tcpClient.Dispose();
                     continue;
                 }
 
                 await selectedPeersClient
                     .AddPeerAsync(
-                        messageStream,
-                        new(remoteEndPoint, handShake.PeerId),
+                        tcpClient.GetMessageStream(handShake.PeerId),
+                        remoteEndPoint,
                         _cancellationTokenSource.Token
                     )
                     .ConfigureAwait(false);
@@ -79,7 +80,7 @@ internal class PeersListener(PeerId peerId, ILogger logger) : IAsyncDisposable
                         remoteEndPoint
                     );
                 }
-                await messageStream.DisposeAsync().ConfigureAwait(false);
+                tcpClient.Dispose();
             }
         }
     }

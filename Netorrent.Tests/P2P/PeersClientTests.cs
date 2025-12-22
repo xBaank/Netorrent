@@ -28,8 +28,8 @@ internal class PeersClientTests
         var unusedChannel = Channel.CreateUnbounded<IPEndPoint>();
         var logger = NullLogger.Instance;
         var peerId = new PeerId();
-        await using var peersClient = CreatePeersClient(peerId, infoHash, unusedChannel, logger);
         await using var peerListener = CreatePeersListener(peerId, logger);
+        await using var peersClient = CreatePeersClient(peerId, infoHash, unusedChannel, logger);
         var peersClients = CreatePeersClients(number, infoHash, logger);
         var p2pTask = peersClient.StartAsync(cts.Token);
         peerListener.Start();

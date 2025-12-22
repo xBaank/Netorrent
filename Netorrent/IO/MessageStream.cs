@@ -8,7 +8,8 @@ using ZLinq;
 
 namespace Netorrent.IO;
 
-internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream, IHandshakeStream
+//TODO get peer id and create another class or extension method only to handshake
+internal class MessageStream(Stream stream, PeerId peerId, TimeSpan timeout) : IMessageStream
 {
     private readonly Channel<Message> _incomingMessages = Channel.CreateBounded<Message>(
         new BoundedChannelOptions(256) { SingleWriter = true, SingleReader = true }
@@ -19,6 +20,7 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream, 
 
     public ChannelReader<Message> IncomingMessages => _incomingMessages.Reader;
     public ChannelWriter<Message> OutgoingMessages => _outgoingMessages.Writer;
+    public PeerId PeerId => peerId;
 
     private readonly byte[] _lengthBuffer = new byte[4];
     private readonly byte[] _idBuffer = new byte[1];
@@ -32,62 +34,6 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream, 
             ReadLoopAsync(cts.Token),
             WriteLoopAsync(cts.Token),
         ]);
-    }
-
-    public async ValueTask<Handshake> PerformHandshakeAsync(
-        ReadOnlyMemory<byte> infoHash,
-        PeerId peerId,
-        CancellationToken cancellationToken
-    )
-    {
-        using var timeoutCts = cancellationToken.WithTimeout(10.Seconds);
-        await SendHandHandshake(infoHash, peerId, timeoutCts.Token).ConfigureAwait(false);
-        var receivedHandshake = await ReceiveHandshakeAsync(timeoutCts.Token).ConfigureAwait(false);
-
-        return receivedHandshake.InfoHash.SequenceEqual(infoHash.Span)
-            ? receivedHandshake
-            : throw new InvalidOperationException("InfoHash do not match");
-    }
-
-    public async ValueTask<Handshake> ReceiveHandshakeAsync(
-        ICollection<ReadOnlyMemory<byte>> infoHashes,
-        PeerId peerId,
-        CancellationToken cancellationToken
-    )
-    {
-        if (infoHashes.Count == 0)
-        {
-            throw new ArgumentException(
-                "InfoHashes collection cannot be empty.",
-                nameof(infoHashes)
-            );
-        }
-
-        using var timeoutCts = cancellationToken.WithTimeout(10.Seconds);
-
-        var receivedHandshake = await ReceiveHandshakeAsync(timeoutCts.Token).ConfigureAwait(false);
-
-        ReadOnlyMemory<byte>? selectedInfoHash = null;
-        foreach (var infoHash in infoHashes)
-        {
-            if (receivedHandshake.InfoHash.SequenceEqual(infoHash.Span))
-            {
-                selectedInfoHash = infoHash;
-                break;
-            }
-        }
-
-        if (selectedInfoHash is null)
-        {
-            throw new InvalidOperationException(
-                "Received handshake contains an unknown info hash."
-            );
-        }
-
-        await SendHandHandshake(selectedInfoHash.Value, peerId, timeoutCts.Token)
-            .ConfigureAwait(false);
-
-        return receivedHandshake;
     }
 
     private async Task ReadLoopAsync(CancellationToken cancellationToken)
@@ -159,37 +105,6 @@ internal class MessageStream(Stream stream, TimeSpan timeout) : IMessageStream, 
             throw;
         }
     }
-
-    private async ValueTask<Handshake> ReceiveHandshakeAsync(CancellationToken cancellationToken)
-    {
-        using var cts = cancellationToken.WithTimeout(timeout);
-        using var pool = MemoryPool<byte>.Shared.Rent(Handshake.TotalLength);
-        var buffer = pool.Memory[..Handshake.TotalLength];
-        await stream.ReadExactlyAsync(buffer, cts.Token).ConfigureAwait(false);
-        var receivedHandshake = Handshake.FromBytes(buffer.Span);
-        return receivedHandshake;
-    }
-
-    private async ValueTask SendHandHandshake(
-        ReadOnlyMemory<byte> infoHash,
-        PeerId peerId,
-        CancellationToken cancellationToken
-    )
-    {
-        using var cts = cancellationToken.WithTimeout(timeout);
-        var handshake = Handshake.Create(infoHash.ToArray(), peerId.ToBytes());
-        using var bytesRented = handshake.ToBytes();
-        await stream.WriteAsync(bytesRented.Memory, cts.Token).ConfigureAwait(false);
-        await stream.FlushAsync(cts.Token).ConfigureAwait(false);
-    }
-
-    private static Handshake? ValidateHandshake(
-        ReadOnlyMemory<byte> infoHash,
-        Handshake receivedHandshake
-    ) =>
-        !receivedHandshake.InfoHash.SequenceEqual(infoHash.Span)
-            ? throw new ArgumentException("")
-            : receivedHandshake;
 
     private async ValueTask DrainChannelsAsync()
     {

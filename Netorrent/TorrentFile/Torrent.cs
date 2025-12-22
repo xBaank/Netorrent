@@ -24,7 +24,6 @@ public sealed class Torrent : IAsyncDisposable
     public TorrentStatisticsClient Statistics { get; }
     public string OutputDirectory { get; }
     public State State { get; private set; } = State.Stopped;
-    internal PeersClient PeersClient => _peersClient;
 
     private readonly PeersClient _peersClient;
     private readonly PeersListener _peersListener;

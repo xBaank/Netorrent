@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Net;
+using System.Net.Http;
 using System.Net.Sockets;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
@@ -68,13 +69,9 @@ internal class PeersClient(
             );
             try
             {
-                var (messageStream, peerEndpoint) = await HandShakeAsync(
-                        targetEndPoint,
-                        cancellationToken
-                    )
+                var messageStream = await GetTcpMessageStreamAsync(iPEndPoint, cancellationToken)
                     .ConfigureAwait(false);
-
-                connectTasks.Add(AddPeerAsync(messageStream, peerEndpoint, cancellationToken));
+                connectTasks.Add(AddPeerAsync(messageStream, iPEndPoint, cancellationToken));
             }
             catch (Exception ex)
             {
@@ -93,7 +90,7 @@ internal class PeersClient(
         await Task.WhenAll(connectTasks).ConfigureAwait(false);
     }
 
-    private static async ValueTask<TcpMessageStream> GetTcpMessageStream(
+    private async ValueTask<TcpMessageStream> GetTcpMessageStreamAsync(
         IPEndPoint iPEndPoint,
         CancellationToken cancellationToken
     )
@@ -101,52 +98,30 @@ internal class PeersClient(
         using var cts = cancellationToken.WithTimeout(10.Seconds);
         var tcpClient = new TcpClient();
         await tcpClient.ConnectAsync(iPEndPoint, cts.Token).ConfigureAwait(false);
-        return tcpClient.GetMessageStream();
-    }
 
-    private async ValueTask<(
-        TcpMessageStream messageStream,
-        PeerEndpoint peerEndpoint
-    )> HandShakeAsync(IPEndPoint targetEndPoint, CancellationToken cancellationToken)
-    {
-        var messageStream = await GetTcpMessageStream(targetEndPoint, cancellationToken)
-            .ConfigureAwait(false);
-        var handshake = await messageStream
+        var handshake = await tcpClient
+            .GetStream()
             .PerformHandshakeAsync(infoHash, peerId, cancellationToken)
             .ConfigureAwait(false);
-        var peerEndpoint = new PeerEndpoint(targetEndPoint, handshake.PeerId);
-        return (messageStream, peerEndpoint);
+
+        return tcpClient.GetMessageStream(peerId);
     }
 
     public async Task AddPeerAsync(
         IMessageStream messageStream,
-        PeerEndpoint peerEndpoint,
+        IPEndPoint iPEndPoint,
         CancellationToken cancellationToken = default
     )
     {
-        PeerConnection peerConnection;
-
-        try
-        {
-            peerConnection = new PeerConnection(
-                peerEndpoint,
-                bitField,
-                uploadScheduler,
-                requestScheduler,
-                messageStream,
-                new PeerRequestWindow(piecePicker.BlockSize),
-                piecePicker
-            );
-        }
-        catch (Exception ex)
-        {
-            if (logger.IsEnabled(LogLevel.Debug))
-            {
-                logger.LogDebug(ex, "Error handshaking to {ip}", peerEndpoint);
-            }
-
-            return;
-        }
+        var peerConnection = new PeerConnection(
+            new(iPEndPoint, messageStream.PeerId),
+            bitField,
+            uploadScheduler,
+            requestScheduler,
+            messageStream,
+            new PeerRequestWindow(piecePicker.BlockSize),
+            piecePicker
+        );
 
         await _semaphoreSlim.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -155,7 +130,10 @@ internal class PeersClient(
             {
                 if (logger.IsEnabled(LogLevel.Information))
                 {
-                    logger.LogInformation("Ignored self connection to {EndPoint}", peerEndpoint);
+                    logger.LogInformation(
+                        "Ignored self connection to {EndPoint}",
+                        peerConnection.PeerEndpoint
+                    );
                 }
 
                 await peerConnection.DisposeAsync().ConfigureAwait(false);
@@ -170,14 +148,17 @@ internal class PeersClient(
             )
             {
                 if (logger.IsEnabled(LogLevel.Information))
-                    logger.LogInformation("Ignored active peer from {EndPoint}", peerEndpoint);
+                    logger.LogInformation(
+                        "Ignored active peer from {EndPoint}",
+                        peerConnection.PeerEndpoint
+                    );
                 await peerConnection.DisposeAsync().ConfigureAwait(false);
                 return;
             }
 
             if (_activePeers.Count >= MAX_ACTIVE_PEER_COUNT)
             {
-                _knownPeers.Enqueue(peerEndpoint);
+                _knownPeers.Enqueue(peerConnection.PeerEndpoint);
                 await peerConnection.DisposeAsync().ConfigureAwait(false);
                 return;
             }
@@ -244,13 +225,13 @@ internal class PeersClient(
         {
             try
             {
-                var (messageStream, _) = await HandShakeAsync(
+                var messageStream = await GetTcpMessageStreamAsync(
                         nextEndpoint.EndPoint,
                         cancellationToken
                     )
                     .ConfigureAwait(false);
 
-                await AddPeerAsync(messageStream, nextEndpoint, cancellationToken)
+                await AddPeerAsync(messageStream, nextEndpoint.EndPoint, cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (Exception ex)
