@@ -7,14 +7,13 @@ using Netorrent.P2P.Messages;
 namespace Netorrent.P2P.Tcp;
 
 internal class TcpReceivedPeer(
-    TcpClient tcpClient,
+    TcpMessageStream? _tcpMessageStream,
     IPEndPoint iPEndPoint,
     PeerId peerId,
     Handshake handshake
 ) : IPeer
 {
     public IPEndPoint PeerEndPoint => iPEndPoint;
-    private TcpMessageStream? _tcpMessageStream;
 
     public async ValueTask<IMessageStream> ConnectAsync(CancellationToken cancellationToken)
     {
@@ -23,7 +22,7 @@ internal class TcpReceivedPeer(
             return _tcpMessageStream;
         }
 
-        tcpClient = new TcpClient();
+        var tcpClient = new TcpClient();
         await tcpClient.ConnectAsync(iPEndPoint, cancellationToken).ConfigureAwait(false);
 
         handshake = await Handshake

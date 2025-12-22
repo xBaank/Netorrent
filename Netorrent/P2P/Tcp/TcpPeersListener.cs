@@ -65,7 +65,12 @@ internal class TcpPeersListener(PeerId peerId, ILogger logger) : IAsyncDisposabl
 
                 await selectedPeersClient
                     .AddPeerAsync(
-                        new TcpReceivedPeer(tcpClient, remoteEndPoint, peerId, handShake),
+                        new TcpReceivedPeer(
+                            tcpClient.GetMessageStream(handShake),
+                            remoteEndPoint,
+                            peerId,
+                            handShake
+                        ),
                         _cancellationTokenSource.Token
                     )
                     .ConfigureAwait(false);
