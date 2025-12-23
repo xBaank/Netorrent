@@ -73,7 +73,7 @@ public class PeerConectionTests
             bitfield,
             new FakeUploadScheduler(),
             new FakeRequestScheduler(),
-            new FakeMessageStream(otherPeerId, messages.Reader, messages.Writer),
+            new FakeMessageStream(otherPeerId, messages, messages),
             new PeerRequestWindow(16 * 1024),
             new FakePiecePicker()
         );

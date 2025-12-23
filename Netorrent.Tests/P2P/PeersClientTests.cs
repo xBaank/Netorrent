@@ -25,24 +25,14 @@ internal class PeersClientTests
     )
     {
         var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var infoHash = new byte[20];
-        var unusedChannel = Channel.CreateUnbounded<IPEndPoint>();
         var logger = NullLogger.Instance;
-        var peerId = new PeerId();
-        await using var peerListener = CreatePeersListener(peerId, logger);
-        await using var peersClient = CreatePeersClient(peerId, logger);
+        await using var peersClient = CreatePeersClient(new PeerId(), logger);
         var peersClients = CreatePeersClients(number, logger);
+        var peerEndpointsObservable = peersClient.PeerConnected.Take(number);
         var p2pTask = peersClient.StartAsync(cts.Token);
-        peerListener.Start();
-        peerListener.AddPeersClient(infoHash, peersClient);
-
-        var peerEndpointsObservable = peersClient
-            .PeerConnected.Take(number)
-            .Select(i => i.EndPoint);
 
         await StartAsync(peersClients, cts.Token);
-        await WriteToChannels(peerListener, peersClients, infoHash, cts.Token);
-
+        await WriteToChannels(peersClients, peersClient, cancellationToken);
         var peerEndpointsCount = await peerEndpointsObservable.CountAsync(cts.Token);
         cts.Cancel();
         await DisposeP2pClients(peersClients);
@@ -52,25 +42,29 @@ internal class PeersClientTests
     }
 
     private static async Task WriteToChannels(
-        TcpPeersListener peerListener,
         IEnumerable<PeersClient> peersClients,
-        ReadOnlyMemory<byte> infoHash,
+        PeersClient listenerPeersClient,
         CancellationToken cancellationToken
     )
     {
         foreach (var peersClient in peersClients)
         {
-            await peersClient
-                .AddPeerAsync(
-                    new TcpPeer(
-                        null,
-                        new IPEndPoint(IPAddress.Loopback, peerListener.EndPoint.Port),
-                        peersClient.PeerId,
-                        infoHash
-                    ),
-                    cancellationToken
-                )
-                .ConfigureAwait(false);
+            var incoming = Channel.CreateUnbounded<Message>();
+            var outgoing = Channel.CreateUnbounded<Message>();
+            var listenerPeer = new FakePeer(
+                listenerPeersClient.PeerId,
+                new IPEndPoint(IPAddress.Loopback, Random.Shared.Next(1024, 65535)),
+                incoming,
+                outgoing
+            );
+            var peer = new FakePeer(
+                peersClient.PeerId,
+                new IPEndPoint(IPAddress.Loopback, Random.Shared.Next(1024, 65535)),
+                outgoing,
+                incoming
+            );
+            await peersClient.AddPeerAsync(listenerPeer, cancellationToken).ConfigureAwait(false);
+            await listenerPeersClient.AddPeerAsync(peer, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -105,7 +99,4 @@ internal class PeersClientTests
             new Bitfield(5),
             logger
         );
-
-    private static TcpPeersListener CreatePeersListener(PeerId peerId, ILogger logger) =>
-        new(peerId, logger);
 }

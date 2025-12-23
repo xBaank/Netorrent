@@ -64,8 +64,6 @@ internal class PeersClient(
             {
                 _peerTasks.Add(HandlePeerAsync(peerConnection, cancellationToken));
             }
-
-            _peerTasks.RemoveAll(i => i.IsCompleted);
         }
     }
 

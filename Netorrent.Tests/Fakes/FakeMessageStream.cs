@@ -7,17 +7,15 @@ namespace Netorrent.Tests.Fakes;
 
 internal class FakeMessageStream(
     PeerId otherPeerId,
-    ChannelReader<Message> incommingMessages,
-    ChannelWriter<Message> outgoingMessages
+    Channel<Message> incommingMessages,
+    Channel<Message> outgoingMessages
 ) : IMessageStream
 {
     public ChannelReader<Message> IncomingMessages => incommingMessages;
 
     public ChannelWriter<Message> OutgoingMessages => outgoingMessages;
 
-    public PeerId PeerId { get; } = new();
-
-    public Handshake Handshake => new();
+    public Handshake Handshake => new(0, string.Empty, [], otherPeerId.ToBytes());
 
     public ValueTask<PeerId> PerformHandshakeAsync(
         ReadOnlyMemory<byte> infoHash,
@@ -34,8 +32,22 @@ internal class FakeMessageStream(
     public Task StartAsync(CancellationToken cancellationToken) =>
         Task.Delay(-1, cancellationToken);
 
+    private async ValueTask DrainChannelsAsync()
+    {
+        await foreach (var item in incommingMessages.Reader.ReadAllAsync().ConfigureAwait(false))
+        {
+            item.Dispose();
+        }
+        await foreach (var item in outgoingMessages.Reader.ReadAllAsync().ConfigureAwait(false))
+        {
+            item.Dispose();
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
-        outgoingMessages.TryComplete();
+        incommingMessages.Writer.TryComplete();
+        outgoingMessages.Writer.TryComplete();
+        await DrainChannelsAsync();
     }
 }
