@@ -1,7 +1,7 @@
 ﻿using System.Security.Cryptography;
 using System.Text;
 
-namespace Netorrent.P2P;
+namespace Netorrent.P2P.Messages;
 
 public readonly struct PeerId
 {
@@ -14,6 +14,7 @@ public readonly struct PeerId
 
     public PeerId(string value)
     {
+        //TODO validate
         Value = value;
     }
 

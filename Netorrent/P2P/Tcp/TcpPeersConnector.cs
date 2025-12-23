@@ -2,6 +2,7 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
+using Netorrent.P2P.Messages;
 
 namespace Netorrent.P2P.Tcp;
 
@@ -31,7 +32,14 @@ internal class TcpPeersConnector(
                 );
                 try
                 {
-                    tasks.Add(AddPeerAsync(targetEndPoint, cancellationToken).AsTask());
+                    tasks.Add(
+                        peersClient
+                            .AddPeerAsync(
+                                new TcpPeer(null, iPEndPoint, peerId, infoHash),
+                                cancellationToken
+                            )
+                            .AsTask()
+                    );
 
                     if (tasks.Count >= 100)
                     {
@@ -62,12 +70,5 @@ internal class TcpPeersConnector(
             }
             catch { }
         }
-    }
-
-    private async ValueTask AddPeerAsync(IPEndPoint iPEndPoint, CancellationToken cancellationToken)
-    {
-        await peersClient
-            .AddPeerAsync(new TcpPeer(null, iPEndPoint, peerId, infoHash), cancellationToken)
-            .ConfigureAwait(false);
     }
 }

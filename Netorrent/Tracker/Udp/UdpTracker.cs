@@ -2,7 +2,7 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
-using Netorrent.P2P;
+using Netorrent.P2P.Messages;
 using Netorrent.Statistics;
 using Netorrent.Tracker.Udp.Request;
 using Netorrent.Tracker.Udp.Response;

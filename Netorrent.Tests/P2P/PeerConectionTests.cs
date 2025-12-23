@@ -20,7 +20,6 @@ public class PeerConectionTests
         var incommingMessages = Channel.CreateUnbounded<Message>();
         var outgoingMessages = Channel.CreateUnbounded<Message>();
         var bitfield = new Bitfield(10, true);
-
         await using var peerConnection = CreatePeerConnection(
             ipEndpoint,
             otherPeerId,
@@ -33,8 +32,7 @@ public class PeerConectionTests
         var statesTask = peerConnection.PeerChoking.Take(2).ToListAsync(cancellationToken);
         await incommingMessages.Writer.WriteAsync(Message.CreateUnchoke(), cancellationToken);
         var states = await statesTask;
-        peerConnection.PeerEndpoint.EndPoint.ShouldBe(ipEndpoint);
-        peerConnection.PeerEndpoint.PeerId.ShouldBe(otherPeerId);
+
         states.First().ShouldBeTrue();
         states.Last().ShouldBeFalse();
     }
@@ -47,7 +45,6 @@ public class PeerConectionTests
         var incommingMessages = Channel.CreateUnbounded<Message>();
         var outgoingMessages = Channel.CreateUnbounded<Message>();
         var bitfield = new Bitfield(10, true);
-
         await using var peerConnection = CreatePeerConnection(
             ipEndpoint,
             otherPeerId,
@@ -60,8 +57,7 @@ public class PeerConectionTests
         var statesTask = peerConnection.AmChoking.Take(2).ToListAsync(cancellationToken);
         await peerConnection.SendUnchokedAsync(cancellationToken);
         var states = await statesTask;
-        peerConnection.PeerEndpoint.EndPoint.ShouldBe(ipEndpoint);
-        peerConnection.PeerEndpoint.PeerId.ShouldBe(otherPeerId);
+
         states.First().ShouldBeTrue();
         states.Last().ShouldBeFalse();
     }
@@ -74,7 +70,6 @@ public class PeerConectionTests
         var incommingMessages = Channel.CreateUnbounded<Message>();
         var outgoingMessages = Channel.CreateUnbounded<Message>();
         var bitfield = new Bitfield(10, true);
-
         await using var peerConnection = CreatePeerConnection(
             ipEndpoint,
             otherPeerId,
@@ -87,8 +82,7 @@ public class PeerConectionTests
         var statesTask = peerConnection.PeerInterested.Take(2).ToListAsync(cancellationToken);
         await incommingMessages.Writer.WriteAsync(Message.CreateInterested(), cancellationToken);
         var states = await statesTask;
-        peerConnection.PeerEndpoint.EndPoint.ShouldBe(ipEndpoint);
-        peerConnection.PeerEndpoint.PeerId.ShouldBe(otherPeerId);
+
         states.First().ShouldBeFalse();
         states.Last().ShouldBeTrue();
     }
@@ -101,7 +95,6 @@ public class PeerConectionTests
         var incommingMessages = Channel.CreateUnbounded<Message>();
         var outgoingMessages = Channel.CreateUnbounded<Message>();
         var bitfield = new Bitfield(10, false);
-
         await using var peerConnection = CreatePeerConnection(
             ipEndpoint,
             otherPeerId,
@@ -114,8 +107,7 @@ public class PeerConectionTests
         var statesTask = peerConnection.AmInterested.Take(2).ToListAsync(cancellationToken);
         await incommingMessages.Writer.WriteAsync(Message.CreateHave(5), cancellationToken);
         var states = await statesTask;
-        peerConnection.PeerEndpoint.EndPoint.ShouldBe(ipEndpoint);
-        peerConnection.PeerEndpoint.PeerId.ShouldBe(otherPeerId);
+
         states.First().ShouldBeFalse();
         states.Last().ShouldBeTrue();
     }

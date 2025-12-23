@@ -7,7 +7,7 @@ using System.Net;
 using System.Net.Sockets;
 using Netorrent.Extensions;
 using Netorrent.Other;
-using Netorrent.P2P;
+using Netorrent.P2P.Messages;
 
 internal record UdpTrackerRequest(
     IPEndPoint IPEndPoint,

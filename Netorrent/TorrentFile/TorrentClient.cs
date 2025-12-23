@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
 using Netorrent.Extensions;
-using Netorrent.P2P;
+using Netorrent.P2P.Messages;
 using Netorrent.P2P.Tcp;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker.Udp;

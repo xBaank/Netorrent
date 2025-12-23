@@ -27,8 +27,8 @@ public sealed class Torrent : IAsyncDisposable
     public State State { get; private set; } = State.Stopped;
 
     private readonly TcpPeersConnector _peerConnector;
-    private readonly PeersClient _peersClient;
     private readonly TcpPeersListener _peersListener;
+    private readonly PeersClient _peersClient;
     private readonly TrackerClient _trackerClient;
     private readonly DiskStorage _pieceStorage;
     private readonly Bitfield _myBitfield;
