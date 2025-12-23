@@ -44,6 +44,7 @@ public sealed class Torrent : IAsyncDisposable
         string outputDirectory,
         ILogger logger,
         TcpPeersListener peersListener,
+        UsedAdressProtocol usedAdressProtocol,
         IPAddress? forcedIp = null,
         bool bitfieldInitialized = false,
         Func<IPAddress, IPAddress>? peerIpProxy = null
@@ -98,6 +99,7 @@ public sealed class Torrent : IAsyncDisposable
         _trackerClient = new TrackerClient(
             new HttpTrackerHandler(httpClient),
             trackerTransaction,
+            usedAdressProtocol,
             peersListener.EndPoint.Port,
             transferStatistics,
             peerId,

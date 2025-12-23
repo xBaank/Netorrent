@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Net.Sockets;
+using Netorrent.TorrentFile;
 
 namespace Netorrent.Extensions;
 
@@ -7,11 +8,20 @@ internal static class UdpClientExtensions
 {
     extension(UdpClient)
     {
-        public static UdpClient GetFreeUdpClient()
+        public static UdpClient GetFreeUdpClient(
+            UsedAdressProtocol usedAdressProtocol,
+            int port = 0
+        )
         {
-            var udpClient = new UdpClient(AddressFamily.InterNetworkV6);
-            udpClient.Client.DualMode = true;
-            udpClient.Client.Bind(new IPEndPoint(IPAddress.IPv6Any, 0));
+            var ipAdress = usedAdressProtocol.ToIpAddress();
+            var udpClient = new UdpClient(ipAdress.AddressFamily);
+
+            if (usedAdressProtocol == UsedAdressProtocol.Dual)
+            {
+                udpClient.Client.DualMode = true;
+            }
+
+            udpClient.Client.Bind(new IPEndPoint(ipAdress, port));
             return udpClient;
         }
     }

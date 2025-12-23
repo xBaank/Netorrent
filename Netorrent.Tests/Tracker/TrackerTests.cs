@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Netorrent.Extensions;
 using Netorrent.Tests.Fakes;
+using Netorrent.TorrentFile;
 using Netorrent.Tracker;
 using Netorrent.Tracker.Http;
 using Netorrent.Tracker.Udp;
@@ -207,6 +208,7 @@ public class TrackerTests
         await using var trackerClient = new TrackerClient(
             httpTrackerHandler,
             udptrackerManager,
+            UsedAdressProtocol.Dual,
             1,
             new(3),
             new(),

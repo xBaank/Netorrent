@@ -8,15 +8,15 @@ using Netorrent.P2P.Messages;
 
 namespace Netorrent.P2P.Tcp;
 
-internal class TcpPeersListener(PeerId peerId, ILogger logger) : IAsyncDisposable
+internal class TcpPeersListener(PeerId peerId, TcpListener tcpListener, ILogger logger)
+    : IAsyncDisposable
 {
-    private readonly TcpListener _tcpListener = TcpListener.GetFreeTcpListener();
     private readonly ConcurrentDictionary<
         ReadOnlyMemory<byte>,
         PeersClient
     > _peersClientByInfoHash = new(ReadOnlyMemoryEqualityComparer<byte>.Instance);
 
-    public IPEndPoint EndPoint => (IPEndPoint)_tcpListener.LocalEndpoint;
+    public IPEndPoint EndPoint => (IPEndPoint)tcpListener.LocalEndpoint;
 
     private CancellationTokenSource? _cancellationTokenSource;
     private Task? _runTask;
@@ -30,12 +30,12 @@ internal class TcpPeersListener(PeerId peerId, ILogger logger) : IAsyncDisposabl
 
     private async Task StartAsync()
     {
-        _tcpListener.Start();
+        tcpListener.Start();
         _cancellationTokenSource = new();
 
         while (!_cancellationTokenSource.Token.IsCancellationRequested)
         {
-            var tcpClient = await _tcpListener
+            var tcpClient = await tcpListener
                 .AcceptTcpClientAsync(_cancellationTokenSource.Token)
                 .ConfigureAwait(false);
 
@@ -112,7 +112,7 @@ internal class TcpPeersListener(PeerId peerId, ILogger logger) : IAsyncDisposabl
                     await _runTask.ConfigureAwait(false);
             }
             catch { }
-            _tcpListener.Dispose();
+            tcpListener.Dispose();
         }
     }
 }

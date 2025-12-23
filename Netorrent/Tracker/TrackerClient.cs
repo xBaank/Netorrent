@@ -6,14 +6,17 @@ using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 using Netorrent.Statistics;
+using Netorrent.TorrentFile;
 using Netorrent.Tracker.Http;
 using Netorrent.Tracker.Udp;
+using ZLinq;
 
 namespace Netorrent.Tracker;
 
 internal class TrackerClient(
     IHttpTrackerHandler httpTrackerHandler,
     IUdpTrackerTransactionManager trackerTransactionManager,
+    UsedAdressProtocol usedAdressProtocol,
     int port,
     TransferStatistics transferStatistics,
     PeerId peerId,
@@ -91,10 +94,17 @@ internal class TrackerClient(
         List<UdpTracker> udpTrackers = [];
         var ips = await Dns.GetHostAdressesOrEmptyAsync(uri.Host, cancellationToken)
             .ConfigureAwait(false);
-        var ipv4 = ips.FirstOrDefault(i => i.AddressFamily == AddressFamily.InterNetwork);
-        var ipv6 = ips.FirstOrDefault(i => i.AddressFamily == AddressFamily.InterNetworkV6);
+        var ipv4 = ips.AsValueEnumerable()
+            .FirstOrDefault(i => i.AddressFamily == AddressFamily.InterNetwork);
+        var ipv6 = ips.AsValueEnumerable()
+            .FirstOrDefault(i => i.AddressFamily == AddressFamily.InterNetworkV6);
+        var supportedAdressFamilies = usedAdressProtocol.ToAddressFamily();
 
-        if (ipv4 != default && uri.Port > 0)
+        if (
+            supportedAdressFamilies.Contains(AddressFamily.InterNetwork)
+            && ipv4 != default
+            && uri.Port > 0
+        )
         {
             var ipEndpoint = new IPEndPoint(ipv4, uri.Port);
             var trackerv4 = new UdpTracker(
@@ -112,7 +122,11 @@ internal class TrackerClient(
             udpTrackers.Add(trackerv4);
         }
 
-        if (ipv6 != default && uri.Port > 0)
+        if (
+            supportedAdressFamilies.Contains(AddressFamily.InterNetworkV6)
+            && ipv6 != default
+            && uri.Port > 0
+        )
         {
             var ipEndpoint = new IPEndPoint(ipv6, uri.Port);
             var trackerv6 = new UdpTracker(
