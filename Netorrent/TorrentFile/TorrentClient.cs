@@ -24,11 +24,20 @@ public sealed class TorrentClient : IAsyncDisposable
 
     public TorrentClient(Func<TorrentClientOptions, TorrentClientOptions>? action = null)
     {
-        var options = new TorrentClientOptions(new(), NullLogger.Instance, null);
+        var options = new TorrentClientOptions(
+            new(),
+            NullLogger.Instance,
+            UsedAdressProtocol.Dual,
+            null
+        );
         _options = action?.Invoke(options) ?? options;
-        _peersListener = new(_peerId, _options.Logger);
+        _peersListener = new(
+            _peerId,
+            TcpListener.GetFreeTcpListener(_options.UsedAdressProtocol),
+            _options.Logger
+        );
         _trackerTransactionManager = new(
-            new UdpClientWrapper(UdpClient.GetFreeUdpClient()),
+            new UdpClientWrapper(UdpClient.GetFreeUdpClient(_options.UsedAdressProtocol)),
             _options.Logger,
             15.Seconds,
             1.Seconds,
@@ -70,6 +79,7 @@ public sealed class TorrentClient : IAsyncDisposable
             Path.GetFullPath(outputDirectory),
             _options.Logger,
             _peersListener,
+            _options.UsedAdressProtocol,
             peerIpProxy: _options.PeerIpProxy
         );
         _torrents.Add(torrent);
@@ -92,6 +102,7 @@ public sealed class TorrentClient : IAsyncDisposable
             Path.GetFullPath(outputDirectory),
             _options.Logger,
             _peersListener,
+            _options.UsedAdressProtocol,
             _options.ForcedIp,
             peerIpProxy: _options.PeerIpProxy
         );
@@ -138,6 +149,7 @@ public sealed class TorrentClient : IAsyncDisposable
             Path.GetFullPath(Path.GetDirectoryName(path) ?? ""),
             _options.Logger,
             _peersListener,
+            _options.UsedAdressProtocol,
             _options.ForcedIp,
             true,
             peerIpProxy: _options.PeerIpProxy
