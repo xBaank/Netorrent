@@ -67,7 +67,7 @@ internal class TcpPeersConnector(
     private async ValueTask AddPeerAsync(IPEndPoint iPEndPoint, CancellationToken cancellationToken)
     {
         await peersClient
-            .AddPeerAsync(new TcpPeer(iPEndPoint, peerId, infoHash), cancellationToken)
+            .AddPeerAsync(new TcpPeer(null, iPEndPoint, peerId, infoHash), cancellationToken)
             .ConfigureAwait(false);
     }
 }

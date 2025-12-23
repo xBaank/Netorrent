@@ -63,6 +63,7 @@ internal class PeersClientTests
             await peersClient
                 .AddPeerAsync(
                     new TcpPeer(
+                        null,
                         new IPEndPoint(IPAddress.Loopback, peerListener.EndPoint.Port),
                         peersClient.PeerId,
                         infoHash

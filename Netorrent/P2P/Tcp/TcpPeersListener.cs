@@ -65,11 +65,11 @@ internal class TcpPeersListener(PeerId peerId, ILogger logger) : IAsyncDisposabl
 
                 await selectedPeersClient
                     .AddPeerAsync(
-                        new TcpReceivedPeer(
+                        new TcpPeer(
                             tcpClient.GetMessageStream(handShake),
-                            remoteEndPoint,
+                            (IPEndPoint)tcpClient.Client.RemoteEndPoint!,
                             peerId,
-                            handShake
+                            handShake.InfoHash
                         ),
                         _cancellationTokenSource.Token
                     )

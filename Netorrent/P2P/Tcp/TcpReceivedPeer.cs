@@ -7,7 +7,7 @@ using Netorrent.P2P.Messages;
 namespace Netorrent.P2P.Tcp;
 
 internal class TcpReceivedPeer(
-    TcpMessageStream tcpMessageStream,
+    TcpMessageStream? tcpMessageStream,
     IPEndPoint iPEndPoint,
     PeerId peerId,
     Handshake handshake
