@@ -9,17 +9,17 @@ internal interface IPeerConnection : IAsyncDisposable
 {
     ReactiveProperty<bool> AmChoking { get; }
     ReactiveProperty<bool> AmInterested { get; }
+    ReactiveProperty<bool> PeerChoking { get; }
+    ReactiveProperty<bool> PeerInterested { get; }
     TimeSpan ConnectionDuration { get; }
     SpeedTracker DownloadSpeedTracker { get; }
+    SpeedTracker UploadSpeedTracker { get; }
     Bitfield MyBitField { get; }
     Bitfield? PeerBitField { get; }
-    ReactiveProperty<bool> PeerChoking { get; }
     PeerEndpoint PeerEndpoint { get; }
-    ReactiveProperty<bool> PeerInterested { get; }
     PeerRequestWindow PeerRequestWindow { get; }
     int RequestedBlocksCount { get; }
     int UploadRequestedBlocksCount { get; }
-    SpeedTracker UploadSpeedTracker { get; }
 
     int DecrementRequestedBlock();
     int DecrementUploadRequested();
@@ -28,6 +28,6 @@ internal interface IPeerConnection : IAsyncDisposable
     ValueTask SendBlockAsync(Block block, CancellationToken cancellationToken);
     ValueTask SendCancelAsync(RequestBlock request, CancellationToken cancellationToken);
     ValueTask SendRequestAsync(RequestBlock nextBlock, CancellationToken cancellationToken);
-    Task SendUnchokedAsync(CancellationToken cancellationToken);
+    ValueTask SendUnchokedAsync(CancellationToken cancellationToken);
     Task StartAsync(CancellationToken cancellationToken);
 }

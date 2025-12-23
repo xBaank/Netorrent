@@ -25,7 +25,7 @@ internal class PeerConnection(
     bool peerInterested = false
 ) : IPeerConnection
 {
-    private readonly SemaphoreSlim _stateSemaphoreSlim = new(1);
+    private readonly Lock _stateLock = new();
     private DateTimeOffset _lastKeepAlive;
     private CancellationTokenSource? _cancellationTokenSource;
     private DateTimeOffset _startedConnectionTime;
@@ -349,43 +349,43 @@ internal class PeerConnection(
         await CheckInterestAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task CheckInterestAsync(CancellationToken cancellationToken)
+    private async ValueTask CheckInterestAsync(CancellationToken cancellationToken)
     {
-        await _stateSemaphoreSlim.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        if (PeerBitField is null)
         {
-            if (PeerBitField is null)
-            {
-                return;
-            }
+            return;
+        }
 
-            var interest = MyBitField.HasAnyMissingPiece(PeerBitField);
+        var interest = MyBitField.HasAnyMissingPiece(PeerBitField);
+        var valueChanged = false;
+
+        lock (_stateLock)
+        {
             if (interest != AmInterested.Value)
             {
                 AmInterested.Value = interest;
-                if (!interest)
-                {
-                    var message = Message.CreateNotInterested();
-                    await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
-                    await requestScheduler
-                        .FreeSlotAsync(this, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                if (interest)
-                {
-                    AmInterested.Value = interest;
-                    var message = Message.CreateInterested();
-                    await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
-                }
+                valueChanged = true;
             }
         }
-        finally
+
+        if (valueChanged)
         {
-            _stateSemaphoreSlim.Release();
+            if (!interest)
+            {
+                var message = Message.CreateNotInterested();
+                await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
+                await requestScheduler.FreeSlotAsync(this, cancellationToken).ConfigureAwait(false);
+            }
+            if (interest)
+            {
+                AmInterested.Value = interest;
+                var message = Message.CreateInterested();
+                await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
+            }
         }
     }
 
-    private async Task SendChokedAsync(CancellationToken cancellationToken)
+    private async ValueTask SendChokedAsync(CancellationToken cancellationToken)
     {
         if (AmChoking.Value != true)
         {
@@ -396,7 +396,7 @@ internal class PeerConnection(
         }
     }
 
-    public async Task SendUnchokedAsync(CancellationToken cancellationToken)
+    public async ValueTask SendUnchokedAsync(CancellationToken cancellationToken)
     {
         if (AmChoking.Value != false)
         {
@@ -406,7 +406,10 @@ internal class PeerConnection(
         }
     }
 
-    private async Task SendBitfieldAsync(Bitfield bitField, CancellationToken cancellationToken)
+    private async ValueTask SendBitfieldAsync(
+        Bitfield bitField,
+        CancellationToken cancellationToken
+    )
     {
         var memoryRented = bitField.ToRentedArray();
         var message = Message.CreateBitfield(memoryRented);
@@ -480,7 +483,6 @@ internal class PeerConnection(
 
             _cancellationTokenSource?.Dispose();
             await messageStream.DisposeAsync().ConfigureAwait(false);
-            _stateSemaphoreSlim.Dispose();
         }
     }
 }

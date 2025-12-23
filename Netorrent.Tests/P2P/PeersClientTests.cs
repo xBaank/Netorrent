@@ -5,7 +5,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Netorrent.Extensions;
 using Netorrent.P2P;
 using Netorrent.P2P.Messages;
-using Netorrent.P2P.Tcp;
 using Netorrent.Tests.Extensions;
 using Netorrent.Tests.Fakes;
 using R3;
@@ -32,7 +31,7 @@ internal class PeersClientTests
         var p2pTask = peersClient.StartAsync(cts.Token);
 
         await StartAsync(peersClients, cts.Token);
-        await WriteToChannels(peersClients, peersClient, cancellationToken);
+        await ConnectPeersAsync(peersClients, peersClient, cancellationToken);
         var peerEndpointsCount = await peerEndpointsObservable.CountAsync(cts.Token);
         cts.Cancel();
         await DisposeP2pClients(peersClients);
@@ -41,7 +40,7 @@ internal class PeersClientTests
         await p2pTask.ShouldThrowAsync<OperationCanceledException>();
     }
 
-    private static async Task WriteToChannels(
+    private static async Task ConnectPeersAsync(
         IEnumerable<PeersClient> peersClients,
         PeersClient listenerPeersClient,
         CancellationToken cancellationToken
