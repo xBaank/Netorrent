@@ -13,21 +13,21 @@ internal static class UsedAdressProtocolExtensions
             {
                 UsedAdressProtocol.Ipv4 => IPAddress.Any,
                 UsedAdressProtocol.Ipv6 => IPAddress.IPv6Any,
-                UsedAdressProtocol.Dual => IPAddress.IPv6Any,
-                _ => throw new ArgumentOutOfRangeException(nameof(usedAdressProtocol)),
+                _ => IPAddress.IPv6Any,
             };
 
-        public AddressFamily[] ToAddressFamily() =>
-            usedAdressProtocol switch
+        public AddressFamily[] ToAddressFamily()
+        {
+            List<AddressFamily> addressFamilies = [];
+            if (usedAdressProtocol.HasFlag(UsedAdressProtocol.Ipv4))
             {
-                UsedAdressProtocol.Ipv4 => [AddressFamily.InterNetwork],
-                UsedAdressProtocol.Ipv6 => [AddressFamily.InterNetworkV6],
-                UsedAdressProtocol.Dual =>
-                [
-                    AddressFamily.InterNetwork,
-                    AddressFamily.InterNetworkV6,
-                ],
-                _ => throw new ArgumentOutOfRangeException(nameof(usedAdressProtocol)),
-            };
+                addressFamilies.Add(AddressFamily.InterNetwork);
+            }
+            if (usedAdressProtocol.HasFlag(UsedAdressProtocol.Ipv6))
+            {
+                addressFamilies.Add(AddressFamily.InterNetwork);
+            }
+            return addressFamilies.ToArray();
+        }
     }
 }

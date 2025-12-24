@@ -17,6 +17,7 @@ internal class TrackerClient(
     IHttpTrackerHandler httpTrackerHandler,
     IUdpTrackerTransactionManager trackerTransactionManager,
     UsedAdressProtocol usedAdressProtocol,
+    UsedTrackers usedTrackers,
     int port,
     TransferStatistics transferStatistics,
     PeerId peerId,
@@ -61,7 +62,7 @@ internal class TrackerClient(
 
             var trackers = uri.Scheme switch
             {
-                "http" or "https" =>
+                "http" or "https" when usedTrackers.HasFlag(UsedTrackers.Http) =>
                 [
                     new HttpTracker(
                         port,
@@ -75,7 +76,11 @@ internal class TrackerClient(
                         forcedIp
                     ),
                 ],
-                "udp" => await CreateUdpTrackers(uri, cancellationToken).ConfigureAwait(false),
+                "udp" when usedTrackers.HasFlag(UsedTrackers.Udp) => await CreateUdpTrackers(
+                        uri,
+                        cancellationToken
+                    )
+                    .ConfigureAwait(false),
                 _ => LogUnknownTracker(url),
             };
 

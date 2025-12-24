@@ -16,7 +16,10 @@ internal static class UdpClientExtensions
             var ipAdress = usedAdressProtocol.ToIpAddress();
             var udpClient = new UdpClient(ipAdress.AddressFamily);
 
-            if (usedAdressProtocol == UsedAdressProtocol.Dual)
+            if (
+                usedAdressProtocol.HasFlag(UsedAdressProtocol.Ipv4)
+                && usedAdressProtocol.HasFlag(UsedAdressProtocol.Ipv6)
+            )
             {
                 udpClient.Client.DualMode = true;
             }

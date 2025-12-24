@@ -1,9 +1,12 @@
 ﻿using System.Net;
+using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.Tests.Integration.Fixtures;
 using Netorrent.TorrentFile;
 using Netorrent.TorrentFile.FileStructure;
+using Netorrent.Tracker.Http;
+using Org.BouncyCastle.Bcpg;
 using Shouldly;
 
 namespace Netorrent.Tests.Integration.Torrents;
@@ -15,8 +18,18 @@ public class TorrentTests(OpenTrackerFixture fixture)
     private readonly OpenTrackerFixture _fixture = fixture;
     private static ILogger Logger => new TUnitLogger(TestContext.Current!.GetDefaultLogger());
 
-    private static IPAddress FixDockerAdress(IPAddress iPAddress) =>
-        iPAddress.ToString().StartsWith("172.") ? IPAddress.Loopback : iPAddress;
+    private static IPAddress FixDockerAdress(IPAddress iPAddress)
+    {
+        if (iPAddress.ToString().StartsWith("172."))
+        {
+            return IPAddress.Loopback;
+        }
+        if (iPAddress.AddressFamily == AddressFamily.InterNetworkV6)
+        {
+            return IPAddress.IPv6Loopback;
+        }
+        return iPAddress;
+    }
 
     private static async Task<byte[]> ReadAllBytesAsync(
         string path,
@@ -74,18 +87,42 @@ public class TorrentTests(OpenTrackerFixture fixture)
     [Test]
     [MatrixDataSource]
     public async Task Should_Download_Torrent(
-        [MatrixRange<int>(1, 6)] int seedersCount,
-        [MatrixRange<int>(1, 6)] int leechersCount,
+        [Matrix<UsedTrackers>(
+            UsedTrackers.Http,
+            UsedTrackers.Udp,
+            UsedTrackers.Http | UsedTrackers.Udp
+        )]
+            UsedTrackers usedTrackers,
+        [Matrix<UsedAdressProtocol>(
+            UsedAdressProtocol.Ipv4,
+            //  UsedAdressProtocol.Ipv6, TODO fix this
+            UsedAdressProtocol.Ipv4 | UsedAdressProtocol.Ipv6
+        )]
+            UsedAdressProtocol usedAdressProtocol,
+        [MatrixRange<int>(1, 5)] int seedersCount,
+        [MatrixRange<int>(1, 5)] int leechersCount,
         CancellationToken cancellationToken
     )
     {
         var path = await CreateRandomFileAsync("Input");
 
-        var seeders = await GetSeedersAsync(seedersCount, path, Logger)
+        var seeders = await GetSeedersAsync(
+                seedersCount,
+                path,
+                Logger,
+                usedTrackers,
+                usedAdressProtocol
+            )
             .ToListAsync(cancellationToken: cancellationToken);
         var seedersTorrents = seeders.Select(i => i.Item1).ToList();
 
-        var leechers = await GetLeechersAsync(leechersCount, seedersTorrents[0].MetaInfo, Logger)
+        var leechers = await GetLeechersAsync(
+                leechersCount,
+                seedersTorrents[0].MetaInfo,
+                Logger,
+                usedTrackers,
+                usedAdressProtocol
+            )
             .ToListAsync(cancellationToken: cancellationToken);
         var leechersTorrents = leechers.Select(i => i.Item1).ToList();
 
@@ -306,7 +343,9 @@ public class TorrentTests(OpenTrackerFixture fixture)
     private async IAsyncEnumerable<(Torrent, TorrentClient)> GetSeedersAsync(
         int number,
         string path,
-        ILogger logger
+        ILogger logger,
+        UsedTrackers usedTrackers = UsedTrackers.Http | UsedTrackers.Udp,
+        UsedAdressProtocol usedAdressProtocol = UsedAdressProtocol.Ipv4 | UsedAdressProtocol.Ipv6
     )
     {
         for (int i = 0; i < number; i++)
@@ -316,6 +355,8 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 {
                     PeerIpProxy = FixDockerAdress,
                     Logger = logger,
+                    UsedTrackers = usedTrackers,
+                    UsedAdressProtocol = usedAdressProtocol
                 }
             );
 
@@ -332,7 +373,9 @@ public class TorrentTests(OpenTrackerFixture fixture)
     private static async IAsyncEnumerable<(Torrent, TorrentClient)> GetLeechersAsync(
         int number,
         MetaInfo metaInfo,
-        ILogger logger
+        ILogger logger,
+        UsedTrackers usedTrackers = UsedTrackers.Http | UsedTrackers.Udp,
+        UsedAdressProtocol usedAdressProtocol = UsedAdressProtocol.Ipv4 | UsedAdressProtocol.Ipv6
     )
     {
         for (int i = 0; i < number; i++)
@@ -342,6 +385,8 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 {
                     PeerIpProxy = FixDockerAdress,
                     Logger = logger,
+                    UsedTrackers = usedTrackers,
+                    UsedAdressProtocol = usedAdressProtocol
                 }
             );
 

@@ -45,6 +45,7 @@ public sealed class Torrent : IAsyncDisposable
         ILogger logger,
         TcpPeersListener peersListener,
         UsedAdressProtocol usedAdressProtocol,
+        UsedTrackers usedTrackers,
         IPAddress? forcedIp = null,
         bool bitfieldInitialized = false,
         Func<IPAddress, IPAddress>? peerIpProxy = null
@@ -100,6 +101,7 @@ public sealed class Torrent : IAsyncDisposable
             new HttpTrackerHandler(httpClient),
             trackerTransaction,
             usedAdressProtocol,
+            usedTrackers,
             peersListener.EndPoint.Port,
             transferStatistics,
             peerId,

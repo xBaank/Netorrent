@@ -27,7 +27,8 @@ public sealed class TorrentClient : IAsyncDisposable
         var options = new TorrentClientOptions(
             new(),
             NullLogger.Instance,
-            UsedAdressProtocol.Dual,
+            UsedAdressProtocol.Ipv4 | UsedAdressProtocol.Ipv6,
+            UsedTrackers.Http | UsedTrackers.Udp,
             null
         );
         _options = action?.Invoke(options) ?? options;
@@ -80,6 +81,7 @@ public sealed class TorrentClient : IAsyncDisposable
             _options.Logger,
             _peersListener,
             _options.UsedAdressProtocol,
+            _options.UsedTrackers,
             peerIpProxy: _options.PeerIpProxy
         );
         _torrents.Add(torrent);
@@ -103,6 +105,7 @@ public sealed class TorrentClient : IAsyncDisposable
             _options.Logger,
             _peersListener,
             _options.UsedAdressProtocol,
+            _options.UsedTrackers,
             _options.ForcedIp,
             peerIpProxy: _options.PeerIpProxy
         );
@@ -150,6 +153,7 @@ public sealed class TorrentClient : IAsyncDisposable
             _options.Logger,
             _peersListener,
             _options.UsedAdressProtocol,
+            _options.UsedTrackers,
             _options.ForcedIp,
             true,
             peerIpProxy: _options.PeerIpProxy

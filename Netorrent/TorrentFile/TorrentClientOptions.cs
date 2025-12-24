@@ -3,23 +3,32 @@ using Microsoft.Extensions.Logging;
 
 namespace Netorrent.TorrentFile;
 
+[Flags]
 public enum UsedAdressProtocol
 {
     /// <summary>
-    /// Create sockets with Dual Mode for both Ipv4 and Ipv6
+    /// Create sockets with Ipv4
     /// </summary>
-    /// <remarks>This is the default option</remarks>
-    Dual,
+    Ipv4 = 1,
 
     /// <summary>
-    /// Create sockets with Ipv4 only
+    /// Create sockets with Ipv6
     /// </summary>
-    Ipv4,
+    Ipv6 = 2,
+}
+
+[Flags]
+public enum UsedTrackers
+{
+    /// <summary>
+    /// Enables Http trackers
+    /// </summary>
+    Http = 1,
 
     /// <summary>
-    /// Create sockets with Ipv6 only
+    /// Enables Udp Trackers
     /// </summary>
-    Ipv6,
+    Udp = 2,
 }
 
 /// <summary>
@@ -32,6 +41,7 @@ public record TorrentClientOptions(
     HttpClient HttpClient,
     ILogger Logger,
     UsedAdressProtocol UsedAdressProtocol,
+    UsedTrackers UsedTrackers,
     IPAddress? ForcedIp
 )
 {

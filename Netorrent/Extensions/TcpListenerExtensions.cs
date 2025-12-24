@@ -16,7 +16,10 @@ internal static class TcpListenerExtensions
             var ipAddress = usedAdressProtocol.ToIpAddress();
             var listener = new TcpListener(ipAddress, port);
 
-            if (usedAdressProtocol == UsedAdressProtocol.Dual)
+            if (
+                usedAdressProtocol.HasFlag(UsedAdressProtocol.Ipv4)
+                && usedAdressProtocol.HasFlag(UsedAdressProtocol.Ipv6)
+            )
             {
                 listener.Server.DualMode = true;
             }
