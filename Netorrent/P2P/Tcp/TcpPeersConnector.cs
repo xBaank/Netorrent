@@ -35,7 +35,7 @@ internal class TcpPeersConnector(
                     tasks.Add(
                         peersClient
                             .AddPeerAsync(
-                                new TcpPeer(null, iPEndPoint, peerId, infoHash),
+                                new TcpPeer(null, targetEndPoint, peerId, infoHash),
                                 cancellationToken
                             )
                             .AsTask()
