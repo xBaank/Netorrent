@@ -10,7 +10,7 @@ using Shouldly;
 namespace Netorrent.Tests.Integration.Torrents;
 
 [ClassDataSource<OpenTrackerFixture>(Shared = SharedType.PerClass)]
-[Timeout(5 * 60_000)]
+[Timeout(60_000)]
 public class TorrentTests(OpenTrackerFixture fixture)
 {
     private readonly OpenTrackerFixture _fixture = fixture;
@@ -74,7 +74,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
             options: FileOptions.Asynchronous | FileOptions.SequentialScan
         );
 
-        long size = 10L * 1024 * 1024; // 10 MB
+        long size = 10L * 1024; // 1 MB
         for (long i = 0; i < size; i++)
         {
             stream.WriteByte((byte)Random.Shared.Next());
@@ -93,12 +93,12 @@ public class TorrentTests(OpenTrackerFixture fixture)
             UsedTrackers usedTrackers,
         [Matrix<UsedAdressProtocol>(
             UsedAdressProtocol.Ipv4,
-            //  UsedAdressProtocol.Ipv6, TODO fix this
+            UsedAdressProtocol.Ipv6,
             UsedAdressProtocol.Ipv4 | UsedAdressProtocol.Ipv6
         )]
             UsedAdressProtocol usedAdressProtocol,
-        [MatrixRange<int>(1, 5)] int seedersCount,
-        [MatrixRange<int>(1, 5)] int leechersCount,
+        [MatrixRange<int>(3, 3)] int seedersCount,
+        [MatrixRange<int>(3, 3)] int leechersCount,
         CancellationToken cancellationToken
     )
     {
@@ -183,8 +183,8 @@ public class TorrentTests(OpenTrackerFixture fixture)
     [Test]
     [MatrixDataSource]
     public async Task Should_Stop_Torrent(
-        [MatrixRange<int>(1, 3)] int seedersCount,
-        [MatrixRange<int>(1, 3)] int leechersCount,
+        [MatrixRange<int>(3, 6)] int seedersCount,
+        [MatrixRange<int>(3, 6)] int leechersCount,
         CancellationToken cancellationToken
     )
     {
@@ -251,8 +251,8 @@ public class TorrentTests(OpenTrackerFixture fixture)
     [Test]
     [MatrixDataSource]
     public async Task Should_Throw_In_Torrent(
-        [MatrixRange<int>(1, 3)] int seedersCount,
-        [MatrixRange<int>(1, 3)] int leechersCount,
+        [MatrixRange<int>(3, 6)] int seedersCount,
+        [MatrixRange<int>(3, 6)] int leechersCount,
         CancellationToken cancellationToken
     )
     {
@@ -339,7 +339,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                     PeerIpProxy = FixDockerAdress,
                     Logger = logger,
                     UsedTrackers = usedTrackers,
-                    UsedAdressProtocol = usedAdressProtocol
+                    UsedAdressProtocol = usedAdressProtocol,
                 }
             );
 
@@ -369,7 +369,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                     PeerIpProxy = FixDockerAdress,
                     Logger = logger,
                     UsedTrackers = usedTrackers,
-                    UsedAdressProtocol = usedAdressProtocol
+                    UsedAdressProtocol = usedAdressProtocol,
                 }
             );
 

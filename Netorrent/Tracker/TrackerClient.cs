@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System;
+using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
@@ -29,6 +30,8 @@ internal class TrackerClient(
 ) : IAsyncDisposable
 {
     private readonly List<ITracker> _trackers = [];
+    private readonly AddressFamily[] _supportedAddressFamilies =
+        usedAdressProtocol.ToAddressFamily();
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -63,20 +66,8 @@ internal class TrackerClient(
             var trackers = uri.Scheme switch
             {
                 "http" or "https" when usedTrackers.HasFlag(UsedTrackers.Http) =>
-                [
-                    new HttpTracker(
-                        port,
-                        transferStatistics,
-                        httpTrackerHandler,
-                        peerId,
-                        infoHash,
-                        url,
-                        logger,
-                        trackersChannel,
-                        forcedIp
-                    ),
-                ],
-                "udp" when usedTrackers.HasFlag(UsedTrackers.Udp) => await CreateUdpTrackers(
+                    await CreateHttpTrackersAsync(uri, cancellationToken).ConfigureAwait(false),
+                "udp" when usedTrackers.HasFlag(UsedTrackers.Udp) => await CreateUdpTrackersAsync(
                         uri,
                         cancellationToken
                     )
@@ -94,7 +85,58 @@ internal class TrackerClient(
         }
     }
 
-    private async Task<UdpTracker[]> CreateUdpTrackers(Uri uri, CancellationToken cancellationToken)
+    private async Task<HttpTracker[]> CreateHttpTrackersAsync(
+        Uri uri,
+        CancellationToken cancellationToken
+    )
+    {
+        List<HttpTracker> httpsTrackers = [];
+        var ips = await Dns.GetHostAdressesOrEmptyAsync(uri.Host, cancellationToken)
+            .ConfigureAwait(false);
+        var ipv4 = ips.AsValueEnumerable()
+            .FirstOrDefault(i => i.AddressFamily == AddressFamily.InterNetwork);
+        var ipv6 = ips.AsValueEnumerable()
+            .FirstOrDefault(i => i.AddressFamily == AddressFamily.InterNetworkV6);
+
+        if (_supportedAddressFamilies.Contains(AddressFamily.InterNetwork) && ipv4 != default)
+        {
+            var trackerv4 = new HttpTracker(
+                port,
+                transferStatistics,
+                httpTrackerHandler,
+                peerId,
+                infoHash,
+                uri.OriginalString,
+                logger,
+                trackersChannel,
+                forcedIp
+            );
+            httpsTrackers.Add(trackerv4);
+        }
+
+        if (_supportedAddressFamilies.Contains(AddressFamily.InterNetworkV6) && ipv6 != default)
+        {
+            var trackerv6 = new HttpTracker(
+                port,
+                transferStatistics,
+                httpTrackerHandler,
+                peerId,
+                infoHash,
+                uri.OriginalString,
+                logger,
+                trackersChannel,
+                forcedIp
+            );
+            httpsTrackers.Add(trackerv6);
+        }
+
+        return [.. httpsTrackers];
+    }
+
+    private async Task<UdpTracker[]> CreateUdpTrackersAsync(
+        Uri uri,
+        CancellationToken cancellationToken
+    )
     {
         List<UdpTracker> udpTrackers = [];
         var ips = await Dns.GetHostAdressesOrEmptyAsync(uri.Host, cancellationToken)
@@ -103,10 +145,9 @@ internal class TrackerClient(
             .FirstOrDefault(i => i.AddressFamily == AddressFamily.InterNetwork);
         var ipv6 = ips.AsValueEnumerable()
             .FirstOrDefault(i => i.AddressFamily == AddressFamily.InterNetworkV6);
-        var supportedAdressFamilies = usedAdressProtocol.ToAddressFamily();
 
         if (
-            supportedAdressFamilies.Contains(AddressFamily.InterNetwork)
+            _supportedAddressFamilies.Contains(AddressFamily.InterNetwork)
             && ipv4 != default
             && uri.Port > 0
         )
@@ -128,7 +169,7 @@ internal class TrackerClient(
         }
 
         if (
-            supportedAdressFamilies.Contains(AddressFamily.InterNetworkV6)
+            _supportedAddressFamilies.Contains(AddressFamily.InterNetworkV6)
             && ipv6 != default
             && uri.Port > 0
         )

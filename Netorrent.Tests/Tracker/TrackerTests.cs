@@ -237,6 +237,6 @@ public class TrackerTests
 
         IPEndPoint[] resultIps = [.. ctx.Ips, .. ctx.Ips, .. ctx.Ips, .. ctx.Ips];
         ipendpoints.Length.ShouldBe(ctx.Ips.Length * 4);
-        ipendpoints.ShouldBeEquivalentTo(resultIps);
+        ipendpoints.ShouldBe(resultIps);
     }
 }

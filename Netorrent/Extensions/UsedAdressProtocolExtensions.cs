@@ -25,7 +25,7 @@ internal static class UsedAdressProtocolExtensions
             }
             if (usedAdressProtocol.HasFlag(UsedAdressProtocol.Ipv6))
             {
-                addressFamilies.Add(AddressFamily.InterNetwork);
+                addressFamilies.Add(AddressFamily.InterNetworkV6);
             }
             return addressFamilies.ToArray();
         }

@@ -38,7 +38,6 @@ public enum UsedTrackers
 /// <param name="Logger">Logger used to debug</param>
 /// <param name="ForcedIp">Forced ip to use in tracker requests</param>
 public record TorrentClientOptions(
-    HttpClient HttpClient,
     ILogger Logger,
     UsedAdressProtocol UsedAdressProtocol,
     UsedTrackers UsedTrackers,
