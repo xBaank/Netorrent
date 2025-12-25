@@ -16,19 +16,6 @@ public class TorrentTests(OpenTrackerFixture fixture)
     private readonly OpenTrackerFixture _fixture = fixture;
     private static ILogger Logger => new TUnitLogger(TestContext.Current!.GetDefaultLogger());
 
-    private static IPAddress FixDockerAdress(IPAddress iPAddress)
-    {
-        if (iPAddress.ToString().StartsWith("172."))
-        {
-            return IPAddress.Loopback;
-        }
-        if (iPAddress.AddressFamily == AddressFamily.InterNetworkV6)
-        {
-            return IPAddress.IPv6Loopback;
-        }
-        return iPAddress;
-    }
-
     private static async Task<byte[]> ReadAllBytesAsync(
         string path,
         CancellationToken cancellationToken = default
@@ -334,13 +321,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
         for (int i = 0; i < number; i++)
         {
             var seeder = new TorrentClient(o =>
-                o with
-                {
-                    PeerIpProxy = FixDockerAdress,
-                    Logger = logger,
-                    UsedTrackers = usedTrackers,
-                    UsedAdressProtocol = usedAdressProtocol,
-                }
+                GetOptions(logger, usedTrackers, usedAdressProtocol, o)
             );
 
             var seederTorrent = await seeder.CreateTorrentAsync(
@@ -364,13 +345,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
         for (int i = 0; i < number; i++)
         {
             var leecher = new TorrentClient(o =>
-                o with
-                {
-                    PeerIpProxy = FixDockerAdress,
-                    Logger = logger,
-                    UsedTrackers = usedTrackers,
-                    UsedAdressProtocol = usedAdressProtocol,
-                }
+                GetOptions(logger, usedTrackers, usedAdressProtocol, o)
             );
 
             var pathName = Guid.NewGuid().ToString();
@@ -379,4 +354,30 @@ public class TorrentTests(OpenTrackerFixture fixture)
             yield return (leecherTorrent, leecher);
         }
     }
+
+    private static TorrentClientOptions GetOptions(
+        ILogger logger,
+        UsedTrackers usedTrackers,
+        UsedAdressProtocol usedAdressProtocol,
+        TorrentClientOptions o
+    ) =>
+        o with
+        {
+            PeerIpProxy = iPAddress =>
+            {
+                //Because docker use NAT and host mode doesn't work properly in win or mac we need to transform those ips.
+                if (usedAdressProtocol.HasFlag(UsedAdressProtocol.Ipv4))
+                {
+                    return IPAddress.Loopback;
+                }
+                if (usedAdressProtocol.HasFlag(UsedAdressProtocol.Ipv6))
+                {
+                    return IPAddress.IPv6Loopback;
+                }
+                return iPAddress;
+            },
+            Logger = logger,
+            UsedTrackers = usedTrackers,
+            UsedAdressProtocol = usedAdressProtocol,
+        };
 }
