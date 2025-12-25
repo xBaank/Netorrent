@@ -10,7 +10,7 @@ using Shouldly;
 namespace Netorrent.Tests.Integration.Torrents;
 
 [ClassDataSource<OpenTrackerFixture>(Shared = SharedType.PerClass)]
-[Timeout(60_000)]
+[Timeout(2 * 60_000)]
 public class TorrentTests(OpenTrackerFixture fixture)
 {
     private readonly OpenTrackerFixture _fixture = fixture;

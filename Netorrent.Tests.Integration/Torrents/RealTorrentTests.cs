@@ -3,6 +3,7 @@ using Netorrent.TorrentFile;
 
 namespace Netorrent.Tests.Integration.Torrents;
 
+[Timeout(5 * 60_000)]
 public class RealTorrentTests
 {
     private static ILogger Logger => new TUnitLogger(TestContext.Current!.GetDefaultLogger());
