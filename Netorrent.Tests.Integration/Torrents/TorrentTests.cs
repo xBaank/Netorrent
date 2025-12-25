@@ -5,8 +5,6 @@ using Netorrent.Extensions;
 using Netorrent.Tests.Integration.Fixtures;
 using Netorrent.TorrentFile;
 using Netorrent.TorrentFile.FileStructure;
-using Netorrent.Tracker.Http;
-using Org.BouncyCastle.Bcpg;
 using Shouldly;
 
 namespace Netorrent.Tests.Integration.Torrents;
@@ -323,21 +321,6 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 await client.DisposeAsync();
             }
         }
-    }
-
-    [Test]
-    public async Task Should_Download_Real_Torrent(CancellationToken cancellationToken)
-    {
-        await using var torrentClient = new TorrentClient(o => o with { Logger = Logger });
-        await using var torrent = await torrentClient.LoadTorrentAsync(
-            "Data/debian-13.2.0-amd64-netinst.iso.torrent",
-            "Output",
-            cancellationToken
-        );
-        cancellationToken.Register(torrent.Stop);
-        await torrent.StartAsync();
-        await torrent.Completion;
-        await torrent.StopAsync();
     }
 
     private async IAsyncEnumerable<(Torrent, TorrentClient)> GetSeedersAsync(
