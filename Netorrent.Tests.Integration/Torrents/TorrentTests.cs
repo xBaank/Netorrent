@@ -71,7 +71,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
     [Test]
     [MatrixDataSource]
-    public async Task Should_Download_Torrent(
+    public async Task Should_Download_Torrent_With_Different_Ips_And_Trackers(
         [Matrix<UsedTrackers>(
             UsedTrackers.Http,
             UsedTrackers.Udp,
