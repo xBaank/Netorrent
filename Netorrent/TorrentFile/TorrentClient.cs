@@ -44,7 +44,7 @@ public sealed class TorrentClient : IAsyncDisposable
             1.Seconds,
             8
         );
-        _trackersHttpClient = HttpClient.CreateHttpClient(_options.UsedAdressProtocol);
+        _trackersHttpClient = new();
         _peersListener.Start();
         _trackerTransactionManager.Start();
     }
