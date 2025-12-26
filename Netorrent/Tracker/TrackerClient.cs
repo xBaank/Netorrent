@@ -41,12 +41,22 @@ internal class TrackerClient(
 
         //The trackers should not fail by them self
         //They finish successfully because of dns problems, udp timeouts, etc.
-        var tasks = await CreateTrackers(urls, cancellationToken)
-            .Select(i => i.StartAsync(cancellationToken).AsTask())
+
+        var trackers = await CreateTrackers(urls, cancellationToken)
             .ToListAsync(cancellationToken: cancellationToken)
             .ConfigureAwait(false);
-
-        await Task.WhenAll(tasks).ConfigureAwait(false);
+        try
+        {
+            var tasks = trackers.Select(i => i.StartAsync(cancellationToken).AsTask());
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+        finally
+        {
+            foreach (var tracker in trackers)
+            {
+                await tracker.DisposeAsync().ConfigureAwait(false);
+            }
+        }
     }
 
     private async IAsyncEnumerable<ITracker> CreateTrackers(
