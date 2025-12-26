@@ -9,7 +9,7 @@ internal static class TcpListenerExtensions
     extension(TcpListener)
     {
         public static TcpListener GetFreeTcpListener(
-            UsedAdressProtocol usedAdressProtocol,
+            UsedAddressProtocol usedAdressProtocol,
             int port = 0
         )
         {
@@ -17,8 +17,8 @@ internal static class TcpListenerExtensions
             var listener = new TcpListener(ipAddress, port);
 
             if (
-                usedAdressProtocol.HasFlag(UsedAdressProtocol.Ipv4)
-                && usedAdressProtocol.HasFlag(UsedAdressProtocol.Ipv6)
+                usedAdressProtocol.HasFlag(UsedAddressProtocol.Ipv4)
+                && usedAdressProtocol.HasFlag(UsedAddressProtocol.Ipv6)
             )
             {
                 listener.Server.DualMode = true;

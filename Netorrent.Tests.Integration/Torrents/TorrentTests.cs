@@ -78,12 +78,12 @@ public class TorrentTests(OpenTrackerFixture fixture)
             UsedTrackers.Http | UsedTrackers.Udp
         )]
             UsedTrackers usedTrackers,
-        [Matrix<UsedAdressProtocol>(
-            UsedAdressProtocol.Ipv4,
-            UsedAdressProtocol.Ipv6,
-            UsedAdressProtocol.Ipv4 | UsedAdressProtocol.Ipv6
+        [Matrix<UsedAddressProtocol>(
+            UsedAddressProtocol.Ipv4,
+            UsedAddressProtocol.Ipv6,
+            UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6
         )]
-            UsedAdressProtocol usedAdressProtocol,
+            UsedAddressProtocol usedAdressProtocol,
         [MatrixRange<int>(3, 3)] int seedersCount,
         [MatrixRange<int>(3, 3)] int leechersCount,
         CancellationToken cancellationToken
@@ -315,7 +315,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
         string path,
         ILogger logger,
         UsedTrackers usedTrackers = UsedTrackers.Http | UsedTrackers.Udp,
-        UsedAdressProtocol usedAdressProtocol = UsedAdressProtocol.Ipv4 | UsedAdressProtocol.Ipv6
+        UsedAddressProtocol usedAdressProtocol = UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6
     )
     {
         for (int i = 0; i < number; i++)
@@ -339,7 +339,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
         MetaInfo metaInfo,
         ILogger logger,
         UsedTrackers usedTrackers = UsedTrackers.Http | UsedTrackers.Udp,
-        UsedAdressProtocol usedAdressProtocol = UsedAdressProtocol.Ipv4 | UsedAdressProtocol.Ipv6
+        UsedAddressProtocol usedAdressProtocol = UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6
     )
     {
         for (int i = 0; i < number; i++)
@@ -358,7 +358,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
     private static TorrentClientOptions GetOptions(
         ILogger logger,
         UsedTrackers usedTrackers,
-        UsedAdressProtocol usedAdressProtocol,
+        UsedAddressProtocol usedAdressProtocol,
         TorrentClientOptions o
     ) =>
         o with
@@ -366,11 +366,11 @@ public class TorrentTests(OpenTrackerFixture fixture)
             PeerIpProxy = iPAddress =>
             {
                 //Because docker use NAT and host mode doesn't work properly in win or mac we need to transform those ips.
-                if (usedAdressProtocol.HasFlag(UsedAdressProtocol.Ipv4))
+                if (usedAdressProtocol.HasFlag(UsedAddressProtocol.Ipv4))
                 {
                     return IPAddress.Loopback;
                 }
-                if (usedAdressProtocol.HasFlag(UsedAdressProtocol.Ipv6))
+                if (usedAdressProtocol.HasFlag(UsedAddressProtocol.Ipv6))
                 {
                     return IPAddress.IPv6Loopback;
                 }

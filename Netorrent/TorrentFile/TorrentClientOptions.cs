@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 namespace Netorrent.TorrentFile;
 
 [Flags]
-public enum UsedAdressProtocol
+public enum UsedAddressProtocol
 {
     /// <summary>
     /// Create sockets with Ipv4
@@ -39,7 +39,7 @@ public enum UsedTrackers
 /// <param name="ForcedIp">Forced ip to use in tracker requests</param>
 public record TorrentClientOptions(
     ILogger Logger,
-    UsedAdressProtocol UsedAdressProtocol,
+    UsedAddressProtocol UsedAdressProtocol,
     UsedTrackers UsedTrackers,
     IPAddress? ForcedIp
 )

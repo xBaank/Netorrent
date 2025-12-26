@@ -6,24 +6,24 @@ namespace Netorrent.Extensions;
 
 internal static class UsedAdressProtocolExtensions
 {
-    extension(UsedAdressProtocol usedAdressProtocol)
+    extension(UsedAddressProtocol usedAdressProtocol)
     {
         public IPAddress ToIpAddress() =>
             usedAdressProtocol switch
             {
-                UsedAdressProtocol.Ipv4 => IPAddress.Any,
-                UsedAdressProtocol.Ipv6 => IPAddress.IPv6Any,
+                UsedAddressProtocol.Ipv4 => IPAddress.Any,
+                UsedAddressProtocol.Ipv6 => IPAddress.IPv6Any,
                 _ => IPAddress.IPv6Any,
             };
 
         public AddressFamily[] ToAddressFamily()
         {
             List<AddressFamily> addressFamilies = [];
-            if (usedAdressProtocol.HasFlag(UsedAdressProtocol.Ipv4))
+            if (usedAdressProtocol.HasFlag(UsedAddressProtocol.Ipv4))
             {
                 addressFamilies.Add(AddressFamily.InterNetwork);
             }
-            if (usedAdressProtocol.HasFlag(UsedAdressProtocol.Ipv6))
+            if (usedAdressProtocol.HasFlag(UsedAddressProtocol.Ipv6))
             {
                 addressFamilies.Add(AddressFamily.InterNetworkV6);
             }

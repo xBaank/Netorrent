@@ -9,7 +9,7 @@ internal static class UdpClientExtensions
     extension(UdpClient)
     {
         public static UdpClient GetFreeUdpClient(
-            UsedAdressProtocol usedAdressProtocol,
+            UsedAddressProtocol usedAdressProtocol,
             int port = 0
         )
         {
@@ -17,8 +17,8 @@ internal static class UdpClientExtensions
             var udpClient = new UdpClient(ipAdress.AddressFamily);
 
             if (
-                usedAdressProtocol.HasFlag(UsedAdressProtocol.Ipv4)
-                && usedAdressProtocol.HasFlag(UsedAdressProtocol.Ipv6)
+                usedAdressProtocol.HasFlag(UsedAddressProtocol.Ipv4)
+                && usedAdressProtocol.HasFlag(UsedAddressProtocol.Ipv6)
             )
             {
                 udpClient.Client.DualMode = true;

@@ -27,7 +27,7 @@ public sealed class TorrentClient : IAsyncDisposable
     {
         var options = new TorrentClientOptions(
             NullLogger.Instance,
-            UsedAdressProtocol.Ipv4 | UsedAdressProtocol.Ipv6,
+            UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6,
             UsedTrackers.Http | UsedTrackers.Udp,
             null
         );
@@ -44,7 +44,7 @@ public sealed class TorrentClient : IAsyncDisposable
             1.Seconds,
             8
         );
-        _trackersHttpClient = new();
+        _trackersHttpClient = HttpClient.CreateHttpClient(_options.UsedAdressProtocol);
         _peersListener.Start();
         _trackerTransactionManager.Start();
     }

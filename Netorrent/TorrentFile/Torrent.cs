@@ -44,7 +44,7 @@ public sealed class Torrent : IAsyncDisposable
         string outputDirectory,
         ILogger logger,
         TcpPeersListener peersListener,
-        UsedAdressProtocol usedAdressProtocol,
+        UsedAddressProtocol usedAdressProtocol,
         UsedTrackers usedTrackers,
         IPAddress? forcedIp = null,
         bool bitfieldInitialized = false,

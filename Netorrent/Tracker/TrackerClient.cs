@@ -17,7 +17,7 @@ namespace Netorrent.Tracker;
 internal class TrackerClient(
     IHttpTrackerHandler httpTrackerHandler,
     IUdpTrackerTransactionManager trackerTransactionManager,
-    UsedAdressProtocol usedAdressProtocol,
+    UsedAddressProtocol usedAdressProtocol,
     UsedTrackers usedTrackers,
     int port,
     TransferStatistics transferStatistics,
