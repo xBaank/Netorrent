@@ -208,7 +208,7 @@ public class TrackerTests
         await using var trackerClient = new TrackerClient(
             httpTrackerHandler,
             udptrackerManager,
-            UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6,
+            (UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6).SupportedAddressFamilies(),
             UsedTrackers.Http | UsedTrackers.Udp,
             1,
             new(3),

@@ -11,13 +11,13 @@ using Netorrent.Tracker.Udp.Response;
 
 namespace Netorrent.Tracker.Udp;
 
-internal class UdpTrackerTransactionManager(
+internal class UdpTrackerHandler(
     IUdpClient udpClient,
     ILogger logger,
     TimeSpan retryDelay,
     TimeSpan retryLoopDelay,
     int maxRetries
-) : IUdpTrackerTransactionManager
+) : IUdpTrackerHandler
 {
     private readonly ConcurrentDictionary<int, TrackerTransaction> _packetsByTransactionId = [];
     private readonly ConcurrentDictionary<long, DateTime> _connectionCreationById = [];

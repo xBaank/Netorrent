@@ -8,6 +8,7 @@ using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 using Netorrent.P2P.Tcp;
 using Netorrent.TorrentFile.FileStructure;
+using Netorrent.Tracker.Http;
 using Netorrent.Tracker.Udp;
 using Netorrent.Tracker.Udp.Client;
 using ZLinq;
@@ -19,9 +20,10 @@ public sealed class TorrentClient : IAsyncDisposable
     private readonly PeerId _peerId = new();
     private readonly TorrentClientOptions _options;
     private readonly List<Torrent> _torrents = [];
-    private readonly UdpTrackerTransactionManager _trackerTransactionManager;
     private readonly TcpPeersListener _peersListener;
-    private readonly HttpClient _trackersHttpClient;
+    private readonly UdpTrackerHandler _udpTrackerTransactionManager;
+    private readonly HttpTrackerHandler _httpTrackerHandler;
+    private readonly IReadOnlySet<AddressFamily> _supportedAddressFamilies;
 
     public TorrentClient(Func<TorrentClientOptions, TorrentClientOptions>? action = null)
     {
@@ -37,16 +39,17 @@ public sealed class TorrentClient : IAsyncDisposable
             TcpListener.GetFreeTcpListener(_options.UsedAdressProtocol),
             _options.Logger
         );
-        _trackerTransactionManager = new(
+        _udpTrackerTransactionManager = new(
             new UdpClientWrapper(UdpClient.GetFreeUdpClient(_options.UsedAdressProtocol)),
             _options.Logger,
             15.Seconds,
             1.Seconds,
             8
         );
-        _trackersHttpClient = HttpClient.CreateHttpClient(_options.UsedAdressProtocol);
+        _httpTrackerHandler = new(HttpClient.CreateHttpClient(_options.UsedAdressProtocol));
+        _supportedAddressFamilies = _options.UsedAdressProtocol.SupportedAddressFamilies();
         _peersListener.Start();
-        _trackerTransactionManager.Start();
+        _udpTrackerTransactionManager.Start();
     }
 
     /// <summary>
@@ -75,13 +78,13 @@ public sealed class TorrentClient : IAsyncDisposable
 
         var torrent = new Torrent(
             metaInfo,
-            _trackersHttpClient,
-            _trackerTransactionManager,
+            _httpTrackerHandler,
+            _udpTrackerTransactionManager,
             _peerId,
             Path.GetFullPath(outputDirectory),
             _options.Logger,
             _peersListener,
-            _options.UsedAdressProtocol,
+            _supportedAddressFamilies,
             _options.UsedTrackers,
             peerIpProxy: _options.PeerIpProxy
         );
@@ -99,13 +102,13 @@ public sealed class TorrentClient : IAsyncDisposable
     {
         var torrent = new Torrent(
             metaInfo,
-            _trackersHttpClient,
-            _trackerTransactionManager,
+            _httpTrackerHandler,
+            _udpTrackerTransactionManager,
             _peerId,
             Path.GetFullPath(outputDirectory),
             _options.Logger,
             _peersListener,
-            _options.UsedAdressProtocol,
+            _supportedAddressFamilies,
             _options.UsedTrackers,
             _options.ForcedIp,
             peerIpProxy: _options.PeerIpProxy
@@ -147,13 +150,13 @@ public sealed class TorrentClient : IAsyncDisposable
                     cancellationToken
                 )
                 .ConfigureAwait(false),
-            _trackersHttpClient,
-            _trackerTransactionManager,
+            _httpTrackerHandler,
+            _udpTrackerTransactionManager,
             _peerId,
             Path.GetFullPath(Path.GetDirectoryName(path) ?? ""),
             _options.Logger,
             _peersListener,
-            _options.UsedAdressProtocol,
+            _supportedAddressFamilies,
             _options.UsedTrackers,
             _options.ForcedIp,
             true,
@@ -469,7 +472,7 @@ public sealed class TorrentClient : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await _peersListener.DisposeAsync().ConfigureAwait(false);
-        await _trackerTransactionManager.DisposeAsync().ConfigureAwait(false);
+        await _udpTrackerTransactionManager.DisposeAsync().ConfigureAwait(false);
         await Task.WhenAll(
                 _torrents.AsValueEnumerable().Select(i => i.DisposeAsync().AsTask()).ToArray()
             )

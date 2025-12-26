@@ -3,7 +3,7 @@ using Netorrent.Tracker.Udp.Response;
 
 namespace Netorrent.Tracker.Udp
 {
-    internal interface IUdpTrackerTransactionManager : IAsyncDisposable
+    internal interface IUdpTrackerHandler : IAsyncDisposable
     {
         Task<UdpTrackerConnectResponse> ConnectAsync(
             IPEndPoint endPoint,

@@ -9,7 +9,7 @@ internal sealed class FakeUdpTrackerTransactionManager(
     IPEndPoint[] peers,
     TimeSpan interval,
     Exception? error = null
-) : IUdpTrackerTransactionManager
+) : IUdpTrackerHandler
 {
     private readonly ConcurrentDictionary<Guid, long> _connections = new();
 

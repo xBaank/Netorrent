@@ -16,8 +16,8 @@ namespace Netorrent.Tracker;
 
 internal class TrackerClient(
     IHttpTrackerHandler httpTrackerHandler,
-    IUdpTrackerTransactionManager trackerTransactionManager,
-    UsedAddressProtocol usedAdressProtocol,
+    IUdpTrackerHandler trackerTransactionManager,
+    IReadOnlySet<AddressFamily> supportedAddressFamilies,
     UsedTrackers usedTrackers,
     int port,
     TransferStatistics transferStatistics,
@@ -30,8 +30,6 @@ internal class TrackerClient(
 ) : IAsyncDisposable
 {
     private readonly List<ITracker> _trackers = [];
-    private readonly AddressFamily[] _supportedAddressFamilies =
-        usedAdressProtocol.ToAddressFamily();
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -98,7 +96,7 @@ internal class TrackerClient(
         var ipv6 = ips.AsValueEnumerable()
             .FirstOrDefault(i => i.AddressFamily == AddressFamily.InterNetworkV6);
 
-        if (_supportedAddressFamilies.Contains(AddressFamily.InterNetwork) && ipv4 != default)
+        if (supportedAddressFamilies.Contains(AddressFamily.InterNetwork) && ipv4 != default)
         {
             var trackerv4 = new HttpTracker(
                 port,
@@ -114,7 +112,7 @@ internal class TrackerClient(
             httpsTrackers.Add(trackerv4);
         }
 
-        if (_supportedAddressFamilies.Contains(AddressFamily.InterNetworkV6) && ipv6 != default)
+        if (supportedAddressFamilies.Contains(AddressFamily.InterNetworkV6) && ipv6 != default)
         {
             var trackerv6 = new HttpTracker(
                 port,
@@ -147,7 +145,7 @@ internal class TrackerClient(
             .FirstOrDefault(i => i.AddressFamily == AddressFamily.InterNetworkV6);
 
         if (
-            _supportedAddressFamilies.Contains(AddressFamily.InterNetwork)
+            supportedAddressFamilies.Contains(AddressFamily.InterNetwork)
             && ipv4 != default
             && uri.Port > 0
         )
@@ -169,7 +167,7 @@ internal class TrackerClient(
         }
 
         if (
-            _supportedAddressFamilies.Contains(AddressFamily.InterNetworkV6)
+            supportedAddressFamilies.Contains(AddressFamily.InterNetworkV6)
             && ipv6 != default
             && uri.Port > 0
         )

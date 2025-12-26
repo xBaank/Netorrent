@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using Microsoft.Extensions.Logging.Abstractions;
 using Netorrent.Extensions;
 using Netorrent.Tests.Extensions;
+using Netorrent.TorrentFile;
 using Netorrent.Tracker;
 using Netorrent.Tracker.Udp;
 using Netorrent.Tracker.Udp.Exceptions;
@@ -15,16 +16,17 @@ namespace Netorrent.Tests.Tracker;
 
 //TODO  Test reconnect
 [Timeout(10_000)]
-public class UdpTrackerTransactionManagerTests
+public class UdpTrackerHandlerTests
 {
     [Test]
-    [Arguments(AddressFamily.InterNetwork)]
-    [Arguments(AddressFamily.InterNetworkV6)]
+    [Arguments(UsedAddressProtocol.Ipv4)]
+    [Arguments(UsedAddressProtocol.Ipv6)]
     public async Task Should_get_udp_response(
-        AddressFamily addressFamily,
+        UsedAddressProtocol usedAddressProtocol,
         CancellationToken cancellationToken
     )
     {
+        var bindAddress = usedAddressProtocol.BindIpAddress();
         IPEndPoint[] ips =
         [
             new IPEndPoint(IPAddress.Parse("127.0.0.1"), 6881),
@@ -35,21 +37,10 @@ public class UdpTrackerTransactionManagerTests
         var fakeUdp = new FakeUdpClient();
         var logger = NullLogger.Instance;
 
-        await using var manager = new UdpTrackerTransactionManager(
-            fakeUdp,
-            logger,
-            15.Seconds,
-            1.Seconds,
-            8
-        );
+        await using var manager = new UdpTrackerHandler(fakeUdp, logger, 15.Seconds, 1.Seconds, 8);
         manager.Start();
 
-        var endpoint = new IPEndPoint(
-            addressFamily == AddressFamily.InterNetwork
-                ? IPAddress.Loopback
-                : IPAddress.IPv6Loopback,
-            6969
-        );
+        var endpoint = new IPEndPoint(bindAddress, 6969);
         var trackerId = Guid.CreateVersion7();
 
         var connectTask = manager.ConnectAsync(endpoint, trackerId, cancellationToken);
@@ -85,9 +76,9 @@ public class UdpTrackerTransactionManagerTests
             10,
             2,
             0,
-            [.. ips.Where(i => i.AddressFamily == addressFamily)]
+            [.. ips.Where(i => i.AddressFamily == bindAddress.AddressFamily)]
         );
-        fakeUdp.EnqueueIncoming(udpTrackerResponse.ToBytes(addressFamily), endpoint);
+        fakeUdp.EnqueueIncoming(udpTrackerResponse.ToBytes(bindAddress.AddressFamily), endpoint);
 
         var result = await sendTask;
 
@@ -106,13 +97,7 @@ public class UdpTrackerTransactionManagerTests
         var fakeUdp = new FakeUdpClient();
         var logger = NullLogger.Instance;
 
-        await using var manager = new UdpTrackerTransactionManager(
-            fakeUdp,
-            logger,
-            15.Seconds,
-            1.Seconds,
-            8
-        );
+        await using var manager = new UdpTrackerHandler(fakeUdp, logger, 15.Seconds, 1.Seconds, 8);
         manager.Start();
 
         var endpoint = new IPEndPoint(IPAddress.IPv6Loopback, 6969);
@@ -163,7 +148,7 @@ public class UdpTrackerTransactionManagerTests
         var fakeUdp = new FakeUdpClient();
         var logger = NullLogger.Instance;
 
-        await using var manager = new UdpTrackerTransactionManager(
+        await using var manager = new UdpTrackerHandler(
             fakeUdp,
             logger,
             0.01.Seconds,

@@ -4,21 +4,25 @@ using Netorrent.TorrentFile;
 
 namespace Netorrent.Extensions;
 
-internal static class UsedAdressProtocolExtensions
+internal static class UsedAddressProtocolExtensions
 {
     extension(UsedAddressProtocol usedAdressProtocol)
     {
-        public IPAddress ToIpAddress() =>
+        public IPAddress BindIpAddress() =>
             usedAdressProtocol switch
             {
                 UsedAddressProtocol.Ipv4 => IPAddress.Any,
                 UsedAddressProtocol.Ipv6 => IPAddress.IPv6Any,
-                _ => IPAddress.IPv6Any,
+                UsedAddressProtocol.Ipv6 | UsedAddressProtocol.Ipv4 => IPAddress.IPv6Any,
+                _ => throw new ArgumentException(
+                    "Unsupported Address Protocol",
+                    nameof(usedAdressProtocol)
+                ),
             };
 
-        public AddressFamily[] ToAddressFamily()
+        public IReadOnlySet<AddressFamily> SupportedAddressFamilies()
         {
-            List<AddressFamily> addressFamilies = [];
+            HashSet<AddressFamily> addressFamilies = new(2);
             if (usedAdressProtocol.HasFlag(UsedAddressProtocol.Ipv4))
             {
                 addressFamilies.Add(AddressFamily.InterNetwork);
@@ -27,7 +31,7 @@ internal static class UsedAdressProtocolExtensions
             {
                 addressFamilies.Add(AddressFamily.InterNetworkV6);
             }
-            return addressFamilies.ToArray();
+            return addressFamilies;
         }
     }
 }

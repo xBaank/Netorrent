@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using System.Net.Sockets;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Bencoding;
@@ -38,13 +39,13 @@ public sealed class Torrent : IAsyncDisposable
 
     internal Torrent(
         MetaInfo metaInfo,
-        HttpClient httpClient,
-        UdpTrackerTransactionManager trackerTransaction,
+        IHttpTrackerHandler httpTrackerHandler,
+        IUdpTrackerHandler udpTrackerTransactionManager,
         PeerId peerId,
         string outputDirectory,
         ILogger logger,
         TcpPeersListener peersListener,
-        UsedAddressProtocol usedAdressProtocol,
+        IReadOnlySet<AddressFamily> supportedAddressFamilies,
         UsedTrackers usedTrackers,
         IPAddress? forcedIp = null,
         bool bitfieldInitialized = false,
@@ -98,9 +99,9 @@ public sealed class Torrent : IAsyncDisposable
             logger
         );
         _trackerClient = new TrackerClient(
-            new HttpTrackerHandler(httpClient),
-            trackerTransaction,
-            usedAdressProtocol,
+            httpTrackerHandler,
+            udpTrackerTransactionManager,
+            supportedAddressFamilies,
             usedTrackers,
             peersListener.EndPoint.Port,
             transferStatistics,
@@ -114,6 +115,7 @@ public sealed class Torrent : IAsyncDisposable
         _peerConnector = new TcpPeersConnector(
             _peersClient,
             metaInfo.Info.InfoHash,
+            supportedAddressFamilies,
             peerId,
             trackersChannel,
             peerIpProxy,

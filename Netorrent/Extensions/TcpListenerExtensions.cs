@@ -13,7 +13,7 @@ internal static class TcpListenerExtensions
             int port = 0
         )
         {
-            var ipAddress = usedAdressProtocol.ToIpAddress();
+            var ipAddress = usedAdressProtocol.BindIpAddress();
             var listener = new TcpListener(ipAddress, port);
 
             if (

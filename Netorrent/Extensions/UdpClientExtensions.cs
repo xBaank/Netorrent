@@ -13,7 +13,7 @@ internal static class UdpClientExtensions
             int port = 0
         )
         {
-            var ipAdress = usedAdressProtocol.ToIpAddress();
+            var ipAdress = usedAdressProtocol.BindIpAddress();
             var udpClient = new UdpClient(ipAdress.AddressFamily);
 
             if (
