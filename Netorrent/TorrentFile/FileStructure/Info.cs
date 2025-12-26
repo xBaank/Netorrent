@@ -24,9 +24,9 @@ public record Info(
     List<InfoFile>? Files = null
 )
 {
-    public byte[] InfoHash = ComputeInfoHash(RawInfo);
+    public InfoHash InfoHash = ComputeInfoHash(RawInfo);
 
-    private static byte[] ComputeInfoHash(BDictionary info)
+    private static InfoHash ComputeInfoHash(BDictionary info)
     {
         using var encoder = new BEncoder();
         var infoBytes = encoder.Encode(info);

@@ -14,7 +14,7 @@ internal class FakeMessageStream(
 
     public ChannelWriter<Message> OutgoingMessages => outgoingMessages;
 
-    public Handshake Handshake => new(0, string.Empty, [], otherPeerId.ToBytes());
+    public Handshake Handshake => new(0, string.Empty, new byte[20], otherPeerId.ToBytes());
 
     public ValueTask<PeerId> PerformHandshakeAsync(
         ReadOnlyMemory<byte> infoHash,

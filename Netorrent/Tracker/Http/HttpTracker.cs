@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 using Netorrent.Statistics;
+using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.Tracker.Http;
 
@@ -12,7 +13,7 @@ internal class HttpTracker(
     TransferStatistics transfer,
     IHttpTrackerHandler httpTrackerHandler,
     PeerId peerId,
-    byte[] infoHash,
+    InfoHash infoHash,
     string announceUrl,
     ILogger logger,
     ChannelWriter<IPEndPoint> channelWriter,

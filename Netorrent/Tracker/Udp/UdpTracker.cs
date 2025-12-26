@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 using Netorrent.Statistics;
+using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker.Udp.Request;
 using Netorrent.Tracker.Udp.Response;
 
@@ -15,7 +16,7 @@ internal class UdpTracker(
     TransferStatistics transfer,
     PeerId peerId,
     ChannelWriter<IPEndPoint> channelWriter,
-    byte[] infoHash,
+    InfoHash infoHash,
     string announceUrl,
     IPEndPoint iPEndPoint,
     ILogger logger,

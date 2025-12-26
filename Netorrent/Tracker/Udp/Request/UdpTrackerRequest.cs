@@ -8,10 +8,11 @@ using System.Net.Sockets;
 using Netorrent.Extensions;
 using Netorrent.Other;
 using Netorrent.P2P.Messages;
+using Netorrent.TorrentFile.FileStructure;
 
 internal record UdpTrackerRequest(
     IPEndPoint IPEndPoint,
-    ReadOnlyMemory<byte> InfoHash,
+    InfoHash InfoHash,
     PeerId PeerId,
     long Downloaded,
     long Left,
@@ -44,10 +45,10 @@ internal record UdpTrackerRequest(
         BinaryPrimitives.WriteInt32BigEndian(span[offset..], TransactionId);
         offset += 4;
 
-        if (InfoHash.Length != 20)
+        if (InfoHash.Data.Length != 20)
             throw new ArgumentException("InfoHash must be 20 bytes", nameof(InfoHash));
 
-        InfoHash.Span.CopyTo(span[offset..]);
+        InfoHash.Data.Span.CopyTo(span[offset..]);
         offset += 20;
 
         var peerBytes = PeerId.ToBytes();

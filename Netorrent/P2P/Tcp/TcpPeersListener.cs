@@ -3,18 +3,15 @@ using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
-using Netorrent.Other;
 using Netorrent.P2P.Messages;
+using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.P2P.Tcp;
 
 internal class TcpPeersListener(PeerId peerId, TcpListener tcpListener, ILogger logger)
     : IAsyncDisposable
 {
-    private readonly ConcurrentDictionary<
-        ReadOnlyMemory<byte>,
-        PeersClient
-    > _peersClientByInfoHash = new(ReadOnlyMemoryEqualityComparer<byte>.Instance);
+    private readonly ConcurrentDictionary<InfoHash, PeersClient> _peersClientByInfoHash = new();
 
     public IPEndPoint EndPoint => (IPEndPoint)tcpListener.LocalEndpoint;
 
@@ -90,12 +87,12 @@ internal class TcpPeersListener(PeerId peerId, TcpListener tcpListener, ILogger 
         }
     }
 
-    public void AddPeersClient(ReadOnlyMemory<byte> infoHash, PeersClient peersClient)
+    public void AddPeersClient(InfoHash infoHash, PeersClient peersClient)
     {
         _peersClientByInfoHash.TryAdd(infoHash, peersClient);
     }
 
-    public void RemovePeersClient(ReadOnlyMemory<byte> infoHash)
+    public void RemovePeersClient(InfoHash infoHash)
     {
         _peersClientByInfoHash.TryRemove(infoHash, out _);
     }

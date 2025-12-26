@@ -1,5 +1,6 @@
 ﻿using System.Buffers;
 using Netorrent.P2P.Messages;
+using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.Extensions;
 
@@ -9,7 +10,7 @@ internal static class HandshakeExtensions
     {
         public static async ValueTask<Handshake> PerformHandshakeAsync(
             Stream stream,
-            ReadOnlyMemory<byte> infoHash,
+            InfoHash infoHash,
             PeerId peerId,
             CancellationToken cancellationToken
         )
@@ -20,14 +21,14 @@ internal static class HandshakeExtensions
             var receivedHandshake = await ReceiveHandshakeInternalAsync(stream, timeoutCts.Token)
                 .ConfigureAwait(false);
 
-            return receivedHandshake.InfoHash.SequenceEqual(infoHash.Span)
+            return receivedHandshake.InfoHash.Data.Span.SequenceEqual(infoHash.Data.Span)
                 ? receivedHandshake
                 : throw new InvalidOperationException("InfoHash do not match");
         }
 
         public static async ValueTask<Handshake> ReceiveHandshakeAsync(
             Stream stream,
-            ICollection<ReadOnlyMemory<byte>> infoHashes,
+            ICollection<InfoHash> infoHashes,
             PeerId peerId,
             CancellationToken cancellationToken
         )
@@ -45,10 +46,10 @@ internal static class HandshakeExtensions
             var receivedHandshake = await ReceiveHandshakeInternalAsync(stream, timeoutCts.Token)
                 .ConfigureAwait(false);
 
-            ReadOnlyMemory<byte>? selectedInfoHash = null;
+            InfoHash? selectedInfoHash = null;
             foreach (var infoHash in infoHashes)
             {
-                if (receivedHandshake.InfoHash.SequenceEqual(infoHash.Span))
+                if (receivedHandshake.InfoHash.Data.Span.SequenceEqual(infoHash.Data.Span))
                 {
                     selectedInfoHash = infoHash;
                     break;
@@ -87,12 +88,12 @@ internal static class HandshakeExtensions
 
         private static async ValueTask SendHandshakeInternalAsync(
             Stream stream,
-            ReadOnlyMemory<byte> infoHash,
+            InfoHash infoHash,
             PeerId peerId,
             CancellationToken cancellationToken
         )
         {
-            var handshake = Handshake.Create(infoHash.ToArray(), peerId.ToBytes());
+            var handshake = Handshake.Create(infoHash.Data.ToArray(), peerId.ToBytes());
             using var bytesRented = handshake.ToBytes();
             await stream.WriteAsync(bytesRented.Memory, cancellationToken).ConfigureAwait(false);
             await stream.FlushAsync(cancellationToken).ConfigureAwait(false);

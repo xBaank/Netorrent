@@ -1,11 +1,12 @@
 ﻿using System.Net;
 using System.Text;
 using Netorrent.P2P.Messages;
+using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.Tracker.Http;
 
 internal class HttpTrackerRequest(
-    byte[] InfoHash,
+    InfoHash InfoHash,
     PeerId PeerId,
     int Port,
     ulong Downloaded,
@@ -20,7 +21,7 @@ internal class HttpTrackerRequest(
     string? TrackerId = null
 )
 {
-    private static string UrlEncode(byte[] bytes)
+    private static string UrlEncode(ReadOnlySpan<byte> bytes)
     {
         // Percent-encode bytes per BitTorrent spec
         var sb = new StringBuilder(bytes.Length * 3);
@@ -35,7 +36,7 @@ internal class HttpTrackerRequest(
         uriBuilder.Append(trackerUrl);
         uriBuilder.Append(trackerUrl.Contains('?') ? '&' : '?');
 
-        uriBuilder.Append($"info_hash={UrlEncode(InfoHash)}");
+        uriBuilder.Append($"info_hash={UrlEncode(InfoHash.Data.Span)}");
         uriBuilder.Append($"&peer_id={WebUtility.UrlEncode(PeerId.Value)}");
         uriBuilder.Append($"&port={Port}");
         uriBuilder.Append($"&uploaded={Uploaded}");

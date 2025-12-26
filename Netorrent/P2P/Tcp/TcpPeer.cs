@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.P2P.Messages;
+using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.P2P.Tcp;
 
@@ -10,7 +11,7 @@ internal class TcpPeer(
     TcpMessageStream? tcpMessageStream,
     IPEndPoint iPEndPoint,
     PeerId peerId,
-    ReadOnlyMemory<byte> infoHash
+    InfoHash infoHash
 ) : IPeer
 {
     public IPEndPoint PeerEndPoint => iPEndPoint;

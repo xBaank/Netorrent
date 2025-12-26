@@ -2,13 +2,14 @@
 using System.Text;
 using Netorrent.Extensions;
 using Netorrent.Other;
+using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.P2P.Messages;
 
 internal readonly record struct Handshake(
     byte Pstrlen,
     string Pstr,
-    byte[] InfoHash,
+    InfoHash InfoHash,
     byte[] PeerIdBytes
 )
 {
@@ -63,8 +64,8 @@ internal readonly record struct Handshake(
         reserved.AsSpan().CopyTo(buffer[offset..]);
         offset += reserved.Length;
 
-        InfoHash.AsSpan().CopyTo(buffer[offset..]);
-        offset += InfoHash.Length;
+        InfoHash.Data.Span.CopyTo(buffer[offset..]);
+        offset += InfoHash.Data.Length;
 
         PeerIdBytes.AsSpan().CopyTo(buffer[offset..]);
 

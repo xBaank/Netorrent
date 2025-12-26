@@ -8,6 +8,7 @@ using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 using Netorrent.Statistics;
 using Netorrent.TorrentFile;
+using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker.Http;
 using Netorrent.Tracker.Udp;
 using ZLinq;
@@ -24,7 +25,7 @@ internal class TrackerClient(
     PeerId peerId,
     ChannelWriter<IPEndPoint> trackersChannel,
     string[] announceList,
-    byte[] infoHash,
+    InfoHash infoHash,
     ILogger logger,
     IPAddress? forcedIp
 ) : IAsyncDisposable

@@ -3,8 +3,10 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Netorrent.Extensions;
+using Netorrent.Tests.Extensions;
 using Netorrent.Tests.Fakes;
 using Netorrent.TorrentFile;
+using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker;
 using Netorrent.Tracker.Http;
 using Netorrent.Tracker.Udp;
@@ -66,7 +68,7 @@ public class TrackerTests
             new(3),
             new(),
             ctx.Channel.Writer,
-            [1, 2, 3],
+            new byte[20],
             "null",
             new(IPAddress.Loopback, 1),
             ctx.Logger,
@@ -99,7 +101,7 @@ public class TrackerTests
             new Statistics.TransferStatistics(3),
             new FakeHttpTrackerHandler(ctx.Ips, ctx.Interval),
             new(),
-            [1, 2, 3],
+            new byte[20],
             "null",
             ctx.Logger,
             ctx.Channel,
@@ -132,7 +134,7 @@ public class TrackerTests
             new Statistics.TransferStatistics(3),
             new FakeHttpTrackerHandler(ctx.Ips, ctx.Interval, new Exception()),
             new(),
-            [1, 2, 3],
+            new byte[20],
             "null",
             ctx.Logger,
             ctx.Channel,
@@ -171,7 +173,7 @@ public class TrackerTests
             new(3),
             new(),
             ctx.Channel.Writer,
-            [1, 2, 3],
+            new byte[20],
             "null",
             new(IPAddress.Loopback, 1),
             ctx.Logger,
@@ -220,7 +222,7 @@ public class TrackerTests
                 "http://localhost:3",
                 "aaaa://localhost:4",
             ],
-            [1, 2, 3],
+            new byte[20],
             ctx.Logger,
             null
         );

@@ -4,12 +4,13 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
+using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.P2P.Tcp;
 
 internal class TcpPeersConnector(
     PeersClient peersClient,
-    ReadOnlyMemory<byte> infoHash,
+    InfoHash infoHash,
     IReadOnlySet<AddressFamily> supportedAddressFamilies,
     PeerId peerId,
     ChannelReader<IPEndPoint> peersEndpoints,
