@@ -89,6 +89,11 @@ public class TorrentTests(OpenTrackerFixture fixture)
         CancellationToken cancellationToken
     )
     {
+        if (!Socket.OSSupportsIPv6 && usedAdressProtocol.HasFlag(UsedAddressProtocol.Ipv6))
+        {
+            Skip.Test("Ipv6 is not supported");
+        }
+
         var path = await CreateRandomFileAsync("Input");
 
         var seeders = await GetSeedersAsync(
@@ -370,11 +375,12 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 {
                     return IPAddress.Loopback;
                 }
+
                 if (usedAdressProtocol.HasFlag(UsedAddressProtocol.Ipv6))
                 {
                     return IPAddress.IPv6Loopback;
                 }
-                return iPAddress;
+                throw new Exception("No protocol specified");
             },
             Logger = logger,
             UsedTrackers = usedTrackers,
