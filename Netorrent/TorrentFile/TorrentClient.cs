@@ -46,7 +46,10 @@ public sealed class TorrentClient : IAsyncDisposable
             1.Seconds,
             8
         );
-        _httpTrackerHandler = new(HttpClient.CreateHttpClient(_options.UsedAdressProtocol));
+        _httpTrackerHandler = new(
+            HttpClient.CreateHttpClient(AddressFamily.InterNetwork),
+            HttpClient.CreateHttpClient(AddressFamily.InterNetworkV6)
+        );
         _supportedAddressFamilies = _options.UsedAdressProtocol.SupportedAddressFamilies();
         _peersListener.Start();
         _udpTrackerTransactionManager.Start();

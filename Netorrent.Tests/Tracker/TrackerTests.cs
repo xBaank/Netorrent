@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using System.Net.Sockets;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -92,7 +93,12 @@ public class TrackerTests
     }
 
     [Test]
-    public async Task Should_get_peers_from_http_tracker(CancellationToken cancellationToken)
+    [Arguments(AddressFamily.InterNetwork)]
+    [Arguments(AddressFamily.InterNetworkV6)]
+    public async Task Should_get_peers_from_http_tracker(
+        AddressFamily addressFamily,
+        CancellationToken cancellationToken
+    )
     {
         var ctx = CreateDefaultContext();
 
@@ -100,6 +106,7 @@ public class TrackerTests
             1,
             new Statistics.TransferStatistics(3),
             new FakeHttpTrackerHandler(ctx.Ips, ctx.Interval),
+            addressFamily,
             new(),
             new byte[20],
             "null",
@@ -125,7 +132,12 @@ public class TrackerTests
     }
 
     [Test]
-    public async Task Should_not_get_peers_from_http_tracker(CancellationToken cancellationToken)
+    [Arguments(AddressFamily.InterNetwork)]
+    [Arguments(AddressFamily.InterNetworkV6)]
+    public async Task Should_not_get_peers_from_http_tracker(
+        AddressFamily addressFamily,
+        CancellationToken cancellationToken
+    )
     {
         var ctx = CreateDefaultContext();
 
@@ -133,6 +145,7 @@ public class TrackerTests
             1,
             new Statistics.TransferStatistics(3),
             new FakeHttpTrackerHandler(ctx.Ips, ctx.Interval, new Exception()),
+            addressFamily,
             new(),
             new byte[20],
             "null",

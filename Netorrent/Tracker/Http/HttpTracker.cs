@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using System.Net.Sockets;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
@@ -12,6 +13,7 @@ internal class HttpTracker(
     int port,
     TransferStatistics transfer,
     IHttpTrackerHandler httpTrackerHandler,
+    AddressFamily addressFamily,
     PeerId peerId,
     InfoHash infoHash,
     string announceUrl,
@@ -82,7 +84,7 @@ internal class HttpTracker(
             );
 
             return await httpTrackerHandler
-                .SendAsync(announceUrl, request, cancellationToken)
+                .SendAsync(announceUrl, addressFamily, request, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (Exception ex)

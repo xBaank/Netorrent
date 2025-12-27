@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using System.Net.Sockets;
 using Netorrent.Tracker.Http;
 
 namespace Netorrent.Tests.Fakes;
@@ -8,6 +9,7 @@ internal class FakeHttpTrackerHandler(IPEndPoint[] ips, TimeSpan interval, Excep
 {
     public ValueTask<HttpTrackerResponse> SendAsync(
         string url,
+        AddressFamily addressFamily,
         HttpTrackerRequest httpTrackerRequest,
         CancellationToken cancellationToken
     ) =>

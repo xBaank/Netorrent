@@ -18,6 +18,10 @@ public readonly struct InfoHash
 
     public static implicit operator InfoHash(byte[] data) => new(data);
 
+    public static bool operator ==(InfoHash left, InfoHash right) => left.Equals(right);
+
+    public static bool operator !=(InfoHash left, InfoHash right) => !(left == right);
+
     public override bool Equals(object? obj)
     {
         return obj is InfoHash hash && Data.Span.SequenceEqual(hash.Data.Span);
@@ -31,15 +35,5 @@ public readonly struct InfoHash
             hash.Add(b);
         }
         return hash.ToHashCode();
-    }
-
-    public static bool operator ==(InfoHash left, InfoHash right)
-    {
-        return left.Equals(right);
-    }
-
-    public static bool operator !=(InfoHash left, InfoHash right)
-    {
-        return !(left == right);
     }
 }

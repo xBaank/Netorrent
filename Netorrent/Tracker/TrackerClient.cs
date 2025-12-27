@@ -1,5 +1,4 @@
-﻿using System;
-using System.Net;
+﻿using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
@@ -113,6 +112,7 @@ internal class TrackerClient(
                 port,
                 transferStatistics,
                 httpTrackerHandler,
+                AddressFamily.InterNetwork,
                 peerId,
                 infoHash,
                 uri.OriginalString,
@@ -129,6 +129,7 @@ internal class TrackerClient(
                 port,
                 transferStatistics,
                 httpTrackerHandler,
+                AddressFamily.InterNetworkV6,
                 peerId,
                 infoHash,
                 uri.OriginalString,
