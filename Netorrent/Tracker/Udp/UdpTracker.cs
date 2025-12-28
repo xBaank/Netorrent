@@ -11,7 +11,7 @@ using Netorrent.Tracker.Udp.Response;
 namespace Netorrent.Tracker.Udp;
 
 internal class UdpTracker(
-    IUdpTrackerHandler trackerHandler,
+    IUdpTrackerHandler udpTrackerHandler,
     int port,
     TransferStatistics transfer,
     PeerId peerId,
@@ -78,7 +78,7 @@ internal class UdpTracker(
     {
         try
         {
-            return await trackerHandler
+            return await udpTrackerHandler
                 .ConnectAsync(iPEndPoint, _trackerId, cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -102,11 +102,11 @@ internal class UdpTracker(
             if (logger.IsEnabled(LogLevel.Information))
                 logger.LogInformation("Announcing to {url}", announceUrl);
 
-            var connectionId = trackerHandler.GetConnectionIdOrNull(_trackerId);
+            var connectionId = udpTrackerHandler.GetConnectionIdOrNull(_trackerId);
 
-            if (connectionId is null || trackerHandler.IsOutdated(connectionId.Value))
+            if (connectionId is null || udpTrackerHandler.IsOutdated(connectionId.Value))
             {
-                var response = await trackerHandler
+                var response = await udpTrackerHandler
                     .ConnectAsync(iPEndPoint, _trackerId, cancellationToken)
                     .ConfigureAwait(false);
 
@@ -123,12 +123,12 @@ internal class UdpTracker(
                 @event,
                 (ushort)port,
                 ConnectionId: connectionId.Value,
-                TransactionId: trackerHandler.MakeTransactionId(),
+                TransactionId: udpTrackerHandler.MakeTransactionId(),
                 NumWant: 50,
                 IpAddress: forcedIp
             );
 
-            return await trackerHandler
+            return await udpTrackerHandler
                 .SendAsync<UdpTrackerResponse>(updRequest, _trackerId, cancellationToken)
                 .ConfigureAwait(false);
         }

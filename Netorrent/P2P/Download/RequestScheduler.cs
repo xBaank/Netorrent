@@ -12,12 +12,12 @@ internal class RequestScheduler(
     PiecePicker piecePicker,
     Bitfield myBitfield,
     TransferStatistics transfer,
+    TimeSpan warmupTime,
     IPieceStorage pieceStorage,
     ILogger logger
 ) : IRequestScheduler
 {
     const int MinPeersForRarity = 6;
-    const int WarmupTimeoutSecods = 8;
     const int MinPeers = 6;
     const int MaxPeers = 10;
 
@@ -171,7 +171,7 @@ internal class RequestScheduler(
 
     private async Task WarmupAsync(CancellationToken cancellationToken)
     {
-        var warmupDeadline = DateTime.UtcNow + WarmupTimeoutSecods.Seconds;
+        var warmupDeadline = DateTime.UtcNow + warmupTime;
         while (DateTime.UtcNow < warmupDeadline && !cancellationToken.IsCancellationRequested)
         {
             int minPeersReady;

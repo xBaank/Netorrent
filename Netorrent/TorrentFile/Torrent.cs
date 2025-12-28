@@ -40,16 +40,12 @@ public sealed class Torrent : IAsyncDisposable
     internal Torrent(
         MetaInfo metaInfo,
         IHttpTrackerHandler httpTrackerHandler,
-        IUdpTrackerHandler udpTrackerTransactionManager,
+        IUdpTrackerHandler udpTrackerHandler,
+        TcpPeersListener peersListener,
         PeerId peerId,
         string outputDirectory,
-        ILogger logger,
-        TcpPeersListener peersListener,
-        IReadOnlySet<AddressFamily> supportedAddressFamilies,
-        UsedTrackers usedTrackers,
-        IPAddress? forcedIp = null,
-        bool bitfieldInitialized = false,
-        Func<IPAddress, IPAddress>? peerIpProxy = null
+        TorrentClientOptions torrentClientOptions,
+        bool bitfieldInitialized = false
     )
     {
         var files = metaInfo.Info.NormalizedFiles();
@@ -80,14 +76,15 @@ public sealed class Torrent : IAsyncDisposable
             piecePicker,
             _myBitfield,
             transferStatistics,
+            torrentClientOptions.WarmupTime,
             _pieceStorage,
-            logger
+            torrentClientOptions.Logger
         );
         var uploadScheduler = new UploadScheduler(
             _pieceStorage,
             _myBitfield,
             transferStatistics,
-            logger
+            torrentClientOptions.Logger
         );
 
         _peersClient = new PeersClient(
@@ -96,30 +93,30 @@ public sealed class Torrent : IAsyncDisposable
             uploadScheduler,
             piecePicker,
             _myBitfield,
-            logger
+            torrentClientOptions.Logger
         );
         _trackerClient = new TrackerClient(
             httpTrackerHandler,
-            udpTrackerTransactionManager,
-            supportedAddressFamilies,
-            usedTrackers,
+            udpTrackerHandler,
+            torrentClientOptions.SupportedAddressFamilies,
+            torrentClientOptions.UsedTrackers,
             peersListener.EndPoint.Port,
             transferStatistics,
             peerId,
             trackersChannel.Writer,
             [metaInfo.Announce, .. metaInfo.AnnounceList ?? []],
             metaInfo.Info.InfoHash,
-            logger,
-            forcedIp
+            torrentClientOptions.Logger,
+            torrentClientOptions.ForcedIp
         );
         _peerConnector = new TcpPeersConnector(
             _peersClient,
             metaInfo.Info.InfoHash,
-            supportedAddressFamilies,
+            torrentClientOptions.SupportedAddressFamilies,
             peerId,
             trackersChannel,
-            peerIpProxy,
-            logger
+            torrentClientOptions.PeerIpProxy,
+            torrentClientOptions.Logger
         );
 
         Completion = new CompletionTracker(_myBitfield);

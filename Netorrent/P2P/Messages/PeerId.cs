@@ -5,37 +5,39 @@ namespace Netorrent.P2P.Messages;
 
 public readonly struct PeerId
 {
+    private static readonly byte[] _clientCode = Encoding.ASCII.GetBytes("-NT");
+    private static readonly byte[] _version = Encoding.ASCII.GetBytes("1001-");
+
+    public ReadOnlyMemory<byte> Bytes { get; }
     public string Value { get; }
 
     public PeerId()
     {
-        Value = GeneratePeerId("NT", "1001");
+        Bytes = GeneratePeerId();
+        Value = Encoding.ASCII.GetString(Bytes.Span);
     }
 
-    public PeerId(string value)
+    public PeerId(ReadOnlyMemory<byte> value)
     {
-        //TODO validate
-        Value = value;
+        if (value.Length != 20)
+        {
+            throw new ArgumentOutOfRangeException(nameof(value), "Peer id must be 20 bytes");
+        }
+
+        Bytes = value;
+        Value = Encoding.ASCII.GetString(Bytes.Span);
     }
 
     public byte[] ToBytes() => Encoding.ASCII.GetBytes(Value);
 
-    private static string GeneratePeerId(string clientCode, string version)
+    private static ReadOnlyMemory<byte> GeneratePeerId()
     {
-        // Format: -XXYYYY- + 12 random Base64-safe characters = 20 bytes
-        var prefix = $"-{clientCode}{version}-";
-
-        var randomBytes = new byte[12];
-        RandomNumberGenerator.Fill(randomBytes);
-
-        var randomPart = Convert
-            .ToBase64String(randomBytes)
-            .Replace('+', 'A')
-            .Replace('/', 'B')
-            .Replace('=', 'C')
-            .Substring(0, 12);
-
-        return prefix + randomPart;
+        Memory<byte> data = new byte[20];
+        _clientCode.CopyTo(data);
+        _version.CopyTo(data[_clientCode.Length..]);
+        var toFill = data[(_clientCode.Length + _version.Length)..];
+        RandomNumberGenerator.Fill(toFill.Span);
+        return data;
     }
 
     public static bool operator ==(PeerId? obj1, PeerId? obj2) => obj1.Equals(obj2);

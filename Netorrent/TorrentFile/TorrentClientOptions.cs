@@ -1,5 +1,7 @@
 ﻿using System.Net;
+using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
+using Netorrent.Extensions;
 
 namespace Netorrent.TorrentFile;
 
@@ -48,4 +50,9 @@ public record TorrentClientOptions(
     /// Only used for testing
     /// </summary>
     internal Func<IPAddress, IPAddress>? PeerIpProxy { get; set; }
+
+    internal TimeSpan WarmupTime { get; set; } = 8.Seconds;
+
+    internal IReadOnlySet<AddressFamily> SupportedAddressFamilies =
+        UsedAdressProtocol.SupportedAddressFamilies();
 };

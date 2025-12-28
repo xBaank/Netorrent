@@ -16,7 +16,7 @@ namespace Netorrent.Tracker;
 
 internal class TrackerClient(
     IHttpTrackerHandler httpTrackerHandler,
-    IUdpTrackerHandler trackerTransactionManager,
+    IUdpTrackerHandler udpTrackerHandler,
     IReadOnlySet<AddressFamily> supportedAddressFamilies,
     UsedTrackers usedTrackers,
     int port,
@@ -164,7 +164,7 @@ internal class TrackerClient(
         {
             var ipEndpoint = new IPEndPoint(ipv4, uri.Port);
             var trackerv4 = new UdpTracker(
-                trackerTransactionManager,
+                udpTrackerHandler,
                 port,
                 transferStatistics,
                 peerId,
@@ -186,7 +186,7 @@ internal class TrackerClient(
         {
             var ipEndpoint = new IPEndPoint(ipv6, uri.Port);
             var trackerv6 = new UdpTracker(
-                trackerTransactionManager,
+                udpTrackerHandler,
                 port,
                 transferStatistics,
                 peerId,

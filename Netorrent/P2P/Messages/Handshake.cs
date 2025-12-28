@@ -21,7 +21,7 @@ internal readonly record struct Handshake(
 
     private static readonly byte[] reserved = [0, 0, 0, 0, 0, 0, 0, 0];
 
-    public PeerId PeerId { get; } = new(Encoding.ASCII.GetString(PeerIdBytes));
+    public PeerId PeerId { get; } = new(PeerIdBytes);
 
     /// <summary>
     /// Creates a standard BitTorrent handshake with the default protocol.

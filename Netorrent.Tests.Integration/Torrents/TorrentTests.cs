@@ -61,7 +61,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
             options: FileOptions.Asynchronous | FileOptions.SequentialScan
         );
 
-        long size = 10L * 1024; // 1 MB
+        long size = 10L * 1024 * 1024; // 10 MB
         for (long i = 0; i < size; i++)
         {
             stream.WriteByte((byte)Random.Shared.Next());
@@ -94,6 +94,11 @@ public class TorrentTests(OpenTrackerFixture fixture)
             Skip.Test("Ipv6 is not supported");
         }
 
+        if (!Socket.OSSupportsIPv4 && usedAdressProtocol.HasFlag(UsedAddressProtocol.Ipv4))
+        {
+            Skip.Test("Ipv4 is not supported");
+        }
+
         var path = await CreateRandomFileAsync("Input");
 
         var seeders = await GetSeedersAsync(
@@ -101,7 +106,8 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 path,
                 Logger,
                 usedTrackers,
-                usedAdressProtocol
+                usedAdressProtocol,
+                0.Seconds
             )
             .ToListAsync(cancellationToken: cancellationToken);
         var seedersTorrents = seeders.Select(i => i.Item1).ToList();
@@ -111,7 +117,8 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 seedersTorrents[0].MetaInfo,
                 Logger,
                 usedTrackers,
-                usedAdressProtocol
+                usedAdressProtocol,
+                0.Seconds
             )
             .ToListAsync(cancellationToken: cancellationToken);
         var leechersTorrents = leechers.Select(i => i.Item1).ToList();
@@ -198,7 +205,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 await seederTorrent.StartAsync();
             }
 
-            await Task.Delay(5.Seconds, cancellationToken);
+            await Task.Delay(1.Seconds, cancellationToken);
 
             foreach (var leecherTorrent in leechersTorrents)
             {
@@ -266,7 +273,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 await seederTorrent.StartAsync();
             }
 
-            await Task.Delay(5.Seconds, cancellationToken);
+            await Task.Delay(1.Seconds, cancellationToken);
 
             foreach (var leecherTorrent in leechersTorrents)
             {
@@ -320,13 +327,15 @@ public class TorrentTests(OpenTrackerFixture fixture)
         string path,
         ILogger logger,
         UsedTrackers usedTrackers = UsedTrackers.Http | UsedTrackers.Udp,
-        UsedAddressProtocol usedAdressProtocol = UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6
+        UsedAddressProtocol usedAdressProtocol =
+            UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6,
+        TimeSpan? warmupTime = null
     )
     {
         for (int i = 0; i < number; i++)
         {
             var seeder = new TorrentClient(o =>
-                GetOptions(logger, usedTrackers, usedAdressProtocol, o)
+                GetOptions(logger, usedTrackers, usedAdressProtocol, warmupTime, o)
             );
 
             var seederTorrent = await seeder.CreateTorrentAsync(
@@ -344,13 +353,15 @@ public class TorrentTests(OpenTrackerFixture fixture)
         MetaInfo metaInfo,
         ILogger logger,
         UsedTrackers usedTrackers = UsedTrackers.Http | UsedTrackers.Udp,
-        UsedAddressProtocol usedAdressProtocol = UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6
+        UsedAddressProtocol usedAdressProtocol =
+            UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6,
+        TimeSpan? warmupTime = null
     )
     {
         for (int i = 0; i < number; i++)
         {
             var leecher = new TorrentClient(o =>
-                GetOptions(logger, usedTrackers, usedAdressProtocol, o)
+                GetOptions(logger, usedTrackers, usedAdressProtocol, warmupTime, o)
             );
 
             var pathName = Guid.NewGuid().ToString();
@@ -364,6 +375,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
         ILogger logger,
         UsedTrackers usedTrackers,
         UsedAddressProtocol usedAdressProtocol,
+        TimeSpan? warmupTime,
         TorrentClientOptions o
     ) =>
         o with
@@ -382,6 +394,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 }
                 throw new Exception("No protocol specified");
             },
+            WarmupTime = warmupTime ?? 8.Seconds,
             Logger = logger,
             UsedTrackers = usedTrackers,
             UsedAdressProtocol = usedAdressProtocol,
