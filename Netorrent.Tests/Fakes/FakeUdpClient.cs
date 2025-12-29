@@ -2,13 +2,17 @@
 using System.Net.Sockets;
 using System.Threading.Channels;
 using Netorrent.Tracker.Udp.Client;
+using R3;
 
 internal sealed class FakeUdpClient : IUdpClient
 {
     private readonly Channel<UdpReceiveResult> _incoming =
         Channel.CreateUnbounded<UdpReceiveResult>();
 
-    public List<(byte[] Payload, IPEndPoint Endpoint)> SentPackets { get; } = [];
+    public List<(Memory<byte> Payload, IPEndPoint Endpoint)> SentPackets { get; } = [];
+
+    public Subject<Memory<byte>> OnSent { get; } = new();
+    public Subject<Memory<byte>> OnReceived { get; } = new();
 
     public ValueTask<int> SendAsync(
         ReadOnlyMemory<byte> buffer,
@@ -16,13 +20,17 @@ internal sealed class FakeUdpClient : IUdpClient
         CancellationToken cancellationToken
     )
     {
-        SentPackets.Add((buffer.ToArray(), endPoint));
+        var copied = buffer.ToArray();
+        SentPackets.Add((copied, endPoint));
+        OnSent.OnNext(copied);
         return ValueTask.FromResult(buffer.Length);
     }
 
     public async ValueTask<UdpReceiveResult> ReceiveAsync(CancellationToken cancellationToken)
     {
-        return await _incoming.Reader.ReadAsync(cancellationToken);
+        var received = await _incoming.Reader.ReadAsync(cancellationToken);
+        OnReceived.OnNext(received.Buffer.ToArray());
+        return received;
     }
 
     // Test helper

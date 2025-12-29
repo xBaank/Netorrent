@@ -141,7 +141,7 @@ internal class RequestScheduler(
             {
                 var lastRequestedFrom = piecePicker.GetLastRequester(requestBlock);
                 piecePicker.SetBlockToPending(requestBlock);
-                lastRequestedFrom.DecrementRequestedBlock();
+                lastRequestedFrom?.DecrementRequestedBlock();
 
                 IPeerConnection? freePeer = null;
 
@@ -161,6 +161,12 @@ internal class RequestScheduler(
 
                 //If we can't find a peer we retry with the same one
                 freePeer ??= lastRequestedFrom;
+
+                if (freePeer is null)
+                {
+                    continue;
+                }
+
                 await _slotsChannel
                     .Writer.WriteAsync(freePeer, cancellationToken)
                     .ConfigureAwait(false);

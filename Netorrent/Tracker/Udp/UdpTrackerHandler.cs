@@ -16,6 +16,7 @@ internal class UdpTrackerHandler(
     ILogger logger,
     TimeSpan retryDelay,
     TimeSpan retryLoopDelay,
+    TimeSpan outdatedSpan,
     int maxRetries
 ) : IUdpTrackerHandler
 {
@@ -59,7 +60,9 @@ internal class UdpTrackerHandler(
                 var result = await udpClient.ReceiveAsync(cancellationToken).ConfigureAwait(false);
 
                 if (result.Buffer.Length < 4)
+                {
                     continue;
+                }
 
                 var actionId = BinaryPrimitives.ReadInt32BigEndian(result.Buffer);
 
@@ -80,7 +83,14 @@ internal class UdpTrackerHandler(
                 };
 
                 if (receivedPacket is null)
+                {
                     continue;
+                }
+
+                if (!_packetsByTransactionId.ContainsKey(receivedPacket.TransactionId))
+                {
+                    continue;
+                }
 
                 if (receivedPacket is UdpTrackerConnectResponse udpTrackerConnectResponse)
                 {
@@ -216,7 +226,7 @@ internal class UdpTrackerHandler(
         if (_connectionCreationById.TryGetValue(connectionId, out var creationTime))
         {
             var diff = DateTime.UtcNow - creationTime;
-            return diff > 1.Minutes;
+            return diff > outdatedSpan;
         }
         return true;
     }
@@ -241,7 +251,7 @@ internal class UdpTrackerHandler(
         }
 
         using var payload = packet.ToMemoryRented();
-        var seconds = retryLoopDelay * (transaction.RetryCount + 1);
+        var seconds = retryDelay * (transaction.RetryCount + 1);
         transaction.NextRetryTime = DateTime.UtcNow + seconds;
 
         await udpClient

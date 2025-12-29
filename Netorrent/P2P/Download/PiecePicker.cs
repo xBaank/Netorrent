@@ -136,11 +136,11 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         }
     }
 
-    public IPeerConnection GetLastRequester(RequestBlock requestBlock)
+    public IPeerConnection? GetLastRequester(RequestBlock requestBlock)
     {
         lock (_requestBlocksLock)
         {
-            return requestBlock.RequestedFrom[^1];
+            return requestBlock.RequestedFrom.Count == 0 ? null : requestBlock.RequestedFrom[^1];
         }
     }
 

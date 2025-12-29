@@ -64,7 +64,7 @@ internal readonly record struct Message(byte Id, RentedArray<byte>? Payload) : I
 
             // payload (if any)
             if (payloadLength > 0)
-                Payload!.Memory.CopyTo(buffer.AsMemory(5, payloadLength));
+                Payload!.Value.Memory.CopyTo(buffer.AsMemory(5, payloadLength));
 
             return new RentedArray<byte>(buffer, length);
         }

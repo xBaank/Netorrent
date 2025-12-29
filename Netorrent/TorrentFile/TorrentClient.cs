@@ -43,6 +43,7 @@ public sealed class TorrentClient : IAsyncDisposable
             _options.Logger,
             15.Seconds,
             1.Seconds,
+            1.Minutes,
             8
         );
         _httpTrackerHandler = new(

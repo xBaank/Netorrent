@@ -204,7 +204,7 @@ internal class PeerConnection(
             throw new InvalidOperationException("Second bitfield received, dropping connection");
         }
 
-        var bitfieldBytes = message.Payload!.Memory;
+        var bitfieldBytes = message.Payload!.Value.Memory;
         PeerBitField = new Bitfield(bitfieldBytes.Span, MyBitField.Length);
         RegisterPieces(PeerBitField);
         await CheckInterestAsync(cancellationToken).ConfigureAwait(false);
@@ -241,7 +241,7 @@ internal class PeerConnection(
     {
         //Lazy bitfield
         PeerBitField ??= new(MyBitField.Length);
-        int pieceIndex = BinaryPrimitives.ReadInt32BigEndian(message.Payload!.Memory.Span);
+        int pieceIndex = BinaryPrimitives.ReadInt32BigEndian(message.Payload!.Value.Memory.Span);
         //If the have was already sent or we already know that he has that piece we omit this message
         if (PeerBitField.HasPiece(pieceIndex))
         {
@@ -272,7 +272,7 @@ internal class PeerConnection(
             return;
         }
 
-        var span = message.Payload!.Memory.Span;
+        var span = message.Payload!.Value.Memory.Span;
         var index = BinaryPrimitives.ReadInt32BigEndian(span[..4]);
         var begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
         var length = BinaryPrimitives.ReadInt32BigEndian(span[8..12]);
@@ -316,7 +316,7 @@ internal class PeerConnection(
 
     private async ValueTask ReceiveBlockAsync(Message message, CancellationToken cancellationToken)
     {
-        var span = message.Payload!.Memory.Span;
+        var span = message.Payload!.Value.Memory.Span;
 
         int index = BinaryPrimitives.ReadInt32BigEndian(span[..4]);
         int begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
@@ -333,7 +333,7 @@ internal class PeerConnection(
 
     private void ReceiveCancel(Message message)
     {
-        var span = message.Payload!.Memory.Span;
+        var span = message.Payload!.Value.Memory.Span;
         var index = BinaryPrimitives.ReadInt32BigEndian(span[..4]);
         var begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
         var length = BinaryPrimitives.ReadInt32BigEndian(span[8..12]);
