@@ -136,7 +136,7 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         }
     }
 
-    public IPeerConnection? GetLastRequester(RequestBlock requestBlock)
+    public IPeerConnection? GetLastRequesterOrNull(RequestBlock requestBlock)
     {
         lock (_requestBlocksLock)
         {

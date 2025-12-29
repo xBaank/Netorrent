@@ -139,7 +139,7 @@ internal class RequestScheduler(
         {
             foreach (var requestBlock in piecePicker.GetTimeoutRequestBlocks())
             {
-                var lastRequestedFrom = piecePicker.GetLastRequester(requestBlock);
+                var lastRequestedFrom = piecePicker.GetLastRequesterOrNull(requestBlock);
                 piecePicker.SetBlockToPending(requestBlock);
                 lastRequestedFrom?.DecrementRequestedBlock();
 
