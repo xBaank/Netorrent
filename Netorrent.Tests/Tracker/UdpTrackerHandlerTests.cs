@@ -229,8 +229,8 @@ public class UdpTrackerHandlerTests
         await using var manager = new UdpTrackerHandler(
             fakeUdp,
             logger,
-            0.01.Seconds,
-            0.01.Seconds,
+            1.Seconds,
+            1.Seconds,
             1.Minutes,
             8
         );
