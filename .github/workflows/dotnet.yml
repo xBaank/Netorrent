@@ -28,8 +28,12 @@ jobs:
       run: dotnet restore
     - name: Build
       run: dotnet build --no-restore
-    - name: Check ipv6
-      if: ${{ matrix.os == 'ubuntu-latest' }}
-      run: ip a | grep inet6
+      
+    - name: Install colima
+      if: ${{ matrix.os == 'macos-latest' }}
+      run: |
+            brew install docker
+            colima start
+      
     - name: Test
       run: dotnet test --no-build --verbosity normal
