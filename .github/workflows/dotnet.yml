@@ -25,6 +25,12 @@ jobs:
       if: ${{ matrix.os == 'macos-15-intel' }}
       id: setup-docker
       uses: douglascamata/setup-docker-macos-action@d5ccc6aae0ce23e7700154f5e63cc53e6433ac48
+    - name: Enable ipv6 on ubuntu
+      if: ${{ matrix.os == 'ubuntu-latest' }}
+      run: sysctl net.ipv6.conf.all.disable_ipv6=0
+    - name: Enable WSL2 on windows
+      if: ${{ matrix.os == 'windows-latest' }}
+      uses: Vampire/setup-wsl@v6
             
     - name: Setup .NET
       uses: actions/setup-dotnet@v5
