@@ -29,7 +29,7 @@ jobs:
       if: ${{ matrix.os == 'ubuntu-latest' }}
       run: |
         sudo sysctl net.ipv6.conf.all.disable_ipv6=0
-        sudo ufw allow proto udp6
+        sudo ufw disable
     - name: Enable WSL2 on windows
       if: ${{ matrix.os == 'windows-latest' }}
       uses: Vampire/setup-wsl@v6
