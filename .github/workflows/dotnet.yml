@@ -34,11 +34,13 @@ jobs:
       run: dotnet restore
     - name: Build
       run: dotnet build --no-restore
-      
-    - name: Test
-      if: ${{ matrix.os == 'macos-15-intel' }} == false
-      run: dotnet test --no-build --verbosity normal
 
     - name: Test
-      if: ${{ matrix.os == 'macos-15-intel' }} == true
+      if: ${{ !(matrix.os == 'macos-15-intel') }}
       run: sudo dotnet test --no-build --verbosity normal
+      
+    - name: Test Macos
+      if: ${{ (matrix.os == 'macos-15-intel') }}
+      run: dotnet test --no-build --verbosity normal
+
+
