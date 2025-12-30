@@ -28,8 +28,8 @@ jobs:
     - name: Enable ipv6 on ubuntu
       if: ${{ matrix.os == 'ubuntu-latest' }}
       run: |
-        sudo sysctl net.ipv6.conf.all.disable_ipv6=0
-        sudo ufw disable
+        sudo systemctl net.ipv6.conf.all.disable_ipv6=0
+        sudo systemctl stop ufw
     - name: Enable WSL2 on windows
       if: ${{ matrix.os == 'windows-latest' }}
       uses: Vampire/setup-wsl@v6
