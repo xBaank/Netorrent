@@ -28,7 +28,7 @@ jobs:
             brew install qemu
             brew install lima
             brew install colima
-            colima delete
+            colima stop --force
             colima start
             
     - name: Setup .NET
