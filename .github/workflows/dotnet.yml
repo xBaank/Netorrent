@@ -20,6 +20,17 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    
+    - name: Install colima
+      if: ${{ matrix.os == 'macos-latest' }}
+      run: |
+            brew install docker
+            brew install qemu
+            brew install lima
+            brew install colima
+            colima delete
+            colima start
+            
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
@@ -28,15 +39,5 @@ jobs:
       run: dotnet restore
     - name: Build
       run: dotnet build --no-restore
-      
-    - name: Install colima
-      if: ${{ matrix.os == 'macos-latest' }}
-      run: |
-            brew install docker
-            brew install qemu
-            brew install lima
-            brew install colima
-            colima start
-      
     - name: Test
       run: dotnet test --no-build --verbosity normal
