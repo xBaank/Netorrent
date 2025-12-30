@@ -21,11 +21,9 @@ jobs:
     steps:
     - uses: actions/checkout@v5
     
-    - name: Install colima
-      if: ${{ matrix.os == 'macos-15' }}
-      run: |
-            brew install docker
-            colima start
+    - name: Setup Docker on macOS
+      id: setup-docker
+      uses: douglascamata/setup-docker-macos-action@d5ccc6aae0ce23e7700154f5e63cc53e6433ac48
             
     - name: Setup .NET
       uses: actions/setup-dotnet@v5
