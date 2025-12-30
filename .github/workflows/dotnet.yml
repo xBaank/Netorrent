@@ -37,10 +37,10 @@ jobs:
 
     - name: Test
       if: ${{ !(matrix.os == 'macos-15-intel') }}
-      run: sudo dotnet test --no-build --verbosity normal
+      run: dotnet test --no-build --verbosity normal
       
     - name: Test Macos
       if: ${{ (matrix.os == 'macos-15-intel') }}
-      run: dotnet test --no-build --verbosity normal
+      run: sudo dotnet test --no-build --verbosity normal
 
 
