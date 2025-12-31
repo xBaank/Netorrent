@@ -13,7 +13,7 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
         {
             SingleWriter = true,
             SingleReader = true,
-            FullMode = BoundedChannelFullMode.DropWrite,
+            FullMode = BoundedChannelFullMode.DropOldest,
         }
     );
     private readonly Channel<Message> _outgoingMessages = Channel.CreateBounded<Message>(
@@ -21,7 +21,7 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
         {
             SingleWriter = false,
             SingleReader = true,
-            FullMode = BoundedChannelFullMode.DropWrite,
+            FullMode = BoundedChannelFullMode.DropOldest,
         }
     );
 
