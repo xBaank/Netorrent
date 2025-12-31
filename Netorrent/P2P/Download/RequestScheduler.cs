@@ -93,7 +93,6 @@ internal class RequestScheduler(
         var rtt = requestedBlock.RequestedAt.HasValue
             ? block.ReceivedAt - requestedBlock.RequestedAt.Value
             : PiecePicker.TimeoutSeconds.Seconds;
-        block.FromPeer.PeerRequestWindow.CalculateRtt(rtt);
         block.FromPeer.DecrementRequestedBlock();
         piecePicker.CompleteRequestBlock(requestedBlock);
         pieceBuffer.AddBlock(block);
