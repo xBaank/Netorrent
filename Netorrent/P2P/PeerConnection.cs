@@ -26,7 +26,8 @@ internal class PeerConnection(
 ) : IPeerConnection
 {
     private readonly Lock _stateLock = new();
-    private DateTimeOffset _lastKeepAlive;
+    private DateTimeOffset _lastSentMessageTime;
+    private DateTimeOffset _lastReceivedMessageTime;
     private CancellationTokenSource? _cancellationTokenSource;
     private DateTimeOffset _startedConnectionTime;
     private Task? _runTask;
@@ -56,7 +57,7 @@ internal class PeerConnection(
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         _startedConnectionTime = DateTimeOffset.UtcNow;
-        _lastKeepAlive = DateTimeOffset.UtcNow;
+        _lastSentMessageTime = DateTimeOffset.UtcNow;
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
@@ -105,7 +106,7 @@ internal class PeerConnection(
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            var timePassed = DateTimeOffset.UtcNow - _lastKeepAlive;
+            var timePassed = DateTimeOffset.UtcNow - _lastSentMessageTime;
             if (timePassed > keepAliveThreshold)
             {
                 await WriteMessageAsync(Message.KeepAlive, cancellationToken).ConfigureAwait(false);
@@ -124,6 +125,7 @@ internal class PeerConnection(
         )
         {
             using var message = item;
+            _lastReceivedMessageTime = DateTimeOffset.UtcNow;
 
             if (message.Id == 255) //Keep-alive
             {
@@ -453,7 +455,7 @@ internal class PeerConnection(
         await messageStream
             .OutgoingMessages.WriteOrDisposeAsync(message, cancellationToken)
             .ConfigureAwait(false);
-        _lastKeepAlive = DateTimeOffset.UtcNow;
+        _lastSentMessageTime = DateTimeOffset.UtcNow;
     }
 
     public async ValueTask DisposeAsync()

@@ -14,7 +14,6 @@ internal class UploadScheduler(
     ILogger logger
 ) : IUploadScheduler
 {
-    const int MaxInFlightUploadRequests = 4;
     const int MaxUnchokedPeers = 4;
 
     private readonly Channel<RequestBlock> _pendingRequests = Channel.CreateBounded<RequestBlock>(
@@ -210,18 +209,6 @@ internal class UploadScheduler(
                     logger.LogInformation("Peer {peer} is not unchoked", from.PeerEndpoint.PeerId);
                 }
 
-                return;
-            }
-
-            if (from.UploadRequestedBlocksCount >= MaxInFlightUploadRequests)
-            {
-                if (logger.IsEnabled(LogLevel.Information))
-                {
-                    logger.LogInformation(
-                        "Peer {peer} reached the max requests",
-                        from.PeerEndpoint.PeerId
-                    );
-                }
                 return;
             }
         }

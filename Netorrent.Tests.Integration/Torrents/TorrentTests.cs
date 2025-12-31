@@ -72,20 +72,16 @@ public class TorrentTests(OpenTrackerFixture fixture)
     [Test]
     [MatrixDataSource]
     public async Task Should_Download_Torrent_With_Different_Ips_And_Trackers(
-        [Matrix<UsedTrackers>(
-            UsedTrackers.Http,
-            UsedTrackers.Udp,
-            UsedTrackers.Http | UsedTrackers.Udp
-        )]
+        [Matrix(UsedTrackers.Http, UsedTrackers.Udp, UsedTrackers.Http | UsedTrackers.Udp)]
             UsedTrackers usedTrackers,
-        [Matrix<UsedAddressProtocol>(
+        [Matrix(
             UsedAddressProtocol.Ipv4,
             UsedAddressProtocol.Ipv6,
             UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6
         )]
             UsedAddressProtocol usedAdressProtocol,
-        [MatrixRange<int>(3, 3)] int seedersCount,
-        [MatrixRange<int>(3, 3)] int leechersCount,
+        [Matrix(3)] int seedersCount,
+        [Matrix(12)] int leechersCount,
         CancellationToken cancellationToken
     )
     {

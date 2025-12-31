@@ -9,10 +9,20 @@ namespace Netorrent.IO;
 internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeout) : IMessageStream
 {
     private readonly Channel<Message> _incomingMessages = Channel.CreateBounded<Message>(
-        new BoundedChannelOptions(256) { SingleWriter = true, SingleReader = true }
+        new BoundedChannelOptions(256)
+        {
+            SingleWriter = true,
+            SingleReader = true,
+            FullMode = BoundedChannelFullMode.DropWrite,
+        }
     );
     private readonly Channel<Message> _outgoingMessages = Channel.CreateBounded<Message>(
-        new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
+        new BoundedChannelOptions(256)
+        {
+            SingleWriter = false,
+            SingleReader = true,
+            FullMode = BoundedChannelFullMode.DropWrite,
+        }
     );
 
     public Handshake Handshake => handshake;
