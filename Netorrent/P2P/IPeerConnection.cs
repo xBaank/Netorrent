@@ -25,9 +25,9 @@ internal interface IPeerConnection : IAsyncDisposable
     int DecrementUploadRequested();
     int IncrementRequestedBlock();
     int IncrementUploadRequested();
-    ValueTask SendBlockAsync(Block block, CancellationToken cancellationToken);
-    ValueTask SendCancelAsync(RequestBlock request, CancellationToken cancellationToken);
-    ValueTask SendRequestAsync(RequestBlock nextBlock, CancellationToken cancellationToken);
-    ValueTask SendUnchokedAsync(CancellationToken cancellationToken);
+    bool TrySendBlock(Block block);
+    bool TrySendCancel(RequestBlock request);
+    bool TrySendRequest(RequestBlock nextBlock);
+    bool TrySendUnchoked();
     Task StartAsync(CancellationToken cancellationToken);
 }

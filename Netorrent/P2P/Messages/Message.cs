@@ -6,8 +6,7 @@ using Netorrent.Other;
 namespace Netorrent.P2P.Messages;
 
 /// <summary>
-/// Represents a generic BitTorrent protocol message.
-/// Each message = [length prefix][message ID][payload]
+/// Represents a BitTorrent protocol message.
 /// </summary>
 internal readonly record struct Message(byte Id, RentedArray<byte>? Payload) : IDisposable
 {

@@ -1,5 +1,7 @@
-﻿using System.Threading.Channels;
+﻿using System.Net.NetworkInformation;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
+using Microsoft.VisualBasic;
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.P2P.Messages;
@@ -19,10 +21,6 @@ internal class UploadScheduler(
     private readonly Channel<RequestBlock> _pendingRequests = Channel.CreateBounded<RequestBlock>(
         new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
     );
-    private readonly Channel<IPeerConnection> _slotsRequests =
-        Channel.CreateBounded<IPeerConnection>(
-            new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
-        );
 
     private readonly List<IPeerConnection> _interestedPeers = [];
     private readonly HashSet<IPeerConnection> _unchokedPeers = [];
@@ -39,35 +37,8 @@ internal class UploadScheduler(
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _runningTask = _cts.CancelOnFirstCompletionAndAwaitAllAsync([
             ProcessRequestsAsync(_cts.Token),
-            ProcessSlotsAsync(_cts.Token),
         ]);
         return _runningTask;
-    }
-
-    public async Task ProcessSlotsAsync(CancellationToken cancellationToken)
-    {
-        await foreach (
-            var peerConnection in _slotsRequests
-                .Reader.ReadAllAsync(cancellationToken)
-                .ConfigureAwait(false)
-        )
-        {
-            try
-            {
-                await peerConnection.SendUnchokedAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                if (logger.IsEnabled(LogLevel.Error))
-                {
-                    logger.LogError(
-                        ex,
-                        "Error unchoking peer {peeid}",
-                        peerConnection.PeerEndpoint.PeerId
-                    );
-                }
-            }
-        }
     }
 
     public async Task ProcessRequestsAsync(CancellationToken cancellationToken)
@@ -85,26 +56,28 @@ internal class UploadScheduler(
                 continue;
 
             var peer = requestBlock.RequestedFrom[0];
+            var pieceData = await pieceStorage
+                .ReadAsync(
+                    requestBlock.Index,
+                    requestBlock.Begin,
+                    requestBlock.Length,
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
 
             try
             {
-                var pieceData = await pieceStorage
-                    .ReadAsync(
-                        requestBlock.Index,
-                        requestBlock.Begin,
-                        requestBlock.Length,
-                        cancellationToken
-                    )
-                    .ConfigureAwait(false);
-
                 using var block = new Block(
                     requestBlock.Index,
                     requestBlock.Begin,
                     pieceData,
                     peer
                 );
-                await peer.SendBlockAsync(block, cancellationToken).ConfigureAwait(false);
-                transfer.AddUploadedBytes(block.Payload.Length);
+
+                if (peer.TrySendBlock(block))
+                {
+                    transfer.AddUploadedBytes(block.Payload.Length); //TODO Move this to message stream after data if flushed
+                }
             }
             catch (Exception ex)
             {
@@ -132,7 +105,7 @@ internal class UploadScheduler(
         CancellationToken cancellationToken
     )
     {
-        bool shouldEnqueue;
+        bool canUnchoke;
 
         lock (_unchokedSlotsLock)
         {
@@ -142,15 +115,12 @@ internal class UploadScheduler(
                 return;
             }
 
-            _unchokedPeers.Add(peerConnection);
-            shouldEnqueue = true;
-        }
+            canUnchoke = true;
 
-        if (shouldEnqueue)
-        {
-            await _slotsRequests
-                .Writer.WriteAsync(peerConnection, cancellationToken)
-                .ConfigureAwait(false);
+            if (canUnchoke && peerConnection.TrySendUnchoked())
+            {
+                _unchokedPeers.Add(peerConnection);
+            }
         }
     }
 
@@ -169,15 +139,12 @@ internal class UploadScheduler(
             {
                 nextPeer = _interestedPeers[0];
                 _interestedPeers.RemoveAt(0);
-                _unchokedPeers.Add(nextPeer);
             }
         }
 
-        if (nextPeer is not null)
+        if (nextPeer?.TrySendUnchoked() == true)
         {
-            await _slotsRequests
-                .Writer.WriteAsync(nextPeer, cancellationToken)
-                .ConfigureAwait(false);
+            _unchokedPeers.Add(nextPeer);
         }
     }
 
@@ -228,7 +195,6 @@ internal class UploadScheduler(
     private async ValueTask DrainChannelsAsync()
     {
         await foreach (var _ in _pendingRequests.Reader.ReadAllAsync().ConfigureAwait(false)) { }
-        await foreach (var _ in _slotsRequests.Reader.ReadAllAsync().ConfigureAwait(false)) { }
     }
 
     public async ValueTask DisposeAsync()
@@ -238,7 +204,6 @@ internal class UploadScheduler(
             _disposed = true;
             _cts?.Cancel();
             _pendingRequests.Writer.TryComplete();
-            _slotsRequests.Writer.TryComplete();
 
             try
             {

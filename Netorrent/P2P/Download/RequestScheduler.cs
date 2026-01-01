@@ -59,7 +59,7 @@ internal class RequestScheduler(
                 .ConfigureAwait(false)
         )
         {
-            await ScheduleRequests(peerConnection, cancellationToken).ConfigureAwait(false);
+            ScheduleRequests(peerConnection);
         }
     }
 
@@ -194,10 +194,7 @@ internal class RequestScheduler(
         }
     }
 
-    private async ValueTask ScheduleRequests(
-        IPeerConnection peerConnection,
-        CancellationToken cancellationToken
-    )
+    private void ScheduleRequests(IPeerConnection peerConnection)
     {
         if (peerConnection.PeerBitField is null)
             return;
@@ -214,28 +211,23 @@ internal class RequestScheduler(
 
             piecePicker.SetBlockToRequested(requestBlock, peerConnection);
 
-            try
+            if (peerConnection.TrySendRequest(requestBlock))
             {
-                await peerConnection
-                    .SendRequestAsync(requestBlock, cancellationToken)
-                    .ConfigureAwait(false);
                 peerConnection.IncrementRequestedBlock();
+                continue;
             }
-            catch (Exception ex)
+
+            if (logger.IsEnabled(LogLevel.Information))
             {
-                if (logger.IsEnabled(LogLevel.Error))
-                {
-                    logger.LogError(
-                        ex,
-                        "Failed to send request block {Index}:{Begin} to peer {Peer}",
-                        requestBlock.Index,
-                        requestBlock.Begin,
-                        peerConnection.PeerEndpoint.PeerId
-                    );
-                }
-                peerConnection.DecrementRequestedBlock();
-                break;
+                logger.LogInformation(
+                    "Failed to send request block {Index}:{Begin} to peer {Peer}",
+                    requestBlock.Index,
+                    requestBlock.Begin,
+                    peerConnection.PeerEndpoint.PeerId
+                );
             }
+            peerConnection.DecrementRequestedBlock();
+            break;
         }
     }
 

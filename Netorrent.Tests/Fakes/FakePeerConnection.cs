@@ -51,28 +51,30 @@ internal class FakePeerConnection : IPeerConnection
         throw new NotImplementedException();
     }
 
-    public async ValueTask SendUnchokedAsync(CancellationToken cancellationToken)
-    {
-        AmChoking.Value = false;
-    }
-
     public Task StartAsync(CancellationToken cancellationToken)
     {
         throw new NotImplementedException();
     }
 
-    public async ValueTask SendBlockAsync(Block block, CancellationToken cancellationToken)
+    public bool TrySendBlock(Block block)
     {
         SentBlocks.OnNext(block);
+        return true;
     }
 
-    public ValueTask SendCancelAsync(RequestBlock request, CancellationToken cancellationToken)
+    public bool TrySendCancel(RequestBlock request)
     {
         throw new NotImplementedException();
     }
 
-    public ValueTask SendRequestAsync(RequestBlock nextBlock, CancellationToken cancellationToken)
+    public bool TrySendRequest(RequestBlock nextBlock)
     {
         throw new NotImplementedException();
+    }
+
+    public bool TrySendUnchoked()
+    {
+        AmChoking.Value = false;
+        return true;
     }
 }

@@ -287,33 +287,31 @@ internal class PeerConnection(
         await uploadScheduler.AddRequestAsync(request, cancellationToken).ConfigureAwait(false);
     }
 
-    public async ValueTask SendRequestAsync(
-        RequestBlock nextBlock,
-        CancellationToken cancellationToken
-    )
+    public bool TrySendRequest(RequestBlock nextBlock)
     {
         var requestMessage = Message.CreateRequest(
             nextBlock.Index,
             nextBlock.Begin,
             nextBlock.Length
         );
-        await WriteMessageAsync(requestMessage, cancellationToken).ConfigureAwait(false);
+        return TryWriteMessage(requestMessage);
     }
 
-    public async ValueTask SendCancelAsync(
-        RequestBlock request,
-        CancellationToken cancellationToken
-    )
+    public bool TrySendCancel(RequestBlock request)
     {
         var cancelMessage = Message.CreateCancel(request.Index, request.Begin, request.Length);
-        await WriteMessageAsync(cancelMessage, cancellationToken).ConfigureAwait(false);
+        return TryWriteMessage(cancelMessage);
     }
 
-    public async ValueTask SendBlockAsync(Block block, CancellationToken cancellationToken)
+    public bool TrySendBlock(Block block)
     {
         var pieceMessage = Message.CreatePiece(block.Index, block.Begin, block.Payload);
-        await WriteMessageAsync(pieceMessage, cancellationToken).ConfigureAwait(false);
-        UploadSpeedTracker.AddBytes(block.Payload.Length);
+        if (TryWriteMessage(pieceMessage))
+        {
+            UploadSpeedTracker.AddBytes(block.Payload.Length);
+            return true;
+        }
+        return false;
     }
 
     private async ValueTask ReceiveBlockAsync(Message message, CancellationToken cancellationToken)
@@ -398,14 +396,15 @@ internal class PeerConnection(
         }
     }
 
-    public async ValueTask SendUnchokedAsync(CancellationToken cancellationToken)
+    public bool TrySendUnchoked()
     {
         if (AmChoking.Value != false)
         {
             AmChoking.Value = false;
             var message = Message.CreateUnchoke();
-            await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
+            return TryWriteMessage(message);
         }
+        return false;
     }
 
     private async ValueTask SendBitfieldAsync(
@@ -448,6 +447,16 @@ internal class PeerConnection(
                 piecePicker.DecreaseRarity(i);
             }
         }
+    }
+
+    private bool TryWriteMessage(Message message)
+    {
+        if (messageStream.OutgoingMessages.TryWriteOrDispose(message))
+        {
+            _lastSentMessageTime = DateTimeOffset.UtcNow;
+            return true;
+        }
+        return false;
     }
 
     private async ValueTask WriteMessageAsync(Message message, CancellationToken cancellationToken)
