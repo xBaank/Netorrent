@@ -9,7 +9,7 @@ using ZLinq;
 namespace Netorrent.P2P.Download;
 
 internal class RequestScheduler(
-    PiecePicker piecePicker,
+    IPiecePicker piecePicker,
     Bitfield myBitfield,
     TransferStatistics transfer,
     TimeSpan warmupTime,

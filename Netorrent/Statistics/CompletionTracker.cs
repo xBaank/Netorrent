@@ -24,7 +24,9 @@ public class CompletionTracker
         _downloadTaskCompletitionSource.TrySetCanceled();
         _downloadTaskCompletitionSource = new();
         if (_bitfield.IsComplete)
+        {
             _downloadTaskCompletitionSource.TrySetResult();
+        }
     }
 
     internal void TrySetException(Exception exception)

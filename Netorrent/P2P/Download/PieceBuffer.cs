@@ -18,7 +18,7 @@ internal class PieceBuffer : IDisposable
 
     public int Size { get; }
 
-    public PieceBuffer(int index, IPieceStorage pieceWriter, PiecePicker piecePicker)
+    public PieceBuffer(int index, IPieceStorage pieceWriter, IPiecePicker piecePicker)
     {
         _index = index;
         _pieceWriter = pieceWriter;
