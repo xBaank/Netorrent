@@ -29,5 +29,6 @@ internal interface IPeerConnection : IAsyncDisposable
     bool TrySendCancel(RequestBlock request);
     bool TrySendRequest(RequestBlock nextBlock);
     bool TrySendUnchoked();
+    bool TrySendChoked();
     Task StartAsync(CancellationToken cancellationToken);
 }

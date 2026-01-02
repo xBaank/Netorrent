@@ -77,4 +77,10 @@ internal class FakePeerConnection : IPeerConnection
         AmChoking.Value = false;
         return true;
     }
+
+    public bool TrySendChoked()
+    {
+        AmChoking.Value = true;
+        return true;
+    }
 }

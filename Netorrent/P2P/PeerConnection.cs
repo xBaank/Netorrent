@@ -226,7 +226,7 @@ internal class PeerConnection(
         if (PeerInterested.Value)
         {
             PeerInterested.Value = false;
-            await SendChokedAsync(cancellationToken).ConfigureAwait(false);
+            await uploadScheduler.FreeSlotAsync(this, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -385,23 +385,23 @@ internal class PeerConnection(
         }
     }
 
-    private async ValueTask SendChokedAsync(CancellationToken cancellationToken)
-    {
-        if (AmChoking.Value != true)
-        {
-            AmChoking.Value = true;
-            var message = Message.CreateChoke();
-            await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
-            await uploadScheduler.FreeSlotAsync(this, cancellationToken).ConfigureAwait(false);
-        }
-    }
-
     public bool TrySendUnchoked()
     {
         if (AmChoking.Value != false)
         {
             AmChoking.Value = false;
             var message = Message.CreateUnchoke();
+            return TryWriteMessage(message);
+        }
+        return false;
+    }
+
+    public bool TrySendChoked()
+    {
+        if (AmChoking.Value != true)
+        {
+            AmChoking.Value = true;
+            var message = Message.CreateChoke();
             return TryWriteMessage(message);
         }
         return false;
