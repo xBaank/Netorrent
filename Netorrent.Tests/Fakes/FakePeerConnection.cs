@@ -17,9 +17,9 @@ internal class FakePeerConnection : IPeerConnection
 
     public TimeSpan ConnectionDuration => throw new NotImplementedException();
 
-    public SpeedTracker DownloadSpeedTracker => throw new NotImplementedException();
+    public SpeedTracker DownloadTracker => new();
 
-    public SpeedTracker UploadSpeedTracker => throw new NotImplementedException();
+    public SpeedTracker UploadTracker => new();
 
     public PeerEndpoint PeerEndpoint => throw new NotImplementedException();
 

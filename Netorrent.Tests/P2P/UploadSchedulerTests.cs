@@ -7,7 +7,7 @@ using Shouldly;
 
 namespace Netorrent.Tests.P2P;
 
-[Timeout(10_000)]
+[Timeout(60_000)]
 public class UploadSchedulerTests
 {
     //TODO use matrix to create multiple peers

@@ -33,8 +33,8 @@ internal class PeerConnection(
     private Task? _runTask;
     private bool _disposed;
 
-    public SpeedTracker DownloadSpeedTracker { get; } = new();
-    public SpeedTracker UploadSpeedTracker { get; } = new();
+    public SpeedTracker DownloadTracker { get; } = new();
+    public SpeedTracker UploadTracker { get; } = new();
     public Bitfield MyBitField { get; } = myBitField;
     public ReactiveProperty<bool> AmChoking { get; private set; } = new(amChoking);
     public ReactiveProperty<bool> AmInterested { get; private set; } = new(amInterested);
@@ -76,14 +76,14 @@ internal class PeerConnection(
             configureAwait: false
         );
 
-        await using var downloadTimer = DownloadSpeedTracker
+        await using var downloadTimer = DownloadTracker
             .StartSampling(500.Milliseconds)
             .ConfigureAwait(false);
-        await using var uploadTimer = UploadSpeedTracker
+        await using var uploadTimer = UploadTracker
             .StartSampling(500.Milliseconds)
             .ConfigureAwait(false);
         await using var requestWindowTimer = PeerRequestWindow
-            .StartSampling(500.Milliseconds, DownloadSpeedTracker)
+            .StartSampling(500.Milliseconds, DownloadTracker)
             .ConfigureAwait(false);
 
         try
@@ -308,7 +308,7 @@ internal class PeerConnection(
         var pieceMessage = Message.CreatePiece(block.Index, block.Begin, block.Payload);
         if (TryWriteMessage(pieceMessage))
         {
-            UploadSpeedTracker.AddBytes(block.Payload.Length);
+            UploadTracker.AddBytes(block.Payload.Length);
             return true;
         }
         return false;
@@ -328,7 +328,7 @@ internal class PeerConnection(
         span[8..].CopyTo(rented.Memory.Span);
         var block = new Block(index, begin, rented, this);
         await requestScheduler.ReceiveBlockAsync(block, cancellationToken).ConfigureAwait(false);
-        DownloadSpeedTracker.AddBytes(payloadLength);
+        DownloadTracker.AddBytes(payloadLength);
     }
 
     private void ReceiveCancel(Message message)

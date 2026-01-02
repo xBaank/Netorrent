@@ -12,8 +12,8 @@ internal interface IPeerConnection : IAsyncDisposable
     ReactiveProperty<bool> PeerChoking { get; }
     ReactiveProperty<bool> PeerInterested { get; }
     TimeSpan ConnectionDuration { get; }
-    SpeedTracker DownloadSpeedTracker { get; }
-    SpeedTracker UploadSpeedTracker { get; }
+    SpeedTracker DownloadTracker { get; }
+    SpeedTracker UploadTracker { get; }
     Bitfield MyBitField { get; }
     Bitfield? PeerBitField { get; }
     PeerEndpoint PeerEndpoint { get; }

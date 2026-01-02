@@ -25,6 +25,5 @@ public class PeerStatistics
     public int ActivePeers => PeersNotChocking.Count();
     public int TotalPeers => _peersClient.ActivePeers.Values.AsValueEnumerable().Count();
 
-    public DownloadSpeed DownloadSpeed =>
-        PeersNotChocking.Sum(p => p.DownloadSpeedTracker.CurrentBps.Bps);
+    public DownloadSpeed DownloadSpeed => PeersNotChocking.Sum(p => p.DownloadTracker.Speed.Bps);
 }

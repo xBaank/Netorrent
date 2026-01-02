@@ -23,6 +23,7 @@ internal class UploadScheduler(
 
     private readonly HashSet<IPeerConnection> _interestedPeers = [];
     private readonly HashSet<IPeerConnection> _unchokedPeers = [];
+    private readonly HashSet<IPeerConnection> _activeDownloadPeers = [];
     private readonly Lock _unchokedSlotsLock = new();
 
     private CancellationTokenSource? _cts;
@@ -56,7 +57,7 @@ internal class UploadScheduler(
         while (true)
         {
             OptimisticChoke();
-            await Task.Delay(30.Seconds).ConfigureAwait(false);
+            await Task.Delay(30.Seconds, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -95,7 +96,7 @@ internal class UploadScheduler(
 
                 if (peer.TrySendBlock(block))
                 {
-                    transfer.AddUploadedBytes(block.Payload.Length); //TODO Move this to message stream after data if flushed
+                    transfer.AddUploadedBytes(block.Payload.Length); //TODO Move this to message stream after data if flushed ?
                 }
             }
             catch (Exception ex)
@@ -128,15 +129,28 @@ internal class UploadScheduler(
                 return;
             }
 
-            //Random peer to unchoke
-            var peerToUnchoke = _interestedPeers.AsValueEnumerable().Shuffle().First();
-            var worstPeer = _unchokedPeers
+            var newestIntersestedPeers = _interestedPeers
                 .AsValueEnumerable()
-                .OrderBy(i => i.DownloadSpeedTracker.CurrentBps.Bps)
-                .FirstOrDefault();
+                .Where(i => i.ConnectionDuration <= 30.Seconds)
+                .ToArray();
 
-            if (worstPeer is not null)
+            //New peers get x3 times chances
+            IPeerConnection[] possiblePeersToUnchoke =
+            [
+                .. newestIntersestedPeers,
+                .. newestIntersestedPeers,
+                .. _interestedPeers.ToArray(),
+            ];
+
+            var peerToUnchoke = possiblePeersToUnchoke.Shuffle().First();
+
+            if (_unchokedPeers.Count == MaxUnchokedPeers)
             {
+                var worstPeer = _unchokedPeers
+                    .AsValueEnumerable()
+                    .OrderBy(i => i.DownloadTracker.Speed.Bps)
+                    .First();
+
                 _unchokedPeers.Remove(worstPeer);
                 _interestedPeers.Add(worstPeer);
                 worstPeer.TrySendChoked();
@@ -149,14 +163,18 @@ internal class UploadScheduler(
     }
 
     private void RegularChoke()
-    {a
+    {
         lock (_unchokedSlotsLock)
         {
             var bestPeersByDownload = _unchokedPeers
                 .AsValueEnumerable()
                 .Concat(_interestedPeers)
-                .OrderByDescending(i => i.DownloadSpeedTracker.CurrentBps.Bps)
-                .Take(3)
+                .OrderByDescending(i =>
+                    i.MyBitField.IsComplete
+                        ? i.UploadTracker.Speed.Bps
+                        : i.DownloadTracker.Speed.Bps
+                )
+                .Take(MaxUnchokedPeers)
                 .ToHashSet();
 
             var toChoke = _unchokedPeers
@@ -183,6 +201,8 @@ internal class UploadScheduler(
         }
     }
 
+    //TODO request and free slot should be called add peer and remove peer to have all peers, then we can just perform choking/unchoking in upload scheduler
+    a
     public ValueTask RequestSlotAsync(
         IPeerConnection peerConnection,
         CancellationToken cancellationToken
@@ -196,7 +216,6 @@ internal class UploadScheduler(
             }
         }
 
-        RegularChoke();
         return ValueTask.CompletedTask;
     }
 
@@ -212,7 +231,6 @@ internal class UploadScheduler(
             peerConnection.TrySendChoked();
         }
 
-        RegularChoke();
         return ValueTask.CompletedTask;
     }
 
