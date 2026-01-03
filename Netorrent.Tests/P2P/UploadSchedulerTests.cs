@@ -7,7 +7,7 @@ using Shouldly;
 
 namespace Netorrent.Tests.P2P;
 
-[Timeout(60_000)]
+[Timeout(10_000)]
 public class UploadSchedulerTests
 {
     //TODO use matrix to create multiple peers
@@ -15,24 +15,27 @@ public class UploadSchedulerTests
     public async Task Should_Upload_To_Peer(CancellationToken cancellationToken)
     {
         var logger = NullLogger.Instance;
-        await using var peerConnection = new FakePeerConnection();
+        var bitfield = new Bitfield(5, true);
+        await using var peerConnection = new FakePeerConnection(bitfield);
         await using var uploadScheduler = new UploadScheduler(
             new FakePieceStorage(),
-            new Bitfield(5, true),
+            bitfield,
             new TransferStatistics(10),
             logger
         );
         var requestBlock = new RequestBlock(0, 0, 0);
-        var amChokingTask = peerConnection.AmChoking.FirstAsync(cancellationToken);
+        var amChokingTask = peerConnection.AmChoking.FirstAsync(i => i == false, cancellationToken);
         var blockTask = peerConnection.SentBlocks.FirstAsync(cancellationToken);
+        peerConnection.PeerInterested.Value = true;
         requestBlock.RequestedFrom.Add(peerConnection);
-        await uploadScheduler.RequestSlotAsync(peerConnection, cancellationToken);
-        await uploadScheduler.AddRequestAsync(requestBlock, cancellationToken);
+        uploadScheduler.AddPeer(peerConnection);
         var uploadTask = uploadScheduler.StartAsync(cancellationToken);
+        var chokeState = await amChokingTask;
+        await uploadScheduler.AddRequestAsync(requestBlock, cancellationToken);
         var block = await blockTask;
         block.Index.ShouldBe(0);
         block.Begin.ShouldBe(0);
         block.Payload.Length.ShouldBe(0);
-        (await amChokingTask).ShouldBe(true);
+        chokeState.ShouldBe(false);
     }
 }

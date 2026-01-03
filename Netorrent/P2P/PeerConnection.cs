@@ -25,6 +25,10 @@ internal class PeerConnection(
     bool peerInterested = false
 ) : IPeerConnection
 {
+    private readonly SynchronizedReactiveProperty<bool> _amChoking = new(amChoking);
+    private readonly SynchronizedReactiveProperty<bool> _amInterested = new(amInterested);
+    private readonly SynchronizedReactiveProperty<bool> _peerChoking = new(peerChoking);
+    private readonly SynchronizedReactiveProperty<bool> _peerInterested = new(peerInterested);
     private readonly Lock _stateLock = new();
     private DateTimeOffset _lastSentMessageTime;
     private DateTimeOffset _lastReceivedMessageTime;
@@ -36,10 +40,6 @@ internal class PeerConnection(
     public SpeedTracker DownloadTracker { get; } = new();
     public SpeedTracker UploadTracker { get; } = new();
     public Bitfield MyBitField { get; } = myBitField;
-    public ReactiveProperty<bool> AmChoking { get; private set; } = new(amChoking);
-    public ReactiveProperty<bool> AmInterested { get; private set; } = new(amInterested);
-    public ReactiveProperty<bool> PeerChoking { get; private set; } = new(peerChoking);
-    public ReactiveProperty<bool> PeerInterested { get; private set; } = new(peerInterested);
     public Bitfield? PeerBitField { get; private set; }
     public PeerEndpoint PeerEndpoint { get; } = peerEndpoint;
     public PeerRequestWindow PeerRequestWindow { get; } = peerRequestWindow;
@@ -51,6 +51,14 @@ internal class PeerConnection(
     public int UploadRequestedBlocksCount => Volatile.Read(ref _uploadRequestedCount);
 
     public TimeSpan ConnectionDuration => DateTime.UtcNow - _startedConnectionTime;
+
+    public ReadOnlyReactiveProperty<bool> AmChoking => _amChoking;
+
+    public ReadOnlyReactiveProperty<bool> AmInterested => _amInterested;
+
+    public ReadOnlyReactiveProperty<bool> PeerChoking => _peerChoking;
+
+    public ReadOnlyReactiveProperty<bool> PeerInterested => _peerInterested;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -70,6 +78,7 @@ internal class PeerConnection(
     private async Task RunAsync(CancellationTokenSource cancellationTokenSource)
     {
         await SendBitfieldAsync(MyBitField, cancellationTokenSource.Token).ConfigureAwait(false);
+        uploadScheduler.AddPeer(this);
 
         using var stateChangedDisposable = MyBitField.StateChanged.SubscribeAwait(
             async (i, ct) => await SendHaveAsync(i, ct),
@@ -214,27 +223,25 @@ internal class PeerConnection(
 
     private async ValueTask ReceiveInterestedAsync(CancellationToken cancellationToken)
     {
-        if (!PeerInterested.Value)
+        if (!_peerInterested.Value)
         {
-            PeerInterested.Value = true;
-            await uploadScheduler.RequestSlotAsync(this, cancellationToken).ConfigureAwait(false);
+            _peerInterested.Value = true;
         }
     }
 
     private async ValueTask ReceiveNotInterestedAsync(CancellationToken cancellationToken)
     {
-        if (PeerInterested.Value)
+        if (_peerInterested.Value)
         {
-            PeerInterested.Value = false;
-            await uploadScheduler.FreeSlotAsync(this, cancellationToken).ConfigureAwait(false);
+            _peerInterested.Value = false;
         }
     }
 
     private async ValueTask ReceiveChokeAsync(CancellationToken cancellationToken)
     {
-        if (!PeerChoking.Value)
+        if (!_peerChoking.Value)
         {
-            PeerChoking.Value = true;
+            _peerChoking.Value = true;
             await requestScheduler.FreeSlotAsync(this, cancellationToken).ConfigureAwait(false);
         }
     }
@@ -257,9 +264,9 @@ internal class PeerConnection(
 
     private async ValueTask ReceiveUnchokeAsync(CancellationToken cancellationToken)
     {
-        if (PeerChoking.Value)
+        if (_peerChoking.Value)
         {
-            PeerChoking.Value = false;
+            _peerChoking.Value = false;
             await requestScheduler.RequestSlotAsync(this, cancellationToken).ConfigureAwait(false);
         }
     }
@@ -269,7 +276,7 @@ internal class PeerConnection(
         CancellationToken cancellationToken
     )
     {
-        if (AmChoking.Value)
+        if (_amChoking.Value)
         {
             return;
         }
@@ -361,9 +368,9 @@ internal class PeerConnection(
 
         lock (_stateLock)
         {
-            if (interest != AmInterested.Value)
+            if (interest != _amInterested.Value)
             {
-                AmInterested.Value = interest;
+                _amInterested.Value = interest;
                 valueChanged = true;
             }
         }
@@ -378,7 +385,7 @@ internal class PeerConnection(
             }
             if (interest)
             {
-                AmInterested.Value = interest;
+                _amInterested.Value = interest;
                 var message = Message.CreateInterested();
                 await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
             }
@@ -387,23 +394,23 @@ internal class PeerConnection(
 
     public bool TrySendUnchoked()
     {
-        if (AmChoking.Value != false)
+        if (_amChoking.Value != false && TryWriteMessage(Message.CreateUnchoke()))
         {
-            AmChoking.Value = false;
-            var message = Message.CreateUnchoke();
-            return TryWriteMessage(message);
+            _amChoking.Value = false;
+            return true;
         }
+
         return false;
     }
 
     public bool TrySendChoked()
     {
-        if (AmChoking.Value != true)
+        if (_amChoking.Value != true && TryWriteMessage(Message.CreateChoke()))
         {
-            AmChoking.Value = true;
-            var message = Message.CreateChoke();
-            return TryWriteMessage(message);
+            _amChoking.Value = true;
+            return true;
         }
+
         return false;
     }
 
@@ -478,7 +485,7 @@ internal class PeerConnection(
                 UnregisterPieces(PeerBitField);
             }
 
-            await uploadScheduler.FreeSlotAsync(this, default).ConfigureAwait(false);
+            uploadScheduler.RemovePeer(this);
             await requestScheduler.FreeSlotAsync(this, default).ConfigureAwait(false);
 
             _cancellationTokenSource?.Cancel();

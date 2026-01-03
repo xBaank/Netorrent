@@ -6,6 +6,8 @@ namespace Netorrent.Tests.Fakes;
 
 internal class FakeUploadScheduler : IUploadScheduler
 {
+    public void AddPeer(IPeerConnection peerConnection) { }
+
     public ValueTask AddRequestAsync(RequestBlock request, CancellationToken cancellationToken)
     {
         throw new NotImplementedException();
@@ -18,18 +20,7 @@ internal class FakeUploadScheduler : IUploadScheduler
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-    public ValueTask FreeSlotAsync(
-        IPeerConnection peerConnection,
-        CancellationToken cancellationToken
-    ) => ValueTask.CompletedTask;
-
-    public ValueTask RequestSlotAsync(
-        IPeerConnection peerConnection,
-        CancellationToken cancellationToken
-    )
-    {
-        throw new NotImplementedException();
-    }
+    public void RemovePeer(IPeerConnection peerConnection) { }
 
     public Task StartAsync(CancellationToken cancellationToken) =>
         Task.Delay(-1, cancellationToken);

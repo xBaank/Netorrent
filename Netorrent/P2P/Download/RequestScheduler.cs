@@ -183,7 +183,7 @@ internal class RequestScheduler(
             lock (_activePeersLock)
             {
                 minPeersReady = _activePeers.Count(i =>
-                    i.AmInterested.Value && !i.PeerChoking.Value
+                    i.AmInterested.CurrentValue && !i.PeerChoking.CurrentValue
                 );
             }
 

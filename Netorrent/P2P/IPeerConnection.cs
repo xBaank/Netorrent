@@ -7,10 +7,10 @@ namespace Netorrent.P2P;
 
 internal interface IPeerConnection : IAsyncDisposable
 {
-    ReactiveProperty<bool> AmChoking { get; }
-    ReactiveProperty<bool> AmInterested { get; }
-    ReactiveProperty<bool> PeerChoking { get; }
-    ReactiveProperty<bool> PeerInterested { get; }
+    ReadOnlyReactiveProperty<bool> AmChoking { get; }
+    ReadOnlyReactiveProperty<bool> AmInterested { get; }
+    ReadOnlyReactiveProperty<bool> PeerChoking { get; }
+    ReadOnlyReactiveProperty<bool> PeerInterested { get; }
     TimeSpan ConnectionDuration { get; }
     SpeedTracker DownloadTracker { get; }
     SpeedTracker UploadTracker { get; }

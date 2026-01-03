@@ -20,7 +20,7 @@ public class PeerStatistics
     > PeersNotChocking =>
         _peersClient
             .ActivePeers.Values.AsValueEnumerable()
-            .Where(i => !i.PeerChoking.Value && i.AmInterested.Value);
+            .Where(i => !i.PeerChoking.CurrentValue && i.AmInterested.CurrentValue);
 
     public int ActivePeers => PeersNotChocking.Count();
     public int TotalPeers => _peersClient.ActivePeers.Values.AsValueEnumerable().Count();
