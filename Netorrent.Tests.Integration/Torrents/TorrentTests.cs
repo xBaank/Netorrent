@@ -178,18 +178,40 @@ public class TorrentTests(OpenTrackerFixture fixture)
     [Test]
     [MatrixDataSource]
     public async Task Should_Stop_Torrent(
-        [MatrixRange<int>(3, 6)] int seedersCount,
-        [MatrixRange<int>(3, 6)] int leechersCount,
+        [Matrix(UsedTrackers.Http, UsedTrackers.Udp, UsedTrackers.Http | UsedTrackers.Udp)]
+            UsedTrackers usedTrackers,
+        [Matrix(
+            UsedAddressProtocol.Ipv4,
+            UsedAddressProtocol.Ipv6,
+            UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6
+        )]
+            UsedAddressProtocol usedAdressProtocol,
+        [Matrix(4)] int seedersCount,
+        [Matrix(30)] int leechersCount,
         CancellationToken cancellationToken
     )
     {
         var path = await CreateRandomFileAsync("Input");
 
-        var seeders = await GetSeedersAsync(seedersCount, path, Logger)
+        var seeders = await GetSeedersAsync(
+                seedersCount,
+                path,
+                Logger,
+                usedTrackers,
+                usedAdressProtocol,
+                0.Seconds
+            )
             .ToListAsync(cancellationToken: cancellationToken);
         var seedersTorrents = seeders.Select(i => i.Item1).ToList();
 
-        var leechers = await GetLeechersAsync(leechersCount, seedersTorrents[0].MetaInfo, Logger)
+        var leechers = await GetLeechersAsync(
+                leechersCount,
+                seedersTorrents[0].MetaInfo,
+                Logger,
+                usedTrackers,
+                usedAdressProtocol,
+                0.Seconds
+            )
             .ToListAsync(cancellationToken: cancellationToken);
         var leechersTorrents = leechers.Select(i => i.Item1).ToList();
 
@@ -201,7 +223,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 await seederTorrent.StartAsync();
             }
 
-            await Task.Delay(1.Seconds, cancellationToken);
+            await Task.Delay(5000, cancellationToken);
 
             foreach (var leecherTorrent in leechersTorrents)
             {
@@ -246,18 +268,40 @@ public class TorrentTests(OpenTrackerFixture fixture)
     [Test]
     [MatrixDataSource]
     public async Task Should_Throw_In_Torrent(
-        [MatrixRange<int>(3, 6)] int seedersCount,
-        [MatrixRange<int>(3, 6)] int leechersCount,
+        [Matrix(UsedTrackers.Http, UsedTrackers.Udp, UsedTrackers.Http | UsedTrackers.Udp)]
+            UsedTrackers usedTrackers,
+        [Matrix(
+            UsedAddressProtocol.Ipv4,
+            UsedAddressProtocol.Ipv6,
+            UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6
+        )]
+            UsedAddressProtocol usedAdressProtocol,
+        [Matrix(4)] int seedersCount,
+        [Matrix(30)] int leechersCount,
         CancellationToken cancellationToken
     )
     {
         var path = await CreateRandomFileAsync("Input");
 
-        var seeders = await GetSeedersAsync(seedersCount, path, Logger)
+        var seeders = await GetSeedersAsync(
+                seedersCount,
+                path,
+                Logger,
+                usedTrackers,
+                usedAdressProtocol,
+                0.Seconds
+            )
             .ToListAsync(cancellationToken: cancellationToken);
         var seedersTorrents = seeders.Select(i => i.Item1).ToList();
 
-        var leechers = await GetLeechersAsync(leechersCount, seedersTorrents[0].MetaInfo, Logger)
+        var leechers = await GetLeechersAsync(
+                leechersCount,
+                seedersTorrents[0].MetaInfo,
+                Logger,
+                usedTrackers,
+                usedAdressProtocol,
+                0.Seconds
+            )
             .ToListAsync(cancellationToken: cancellationToken);
         var leechersTorrents = leechers.Select(i => i.Item1).ToList();
 
@@ -269,7 +313,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 await seederTorrent.StartAsync();
             }
 
-            await Task.Delay(1.Seconds, cancellationToken);
+            await Task.Delay(5000, cancellationToken);
 
             foreach (var leecherTorrent in leechersTorrents)
             {
