@@ -20,6 +20,8 @@ internal interface IPeerConnection : IAsyncDisposable
     PeerRequestWindow PeerRequestWindow { get; }
     int RequestedBlocksCount { get; }
     int UploadRequestedBlocksCount { get; }
+    TimeSpan TimeSinceReceivedBlock { get; }
+    TimeSpan TimeSinceSentBlock { get; }
 
     int DecrementRequestedBlock();
     int DecrementUploadRequested();
@@ -28,7 +30,7 @@ internal interface IPeerConnection : IAsyncDisposable
     bool TrySendBlock(Block block);
     bool TrySendCancel(RequestBlock request);
     bool TrySendRequest(RequestBlock nextBlock);
-    bool TrySendUnchoked();
-    bool TrySendChoked();
+    ValueTask UnchokeAsync(CancellationToken cancellationToken);
+    ValueTask ChokeAsync(CancellationToken cancellationToken);
     Task StartAsync(CancellationToken cancellationToken);
 }

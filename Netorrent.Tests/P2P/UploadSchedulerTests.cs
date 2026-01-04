@@ -28,7 +28,7 @@ public class UploadSchedulerTests
         var blockTask = peerConnection.SentBlocks.FirstAsync(cancellationToken);
         peerConnection.PeerInterested.Value = true;
         requestBlock.RequestedFrom.Add(peerConnection);
-        uploadScheduler.AddPeer(peerConnection);
+        await uploadScheduler.AddPeerAsync(peerConnection, cancellationToken);
         var uploadTask = uploadScheduler.StartAsync(cancellationToken);
         var chokeState = await amChokingTask;
         await uploadScheduler.AddRequestAsync(requestBlock, cancellationToken);

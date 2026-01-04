@@ -1,5 +1,7 @@
 using Netorrent.Other;
 
+namespace Netorrent.Extensions;
+
 public static class SemaphoreSlimExtensions
 {
     extension(SemaphoreSlim semaphoreSlim)

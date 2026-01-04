@@ -1,3 +1,4 @@
+using Netorrent.Extensions;
 using Netorrent.P2P;
 using Netorrent.P2P.Download;
 using Netorrent.P2P.Measurement;
@@ -41,6 +42,10 @@ internal class FakePeerConnection(Bitfield myBitfield) : IPeerConnection
 
     ReadOnlyReactiveProperty<bool> IPeerConnection.PeerInterested => PeerInterested;
 
+    public TimeSpan TimeSinceReceivedBlock => 0.Seconds;
+
+    public TimeSpan TimeSinceSentBlock => 0.Seconds;
+
     private int _uploadRequestedCount = 0;
 
     public int DecrementRequestedBlock()
@@ -80,15 +85,13 @@ internal class FakePeerConnection(Bitfield myBitfield) : IPeerConnection
         throw new NotImplementedException();
     }
 
-    public bool TrySendUnchoked()
+    public async ValueTask UnchokeAsync(CancellationToken cancellationToken)
     {
         AmChoking.Value = false;
-        return true;
     }
 
-    public bool TrySendChoked()
+    public async ValueTask ChokeAsync(CancellationToken cancellationToken)
     {
         AmChoking.Value = true;
-        return true;
     }
 }
