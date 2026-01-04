@@ -24,7 +24,7 @@ internal class UploadScheduler(
     const int MaxActivePeers = 4; //TODO Add an option for this to be changed
 
     private readonly Channel<RequestBlock> _pendingRequests = Channel.CreateBounded<RequestBlock>(
-        new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
+        new BoundedChannelOptions(512) { SingleWriter = false, SingleReader = true }
     );
 
     private readonly Dictionary<IPeerConnection, IDisposable> _interestedDisposables = [];
