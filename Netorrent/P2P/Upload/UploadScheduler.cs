@@ -63,13 +63,23 @@ internal class UploadScheduler(
     {
         using (await _semaphore.LockAsync(cancellationToken).ConfigureAwait(false))
         {
-            await RegularChokeAsync(cancellationToken).ConfigureAwait(false);
-            _round++;
-
-            if (_round == 3)
+            try
             {
-                await OptimisticChokeAsync(cancellationToken).ConfigureAwait(false);
-                _round = 1;
+                await RegularChokeAsync(cancellationToken).ConfigureAwait(false);
+                _round++;
+
+                if (_round == 3)
+                {
+                    await OptimisticChokeAsync(cancellationToken).ConfigureAwait(false);
+                    _round = 1;
+                }
+            }
+            catch (Exception ex)
+            {
+                if (logger.IsEnabled(LogLevel.Error))
+                {
+                    logger.LogError(ex, "Error running round {round}", _round);
+                }
             }
         }
     }
@@ -164,9 +174,11 @@ internal class UploadScheduler(
             }
         }
 
-        if (_activePeers.Add(peerToUnchoke))
+        await peerToUnchoke.UnchokeAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!peerToUnchoke.AmChoking.CurrentValue && peerToUnchoke.PeerInterested.CurrentValue)
         {
-            await peerToUnchoke.UnchokeAsync(cancellationToken).ConfigureAwait(false);
+            _activePeers.Add(peerToUnchoke);
         }
     }
 
@@ -237,15 +249,20 @@ internal class UploadScheduler(
         CancellationToken cancellationToken
     )
     {
+        var subscription = peerConnection.PeerInterested.SubscribeAwait(
+            (_, c) => CheckRoundAsync(peerConnection, c),
+            configureAwait: false
+        );
+
         using (await _semaphore.LockAsync(cancellationToken).ConfigureAwait(false))
         {
             if (_connectedPeers.Add(peerConnection))
             {
-                _interestedDisposables[peerConnection] =
-                    peerConnection.PeerInterested.SubscribeAwait(
-                        (_, c) => CheckRoundAsync(peerConnection, c),
-                        configureAwait: false
-                    );
+                _interestedDisposables[peerConnection] = subscription;
+            }
+            else
+            {
+                subscription.Dispose();
             }
         }
     }
@@ -269,7 +286,17 @@ internal class UploadScheduler(
         }
 
         await CheckRoundAsync(peerConnection, cancellationToken).ConfigureAwait(false);
-        await peerConnection.ChokeAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await peerConnection.ChokeAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            if (logger.IsEnabled(LogLevel.Error))
+            {
+                logger.LogError(ex, "Error unchoking {peer}", peerConnection.PeerEndpoint);
+            }
+        }
     }
 
     public async ValueTask AddRequestAsync(
