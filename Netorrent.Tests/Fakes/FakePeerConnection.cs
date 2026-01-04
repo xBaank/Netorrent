@@ -1,25 +1,26 @@
+using Netorrent.Extensions;
 using Netorrent.P2P;
 using Netorrent.P2P.Download;
 using Netorrent.P2P.Measurement;
 using Netorrent.P2P.Messages;
 using R3;
 
-internal class FakePeerConnection : IPeerConnection
+internal class FakePeerConnection(Bitfield myBitfield) : IPeerConnection
 {
     public Subject<Block> SentBlocks = new();
-    public ReactiveProperty<bool> AmChoking => new(true);
+    public SynchronizedReactiveProperty<bool> AmChoking { get; } = new(true);
 
-    public ReactiveProperty<bool> AmInterested => new(false);
+    public SynchronizedReactiveProperty<bool> AmInterested { get; } = new(false);
 
-    public ReactiveProperty<bool> PeerChoking => new(true);
+    public SynchronizedReactiveProperty<bool> PeerChoking { get; } = new(true);
 
-    public ReactiveProperty<bool> PeerInterested => new(false);
+    public SynchronizedReactiveProperty<bool> PeerInterested { get; } = new(false);
 
     public TimeSpan ConnectionDuration => throw new NotImplementedException();
 
-    public SpeedTracker DownloadSpeedTracker => throw new NotImplementedException();
+    public SpeedTracker DownloadTracker => new();
 
-    public SpeedTracker UploadSpeedTracker => throw new NotImplementedException();
+    public SpeedTracker UploadTracker => new();
 
     public PeerEndpoint PeerEndpoint => throw new NotImplementedException();
 
@@ -27,11 +28,23 @@ internal class FakePeerConnection : IPeerConnection
 
     public int UploadRequestedBlocksCount => _uploadRequestedCount;
 
-    public Bitfield MyBitField => throw new NotImplementedException();
+    public Bitfield MyBitField => myBitfield;
 
     public Bitfield? PeerBitField => throw new NotImplementedException();
 
     public PeerRequestWindow PeerRequestWindow => throw new NotImplementedException();
+
+    ReadOnlyReactiveProperty<bool> IPeerConnection.AmChoking => AmChoking;
+
+    ReadOnlyReactiveProperty<bool> IPeerConnection.AmInterested => AmInterested;
+
+    ReadOnlyReactiveProperty<bool> IPeerConnection.PeerChoking => PeerChoking;
+
+    ReadOnlyReactiveProperty<bool> IPeerConnection.PeerInterested => PeerInterested;
+
+    public TimeSpan TimeSinceReceivedBlock => 0.Seconds;
+
+    public TimeSpan TimeSinceSentBlock => 0.Seconds;
 
     private int _uploadRequestedCount = 0;
 
@@ -72,9 +85,13 @@ internal class FakePeerConnection : IPeerConnection
         throw new NotImplementedException();
     }
 
-    public bool TrySendUnchoked()
+    public async ValueTask UnchokeAsync(CancellationToken cancellationToken)
     {
         AmChoking.Value = false;
-        return true;
+    }
+
+    public async ValueTask ChokeAsync(CancellationToken cancellationToken)
+    {
+        AmChoking.Value = true;
     }
 }

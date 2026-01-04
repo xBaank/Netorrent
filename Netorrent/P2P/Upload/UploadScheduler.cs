@@ -1,13 +1,18 @@
-﻿using System.Net.NetworkInformation;
+﻿using System.Threading;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
-using Microsoft.VisualBasic;
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.P2P.Messages;
 using Netorrent.Statistics;
+using Netorrent.TorrentFile;
+using R3;
+using ZLinq;
 
 namespace Netorrent.P2P.Upload;
+
+//https://www.bittorrent.org/beps/bep_0003.html
+//https://read.seas.harvard.edu/~kohler/pubs/legout07clustering.pdf Section 2.3
 
 internal class UploadScheduler(
     IPieceStorage pieceStorage,
@@ -16,16 +21,19 @@ internal class UploadScheduler(
     ILogger logger
 ) : IUploadScheduler
 {
-    const int MaxUnchokedPeers = 4;
+    const int MaxActivePeers = 4; //TODO Add an option for this to be changed
 
     private readonly Channel<RequestBlock> _pendingRequests = Channel.CreateBounded<RequestBlock>(
         new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
     );
 
-    private readonly List<IPeerConnection> _interestedPeers = [];
-    private readonly HashSet<IPeerConnection> _unchokedPeers = [];
-    private readonly Lock _unchokedSlotsLock = new();
+    private readonly Dictionary<IPeerConnection, IDisposable> _interestedDisposables = [];
+    private readonly HashSet<IPeerConnection> _connectedPeers = [];
+    private readonly HashSet<IPeerConnection> _activePeers = [];
+    private readonly SemaphoreSlim _semaphore = new(1);
+    private readonly TimeSpan _interval = 10.Seconds;
 
+    private byte _round = 1;
     private CancellationTokenSource? _cts;
     private Task? _runningTask;
     private bool _disposed;
@@ -37,8 +45,43 @@ internal class UploadScheduler(
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _runningTask = _cts.CancelOnFirstCompletionAndAwaitAllAsync([
             ProcessRequestsAsync(_cts.Token),
+            ProcessRegularChokingAsync(_cts.Token),
         ]);
         return _runningTask;
+    }
+
+    public async Task ProcessRegularChokingAsync(CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            await RunRoundAsync(cancellationToken).ConfigureAwait(false);
+            await Task.Delay(_interval, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task RunRoundAsync(CancellationToken cancellationToken)
+    {
+        using (await _semaphore.LockAsync(cancellationToken).ConfigureAwait(false))
+        {
+            try
+            {
+                await RegularChokeAsync(cancellationToken).ConfigureAwait(false);
+                _round++;
+
+                if (_round == 3)
+                {
+                    await OptimisticChokeAsync(cancellationToken).ConfigureAwait(false);
+                    _round = 1;
+                }
+            }
+            catch (Exception ex)
+            {
+                if (logger.IsEnabled(LogLevel.Error))
+                {
+                    logger.LogError(ex, "Error running round {round}", _round);
+                }
+            }
+        }
     }
 
     public async Task ProcessRequestsAsync(CancellationToken cancellationToken)
@@ -76,7 +119,7 @@ internal class UploadScheduler(
 
                 if (peer.TrySendBlock(block))
                 {
-                    transfer.AddUploadedBytes(block.Payload.Length); //TODO Move this to message stream after data if flushed
+                    transfer.AddUploadedBytes(block.Payload.Length); //TODO Move this to message stream after data if flushed ?
                 }
             }
             catch (Exception ex)
@@ -100,51 +143,159 @@ internal class UploadScheduler(
         }
     }
 
-    public async ValueTask RequestSlotAsync(
-        IPeerConnection peerConnection,
-        CancellationToken cancellationToken
-    )
+    private async ValueTask OptimisticChokeAsync(CancellationToken cancellationToken)
     {
-        bool canUnchoke;
+        var peerToUnchoke = _connectedPeers
+            .AsValueEnumerable()
+            .Where(i => i.AmChoking.CurrentValue)
+            .Where(i => i.PeerInterested.CurrentValue)
+            .Shuffle()
+            .FirstOrDefault();
 
-        lock (_unchokedSlotsLock)
+        if (peerToUnchoke is null)
         {
-            if (_unchokedPeers.Count >= MaxUnchokedPeers)
+            return;
+        }
+
+        if (_activePeers.Count == MaxActivePeers)
+        {
+            var worstPeer = _activePeers
+                .AsValueEnumerable()
+                .OrderBy(i =>
+                    i.MyBitField.IsComplete
+                        ? i.UploadTracker.Speed.Bps
+                        : i.DownloadTracker.Speed.Bps
+                )
+                .First();
+
+            if (_activePeers.Remove(worstPeer))
             {
-                _interestedPeers.Add(peerConnection);
-                return;
+                await worstPeer.ChokeAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        await peerToUnchoke.UnchokeAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!peerToUnchoke.AmChoking.CurrentValue && peerToUnchoke.PeerInterested.CurrentValue)
+        {
+            _activePeers.Add(peerToUnchoke);
+        }
+    }
+
+    //TODO implement new choke algorithm as seeder to avoid free riders
+    private async ValueTask RegularChokeAsync(CancellationToken cancellationToken)
+    {
+        var bestPeersByDownload = _connectedPeers
+            .AsValueEnumerable()
+            .OrderByDescending(i =>
+                i.MyBitField.IsComplete ? i.UploadTracker.Speed.Bps : i.DownloadTracker.Speed.Bps
+            )
+            .ToArray();
+
+        var toUnchokeCount = MaxActivePeers - 1;
+        var activePeersCount = 0;
+
+        foreach (var peer in bestPeersByDownload)
+        {
+            //Choke and ignore peers that were not active in the last 30 seconds
+            if (peer.TimeSinceReceivedBlock >= 30.Seconds)
+            {
+                _activePeers.Remove(peer);
+                await peer.ChokeAsync(cancellationToken).ConfigureAwait(false);
+                continue;
             }
 
-            canUnchoke = true;
-
-            if (canUnchoke && peerConnection.TrySendUnchoked())
+            //If the peer is already as active downloader we do nothing
+            if (_activePeers.Contains(peer))
             {
-                _unchokedPeers.Add(peerConnection);
+                activePeersCount++;
+                continue;
+            }
+
+            //Peer can be unchoked
+            if (activePeersCount < toUnchokeCount)
+            {
+                await peer.UnchokeAsync(cancellationToken).ConfigureAwait(false);
+            }
+            //Peer can't be added so it's choked and removed if it's an active downloader
+            else
+            {
+                await peer.ChokeAsync(cancellationToken).ConfigureAwait(false);
+                _activePeers.Remove(peer);
+            }
+
+            //Peer is interested and unchoked (we add it)
+            if (!peer.AmChoking.CurrentValue && peer.PeerInterested.CurrentValue)
+            {
+                _activePeers.Add(peer);
+                activePeersCount++;
             }
         }
     }
 
-    public async ValueTask FreeSlotAsync(
+    private async ValueTask CheckRoundAsync(
         IPeerConnection peerConnection,
         CancellationToken cancellationToken
     )
     {
-        IPeerConnection? nextPeer = null;
-
-        lock (_unchokedSlotsLock)
+        if (peerConnection.PeerInterested.CurrentValue && !peerConnection.AmChoking.CurrentValue)
         {
-            _interestedPeers.Remove(peerConnection);
-            _unchokedPeers.Remove(peerConnection);
-            if (_interestedPeers.Count > 0)
+            await RunRoundAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    public async ValueTask AddPeerAsync(
+        IPeerConnection peerConnection,
+        CancellationToken cancellationToken
+    )
+    {
+        var subscription = peerConnection.PeerInterested.SubscribeAwait(
+            (_, c) => CheckRoundAsync(peerConnection, c),
+            configureAwait: false
+        );
+
+        using (await _semaphore.LockAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (_connectedPeers.Add(peerConnection))
             {
-                nextPeer = _interestedPeers[0];
-                _interestedPeers.RemoveAt(0);
+                _interestedDisposables[peerConnection] = subscription;
+            }
+            else
+            {
+                subscription.Dispose();
+            }
+        }
+    }
+
+    public async ValueTask RemovePeerAsync(
+        IPeerConnection peerConnection,
+        CancellationToken cancellationToken
+    )
+    {
+        using (await _semaphore.LockAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (_connectedPeers.Remove(peerConnection))
+            {
+                if (_interestedDisposables.TryGetValue(peerConnection, out var disposable))
+                {
+                    disposable.Dispose();
+                    _interestedDisposables.Remove(peerConnection);
+                }
+                _activePeers.Remove(peerConnection);
             }
         }
 
-        if (nextPeer?.TrySendUnchoked() == true)
+        await CheckRoundAsync(peerConnection, cancellationToken).ConfigureAwait(false);
+        try
         {
-            _unchokedPeers.Add(nextPeer);
+            await peerConnection.ChokeAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            if (logger.IsEnabled(LogLevel.Error))
+            {
+                logger.LogError(ex, "Error unchoking {peer}", peerConnection.PeerEndpoint);
+            }
         }
     }
 
@@ -155,21 +306,22 @@ internal class UploadScheduler(
     {
         var from = request.RequestedFrom[0];
 
-        lock (_unchokedSlotsLock)
+        if (!bitfield.HasPiece(request.Index))
         {
-            if (!bitfield.HasPiece(request.Index))
+            if (logger.IsEnabled(LogLevel.Information))
             {
-                if (logger.IsEnabled(LogLevel.Information))
-                {
-                    logger.LogInformation(
-                        "Peer {peer} requested a block we don't have",
-                        from.PeerEndpoint.PeerId
-                    );
-                }
-
-                return;
+                logger.LogInformation(
+                    "Peer {peer} requested a block we don't have",
+                    from.PeerEndpoint.PeerId
+                );
             }
-            if (!_unchokedPeers.Contains(from))
+
+            return;
+        }
+        using (await _semaphore.LockAsync(cancellationToken).ConfigureAwait(false))
+        {
+            //TODO penalize?
+            if (!_connectedPeers.TryGetValue(from, out var peer) || peer.AmChoking.CurrentValue)
             {
                 if (logger.IsEnabled(LogLevel.Information))
                 {
@@ -184,6 +336,7 @@ internal class UploadScheduler(
         await _pendingRequests.Writer.WriteAsync(request, cancellationToken).ConfigureAwait(false);
     }
 
+    //TODO properly implement cancellation
     public void CancelRequest(RequestBlock request)
     {
         var from = request.RequestedFrom[0];
@@ -194,6 +347,13 @@ internal class UploadScheduler(
 
     private async ValueTask DrainChannelsAsync()
     {
+        using (await _semaphore.LockAsync(default).ConfigureAwait(false))
+        {
+            foreach (var item in _interestedDisposables.Values)
+            {
+                item.Dispose();
+            }
+        }
         await foreach (var _ in _pendingRequests.Reader.ReadAllAsync().ConfigureAwait(false)) { }
     }
 
@@ -214,6 +374,7 @@ internal class UploadScheduler(
 
             await DrainChannelsAsync().ConfigureAwait(false);
             _cts?.Dispose();
+            _semaphore.Dispose();
         }
     }
 }

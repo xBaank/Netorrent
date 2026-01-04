@@ -25,24 +25,29 @@ internal class PeerConnection(
     bool peerInterested = false
 ) : IPeerConnection
 {
+    private readonly SynchronizedReactiveProperty<bool> _amChoking = new(amChoking);
+    private readonly SynchronizedReactiveProperty<bool> _amInterested = new(amInterested);
+    private readonly SynchronizedReactiveProperty<bool> _peerChoking = new(peerChoking);
+    private readonly SynchronizedReactiveProperty<bool> _peerInterested = new(peerInterested);
     private readonly Lock _stateLock = new();
     private DateTimeOffset _lastSentMessageTime;
     private DateTimeOffset _lastReceivedMessageTime;
+    private DateTimeOffset _lastSentBlock;
+    private DateTimeOffset _lastReceivedBlock;
     private CancellationTokenSource? _cancellationTokenSource;
     private DateTimeOffset _startedConnectionTime;
     private Task? _runTask;
     private bool _disposed;
 
-    public SpeedTracker DownloadSpeedTracker { get; } = new();
-    public SpeedTracker UploadSpeedTracker { get; } = new();
+    public SpeedTracker DownloadTracker { get; } = new();
+    public SpeedTracker UploadTracker { get; } = new();
     public Bitfield MyBitField { get; } = myBitField;
-    public ReactiveProperty<bool> AmChoking { get; private set; } = new(amChoking);
-    public ReactiveProperty<bool> AmInterested { get; private set; } = new(amInterested);
-    public ReactiveProperty<bool> PeerChoking { get; private set; } = new(peerChoking);
-    public ReactiveProperty<bool> PeerInterested { get; private set; } = new(peerInterested);
     public Bitfield? PeerBitField { get; private set; }
     public PeerEndpoint PeerEndpoint { get; } = peerEndpoint;
     public PeerRequestWindow PeerRequestWindow { get; } = peerRequestWindow;
+
+    public TimeSpan TimeSinceReceivedBlock => DateTimeOffset.UtcNow - _lastReceivedBlock;
+    public TimeSpan TimeSinceSentBlock => DateTimeOffset.UtcNow - _lastSentBlock;
 
     private int _requestedBlocksCount;
     private int _uploadRequestedCount;
@@ -50,7 +55,15 @@ internal class PeerConnection(
     public int RequestedBlocksCount => Volatile.Read(ref _requestedBlocksCount);
     public int UploadRequestedBlocksCount => Volatile.Read(ref _uploadRequestedCount);
 
-    public TimeSpan ConnectionDuration => DateTime.UtcNow - _startedConnectionTime;
+    public TimeSpan ConnectionDuration => DateTimeOffset.UtcNow - _startedConnectionTime;
+
+    public ReadOnlyReactiveProperty<bool> AmChoking => _amChoking;
+
+    public ReadOnlyReactiveProperty<bool> AmInterested => _amInterested;
+
+    public ReadOnlyReactiveProperty<bool> PeerChoking => _peerChoking;
+
+    public ReadOnlyReactiveProperty<bool> PeerInterested => _peerInterested;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -70,20 +83,21 @@ internal class PeerConnection(
     private async Task RunAsync(CancellationTokenSource cancellationTokenSource)
     {
         await SendBitfieldAsync(MyBitField, cancellationTokenSource.Token).ConfigureAwait(false);
+        await uploadScheduler.AddPeerAsync(this, cancellationTokenSource.Token);
 
         using var stateChangedDisposable = MyBitField.StateChanged.SubscribeAwait(
             async (i, ct) => await SendHaveAsync(i, ct),
             configureAwait: false
         );
 
-        await using var downloadTimer = DownloadSpeedTracker
+        await using var downloadTimer = DownloadTracker
             .StartSampling(500.Milliseconds)
             .ConfigureAwait(false);
-        await using var uploadTimer = UploadSpeedTracker
+        await using var uploadTimer = UploadTracker
             .StartSampling(500.Milliseconds)
             .ConfigureAwait(false);
         await using var requestWindowTimer = PeerRequestWindow
-            .StartSampling(500.Milliseconds, DownloadSpeedTracker)
+            .StartSampling(500.Milliseconds, DownloadTracker)
             .ConfigureAwait(false);
 
         try
@@ -214,27 +228,25 @@ internal class PeerConnection(
 
     private async ValueTask ReceiveInterestedAsync(CancellationToken cancellationToken)
     {
-        if (!PeerInterested.Value)
+        if (!_peerInterested.Value)
         {
-            PeerInterested.Value = true;
-            await uploadScheduler.RequestSlotAsync(this, cancellationToken).ConfigureAwait(false);
+            _peerInterested.Value = true;
         }
     }
 
     private async ValueTask ReceiveNotInterestedAsync(CancellationToken cancellationToken)
     {
-        if (PeerInterested.Value)
+        if (_peerInterested.Value)
         {
-            PeerInterested.Value = false;
-            await SendChokedAsync(cancellationToken).ConfigureAwait(false);
+            _peerInterested.Value = false;
         }
     }
 
     private async ValueTask ReceiveChokeAsync(CancellationToken cancellationToken)
     {
-        if (!PeerChoking.Value)
+        if (!_peerChoking.Value)
         {
-            PeerChoking.Value = true;
+            _peerChoking.Value = true;
             await requestScheduler.FreeSlotAsync(this, cancellationToken).ConfigureAwait(false);
         }
     }
@@ -257,9 +269,9 @@ internal class PeerConnection(
 
     private async ValueTask ReceiveUnchokeAsync(CancellationToken cancellationToken)
     {
-        if (PeerChoking.Value)
+        if (_peerChoking.Value)
         {
-            PeerChoking.Value = false;
+            _peerChoking.Value = false;
             await requestScheduler.RequestSlotAsync(this, cancellationToken).ConfigureAwait(false);
         }
     }
@@ -269,7 +281,7 @@ internal class PeerConnection(
         CancellationToken cancellationToken
     )
     {
-        if (AmChoking.Value)
+        if (_amChoking.Value)
         {
             return;
         }
@@ -308,7 +320,8 @@ internal class PeerConnection(
         var pieceMessage = Message.CreatePiece(block.Index, block.Begin, block.Payload);
         if (TryWriteMessage(pieceMessage))
         {
-            UploadSpeedTracker.AddBytes(block.Payload.Length);
+            UploadTracker.AddBytes(block.Payload.Length);
+            _lastSentBlock = DateTimeOffset.UtcNow;
             return true;
         }
         return false;
@@ -328,7 +341,8 @@ internal class PeerConnection(
         span[8..].CopyTo(rented.Memory.Span);
         var block = new Block(index, begin, rented, this);
         await requestScheduler.ReceiveBlockAsync(block, cancellationToken).ConfigureAwait(false);
-        DownloadSpeedTracker.AddBytes(payloadLength);
+        DownloadTracker.AddBytes(payloadLength);
+        _lastReceivedBlock = DateTimeOffset.UtcNow;
     }
 
     private void ReceiveCancel(Message message)
@@ -361,9 +375,9 @@ internal class PeerConnection(
 
         lock (_stateLock)
         {
-            if (interest != AmInterested.Value)
+            if (interest != _amInterested.Value)
             {
-                AmInterested.Value = interest;
+                _amInterested.Value = interest;
                 valueChanged = true;
             }
         }
@@ -378,33 +392,30 @@ internal class PeerConnection(
             }
             if (interest)
             {
-                AmInterested.Value = interest;
+                _amInterested.Value = interest;
                 var message = Message.CreateInterested();
                 await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
             }
         }
     }
 
-    private async ValueTask SendChokedAsync(CancellationToken cancellationToken)
+    public async ValueTask UnchokeAsync(CancellationToken cancellationToken)
     {
-        if (AmChoking.Value != true)
+        if (_amChoking.Value)
         {
-            AmChoking.Value = true;
-            var message = Message.CreateChoke();
-            await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
-            await uploadScheduler.FreeSlotAsync(this, cancellationToken).ConfigureAwait(false);
+            _amChoking.Value = false;
+            await WriteMessageAsync(Message.CreateUnchoke(), cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 
-    public bool TrySendUnchoked()
+    public async ValueTask ChokeAsync(CancellationToken cancellationToken)
     {
-        if (AmChoking.Value != false)
+        if (!_amChoking.Value)
         {
-            AmChoking.Value = false;
-            var message = Message.CreateUnchoke();
-            return TryWriteMessage(message);
+            _amChoking.Value = true;
+            await WriteMessageAsync(Message.CreateChoke(), cancellationToken).ConfigureAwait(false);
         }
-        return false;
     }
 
     private async ValueTask SendBitfieldAsync(
@@ -478,7 +489,7 @@ internal class PeerConnection(
                 UnregisterPieces(PeerBitField);
             }
 
-            await uploadScheduler.FreeSlotAsync(this, default).ConfigureAwait(false);
+            await uploadScheduler.RemovePeerAsync(this, default).ConfigureAwait(false);
             await requestScheduler.FreeSlotAsync(this, default).ConfigureAwait(false);
 
             _cancellationTokenSource?.Cancel();

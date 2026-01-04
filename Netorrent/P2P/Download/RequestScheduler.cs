@@ -18,8 +18,6 @@ internal class RequestScheduler(
 ) : IRequestScheduler
 {
     const int MinPeersForRarity = 6;
-    const int MinPeers = 6;
-    const int MaxPeers = 10;
 
     private readonly Channel<Block> _receiveBlocksChannel = Channel.CreateBounded<Block>(
         new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
@@ -30,10 +28,8 @@ internal class RequestScheduler(
         );
 
     private readonly HashSet<IPeerConnection> _activePeers = [];
-    private readonly List<IPeerConnection> _interestedPeers = [];
     private readonly Dictionary<int, PieceBuffer> _pieceBuffers = [];
     private readonly Lock _activePeersLock = new();
-    private int _maxCurrentPeers = MinPeers;
     private CancellationTokenSource? _cts;
     private Task? _runningTask;
     private bool _disposed;
@@ -183,7 +179,7 @@ internal class RequestScheduler(
             lock (_activePeersLock)
             {
                 minPeersReady = _activePeers.Count(i =>
-                    i.AmInterested.Value && !i.PeerChoking.Value
+                    i.AmInterested.CurrentValue && !i.PeerChoking.CurrentValue
                 );
             }
 
@@ -236,25 +232,13 @@ internal class RequestScheduler(
         CancellationToken cancellationToken
     )
     {
-        bool shouldEnqueue;
-
         lock (_activePeersLock)
         {
-            if (_activePeers.Count >= _maxCurrentPeers)
-            {
-                _interestedPeers.Add(peerConnection);
-                return;
-            }
             _activePeers.Add(peerConnection);
-            shouldEnqueue = true;
         }
-
-        if (shouldEnqueue)
-        {
-            await _slotsChannel
-                .Writer.WriteAsync(peerConnection, cancellationToken)
-                .ConfigureAwait(false);
-        }
+        await _slotsChannel
+            .Writer.WriteAsync(peerConnection, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask FreeSlotAsync(
@@ -266,15 +250,7 @@ internal class RequestScheduler(
 
         lock (_activePeersLock)
         {
-            _interestedPeers.Remove(peerConnection);
             _activePeers.Remove(peerConnection);
-
-            if (_interestedPeers.Count > 0)
-            {
-                nextPeer = _interestedPeers[0];
-                _interestedPeers.RemoveAt(0);
-                _activePeers.Add(nextPeer);
-            }
         }
 
         if (nextPeer is not null)

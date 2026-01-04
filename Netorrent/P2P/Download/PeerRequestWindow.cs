@@ -20,7 +20,7 @@ internal class PeerRequestWindow(int blockSize)
     public Timer StartSampling(TimeSpan period, SpeedTracker speedTracker)
     {
         return new Timer(
-            _ => CalculateWindow((long)speedTracker.CurrentBps.Bps),
+            _ => CalculateWindow((long)speedTracker.Speed.Bps),
             null,
             TimeSpan.Zero,
             period
