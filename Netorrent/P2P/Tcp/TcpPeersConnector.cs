@@ -54,7 +54,7 @@ internal class TcpPeersConnector(
                             .AsTask()
                     );
 
-                    if (tasks.Count >= 100)
+                    if (tasks.Count >= 250)
                     {
                         try
                         {

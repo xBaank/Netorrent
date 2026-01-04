@@ -19,7 +19,7 @@ internal class PeersClient(
     ILogger logger
 ) : IAsyncDisposable
 {
-    const int MAX_ACTIVE_PEER_COUNT = 50;
+    const int MAX_ACTIVE_PEER_COUNT = 100;
 
     private readonly ConcurrentDictionary<PeerEndpoint, PeerConnection> _activePeers = [];
     private readonly ConcurrentQueue<PeerEndpoint> _knownPeers = [];
