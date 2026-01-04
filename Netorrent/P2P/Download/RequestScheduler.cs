@@ -20,11 +20,11 @@ internal class RequestScheduler(
     const int MinPeersForRarity = 6;
 
     private readonly Channel<Block> _receiveBlocksChannel = Channel.CreateBounded<Block>(
-        new BoundedChannelOptions(512) { SingleWriter = false, SingleReader = true }
+        new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
     );
     private readonly Channel<IPeerConnection> _slotsChannel =
         Channel.CreateBounded<IPeerConnection>(
-            new BoundedChannelOptions(512) { SingleReader = true, SingleWriter = false }
+            new BoundedChannelOptions(256) { SingleReader = true, SingleWriter = false }
         );
 
     private readonly HashSet<IPeerConnection> _activePeers = [];
