@@ -5,8 +5,8 @@ namespace Netorrent.P2P.Messages;
 
 public readonly struct PeerId
 {
-    private static readonly byte[] _clientCode = Encoding.ASCII.GetBytes("-NT");
-    private static readonly byte[] _version = Encoding.ASCII.GetBytes("1001-");
+    private static readonly ReadOnlyMemory<byte> _clientCode = Encoding.ASCII.GetBytes("-NT");
+    private static readonly ReadOnlyMemory<byte> _version = Encoding.ASCII.GetBytes("1001-"); //TODO Change with actual version number
 
     public ReadOnlyMemory<byte> Bytes { get; }
     public string Value { get; }

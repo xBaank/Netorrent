@@ -185,16 +185,17 @@ public sealed class Torrent : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            if (ex is not OperationCanceledException)
-            {
-                Completion.TrySetException(ex);
-            }
-            //If no exception was thrown or the token is cancelled then we set it to canceled
-            if (cancellationTokenSource.Token.IsCancellationRequested)
+            if (
+                ex is OperationCanceledException oce
+                && oce.CancellationToken == cancellationTokenSource.Token
+            )
             {
                 Completion.TrySetCanceled();
                 State = State.Stopped;
+                return;
             }
+
+            Completion.TrySetException(ex);
         }
     }
 

@@ -97,6 +97,7 @@ internal class HttpTracker(
 
     public async ValueTask DisposeAsync()
     {
-        await TryAnnounceAsync(Events.Stopped).ConfigureAwait(false);
+        using var cts = new CancellationTokenSource(5.Seconds);
+        await TryAnnounceAsync(Events.Stopped, cts.Token).ConfigureAwait(false);
     }
 }

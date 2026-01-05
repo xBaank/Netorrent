@@ -144,6 +144,9 @@ internal class UdpTracker(
     public async ValueTask DisposeAsync()
     {
         if (iPEndPoint is not null && _lastResponse is not null)
-            await TryAnnounceAsync(iPEndPoint, Events.Stopped, default).ConfigureAwait(false);
+        {
+            using var cts = new CancellationTokenSource(5.Seconds);
+            await TryAnnounceAsync(iPEndPoint, Events.Stopped, cts.Token).ConfigureAwait(false);
+        }
     }
 }

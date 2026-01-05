@@ -29,8 +29,6 @@ internal class TrackerClient(
     IPAddress? forcedIp
 ) : IAsyncDisposable
 {
-    private readonly List<ITracker> _trackers = [];
-
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         var urls =
@@ -39,23 +37,26 @@ internal class TrackerClient(
                 .Distinct(StringComparer.OrdinalIgnoreCase)
             ?? [];
 
+        List<Task> trackerTasks = [];
+        List<ITracker> trackers = [];
+        var trackersEnumerable = CreateTrackers(urls, cancellationToken).ConfigureAwait(false);
+
         //The trackers should not fail by them self
         //They finish successfully because of dns problems, udp timeouts, etc.
-
-        var trackers = await CreateTrackers(urls, cancellationToken)
-            .ToListAsync(cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
         try
         {
-            var tasks = trackers.Select(i => i.StartAsync(cancellationToken).AsTask());
-            await Task.WhenAll(tasks).ConfigureAwait(false);
+            await foreach (var tracker in trackersEnumerable)
+            {
+                trackers.Add(tracker);
+                trackerTasks.Add(tracker.StartAsync(cancellationToken).AsTask());
+            }
+
+            await Task.WhenAll(trackerTasks).ConfigureAwait(false);
         }
         finally
         {
-            foreach (var tracker in trackers)
-            {
-                await tracker.DisposeAsync().ConfigureAwait(false);
-            }
+            var trackerDisposeTasks = trackers.Select(i => i.DisposeAsync().AsTask());
+            await Task.WhenAll(trackerDisposeTasks).ConfigureAwait(false);
         }
     }
 
@@ -206,9 +207,5 @@ internal class TrackerClient(
     public async ValueTask DisposeAsync()
     {
         trackersChannel.TryComplete();
-        foreach (var tracker in _trackers)
-        {
-            await tracker.DisposeAsync().ConfigureAwait(false);
-        }
     }
 }
