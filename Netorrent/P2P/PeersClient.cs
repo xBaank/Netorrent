@@ -164,10 +164,8 @@ internal class PeersClient(
 
     public async ValueTask DisposeAsync()
     {
-        foreach (var item in _activePeers)
-        {
-            await item.Value.DisposeAsync().ConfigureAwait(false);
-        }
+        var peersDisposeTasks = _activePeers.Values.Select(i => i.DisposeAsync().AsTask());
+        await Task.WhenAll(peersDisposeTasks).ConfigureAwait(false);
         await requestScheduler.DisposeAsync().ConfigureAwait(false);
         await uploadScheduler.DisposeAsync().ConfigureAwait(false);
         _peerConnected.OnCompleted();

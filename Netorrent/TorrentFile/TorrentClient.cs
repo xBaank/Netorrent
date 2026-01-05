@@ -464,9 +464,7 @@ public sealed class TorrentClient : IAsyncDisposable
     {
         await _peersListener.DisposeAsync().ConfigureAwait(false);
         await _udpTrackerHandler.DisposeAsync().ConfigureAwait(false);
-        await Task.WhenAll(
-                _torrents.AsValueEnumerable().Select(i => i.DisposeAsync().AsTask()).ToArray()
-            )
-            .ConfigureAwait(false);
+        var torrentsDisposeTasks = _torrents.Select(i => i.DisposeAsync().AsTask());
+        await Task.WhenAll(torrentsDisposeTasks).ConfigureAwait(false);
     }
 }

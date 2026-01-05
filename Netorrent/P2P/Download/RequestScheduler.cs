@@ -86,10 +86,10 @@ internal class RequestScheduler(
             _pieceBuffers[block.Index] = pieceBuffer;
         }
 
-        var rtt = requestedBlock.RequestedAt.HasValue
-            ? block.ReceivedAt - requestedBlock.RequestedAt.Value
-            : PiecePicker.TimeoutSeconds.Seconds;
         block.FromPeer.DecrementRequestedBlock();
+        block.FromPeer.PeerRequestWindow.ReceivedBlock(
+            (ulong)block.FromPeer.DownloadTracker.Speed.Bps
+        );
         piecePicker.CompleteRequestBlock(requestedBlock);
         pieceBuffer.AddBlock(block);
 

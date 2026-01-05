@@ -4,23 +4,49 @@ namespace Netorrent.P2P.Download;
 
 internal class PeerRequestWindow(int blockSize)
 {
-    private const int MinRequests = 4;
     private const double SafetyFactor = 1.5;
+    private const ulong MinRequests = 4;
 
-    private int _maxInFlightRequests = MinRequests;
+    private ulong _maxInFlightRequests = MinRequests;
+    private ulong _lastbytesPerSecond = 0;
+    private bool _slowStart = true;
 
-    public int MaxInFlightRequests => Volatile.Read(ref _maxInFlightRequests);
+    public ulong MaxInFlightRequests => Volatile.Read(ref _maxInFlightRequests);
 
-    private void CalculateWindow(long bytesPerSecond)
+    private void CalculateWindow(ulong bytesPerSecond)
     {
-        var neededBlocks = (int)bytesPerSecond / blockSize;
-        _maxInFlightRequests = (int)(Math.Max(neededBlocks, MinRequests) * SafetyFactor);
+        if (_slowStart)
+        {
+            return;
+        }
+
+        var neededBlocks = bytesPerSecond / (uint)blockSize;
+        _maxInFlightRequests = (ulong)(Math.Max(neededBlocks, MinRequests) * SafetyFactor);
+    }
+
+    public void ReceivedBlock(ulong bytesPerSecond)
+    {
+        if (!_slowStart)
+        {
+            return;
+        }
+
+        if (bytesPerSecond < _lastbytesPerSecond)
+        {
+            _slowStart = false;
+        }
+
+        if (_slowStart)
+        {
+            _lastbytesPerSecond = bytesPerSecond;
+            _maxInFlightRequests += 1;
+        }
     }
 
     public Timer StartSampling(TimeSpan period, SpeedTracker speedTracker)
     {
         return new Timer(
-            _ => CalculateWindow((long)speedTracker.Speed.Bps),
+            _ => CalculateWindow((ulong)speedTracker.Speed.Bps),
             null,
             TimeSpan.Zero,
             period

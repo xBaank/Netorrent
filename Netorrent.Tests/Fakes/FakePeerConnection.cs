@@ -24,9 +24,9 @@ internal class FakePeerConnection(Bitfield myBitfield) : IPeerConnection
 
     public PeerEndpoint PeerEndpoint => throw new NotImplementedException();
 
-    public int RequestedBlocksCount => throw new NotImplementedException();
+    public ulong RequestedBlocksCount => throw new NotImplementedException();
 
-    public int UploadRequestedBlocksCount => _uploadRequestedCount;
+    public ulong UploadRequestedBlocksCount => _uploadRequestedCount;
 
     public Bitfield MyBitField => myBitfield;
 
@@ -46,20 +46,20 @@ internal class FakePeerConnection(Bitfield myBitfield) : IPeerConnection
 
     public TimeSpan TimeSinceSentBlock => 0.Seconds;
 
-    private int _uploadRequestedCount = 0;
+    private ulong _uploadRequestedCount = 0;
 
-    public int DecrementRequestedBlock()
+    public ulong DecrementRequestedBlock()
     {
         throw new NotImplementedException();
     }
 
-    public int IncrementUploadRequested() => _uploadRequestedCount++;
+    public ulong IncrementUploadRequested() => _uploadRequestedCount++;
 
-    public int DecrementUploadRequested() => _uploadRequestedCount--;
+    public ulong DecrementUploadRequested() => _uploadRequestedCount--;
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-    public int IncrementRequestedBlock()
+    public ulong IncrementRequestedBlock()
     {
         throw new NotImplementedException();
     }

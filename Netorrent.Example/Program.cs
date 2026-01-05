@@ -222,10 +222,12 @@ static async Task RunStatusUI(Torrent torrent, CancellationToken token) =>
         .StartAsync(async ctx =>
         {
             var progressTask = ctx.AddTask("[green]Torrent Download[/]", autoStart: true);
+            var uploadTask = ctx.AddTask("[green]Torrent Uploaded[/]", autoStart: true);
 
             // Initialize
             var totalBytes = torrent.Statistics.Transfer.TotalBytes.Bytes;
             progressTask.MaxValue(totalBytes);
+            uploadTask.MaxValue(int.MaxValue);
 
             while (!token.IsCancellationRequested)
             {
@@ -233,6 +235,7 @@ static async Task RunStatusUI(Torrent torrent, CancellationToken token) =>
                 var p = torrent.Statistics.Peers;
 
                 progressTask.Value(t.VerifiedBytes.Bytes);
+                uploadTask.Value(t.UploadedBytes.Bytes);
 
                 progressTask.Description =
                     $@"[green]{(torrent.MetaInfo.Title ?? torrent.MetaInfo.Info.Name).EscapeMarkup()}[/]";

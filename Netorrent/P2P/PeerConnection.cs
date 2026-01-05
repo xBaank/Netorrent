@@ -49,11 +49,11 @@ internal class PeerConnection(
     public TimeSpan TimeSinceReceivedBlock => DateTimeOffset.UtcNow - _lastReceivedBlock;
     public TimeSpan TimeSinceSentBlock => DateTimeOffset.UtcNow - _lastSentBlock;
 
-    private int _requestedBlocksCount;
-    private int _uploadRequestedCount;
+    private ulong _requestedBlocksCount;
+    private ulong _uploadRequestedCount;
 
-    public int RequestedBlocksCount => Volatile.Read(ref _requestedBlocksCount);
-    public int UploadRequestedBlocksCount => Volatile.Read(ref _uploadRequestedCount);
+    public ulong RequestedBlocksCount => Volatile.Read(ref _requestedBlocksCount);
+    public ulong UploadRequestedBlocksCount => Volatile.Read(ref _uploadRequestedCount);
 
     public TimeSpan ConnectionDuration => DateTimeOffset.UtcNow - _startedConnectionTime;
 
@@ -91,13 +91,13 @@ internal class PeerConnection(
         );
 
         await using var downloadTimer = DownloadTracker
-            .StartSampling(500.Milliseconds)
+            .StartSampling(100.Milliseconds)
             .ConfigureAwait(false);
         await using var uploadTimer = UploadTracker
-            .StartSampling(500.Milliseconds)
+            .StartSampling(100.Milliseconds)
             .ConfigureAwait(false);
         await using var requestWindowTimer = PeerRequestWindow
-            .StartSampling(500.Milliseconds, DownloadTracker)
+            .StartSampling(100.Milliseconds, DownloadTracker)
             .ConfigureAwait(false);
 
         try
@@ -220,7 +220,7 @@ internal class PeerConnection(
             throw new InvalidOperationException("Second bitfield received, dropping connection");
         }
 
-        var bitfieldBytes = message.Payload!.Value.Memory;
+        var bitfieldBytes = message.Payload!.Memory;
         PeerBitField = new Bitfield(bitfieldBytes.Span, MyBitField.Length);
         RegisterPieces(PeerBitField);
         await CheckInterestAsync(cancellationToken).ConfigureAwait(false);
@@ -255,7 +255,7 @@ internal class PeerConnection(
     {
         //Lazy bitfield
         PeerBitField ??= new(MyBitField.Length);
-        int pieceIndex = BinaryPrimitives.ReadInt32BigEndian(message.Payload!.Value.Memory.Span);
+        int pieceIndex = BinaryPrimitives.ReadInt32BigEndian(message.Payload!.Memory.Span);
         //If the have was already sent or we already know that he has that piece we omit this message
         if (PeerBitField.HasPiece(pieceIndex))
         {
@@ -286,7 +286,7 @@ internal class PeerConnection(
             return;
         }
 
-        var span = message.Payload!.Value.Memory.Span;
+        var span = message.Payload!.Memory.Span;
         var index = BinaryPrimitives.ReadInt32BigEndian(span[..4]);
         var begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
         var length = BinaryPrimitives.ReadInt32BigEndian(span[8..12]);
@@ -329,7 +329,7 @@ internal class PeerConnection(
 
     private async ValueTask ReceiveBlockAsync(Message message, CancellationToken cancellationToken)
     {
-        var span = message.Payload!.Value.Memory.Span;
+        var span = message.Payload!.Memory.Span;
 
         int index = BinaryPrimitives.ReadInt32BigEndian(span[..4]);
         int begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
@@ -347,7 +347,7 @@ internal class PeerConnection(
 
     private void ReceiveCancel(Message message)
     {
-        var span = message.Payload!.Value.Memory.Span;
+        var span = message.Payload!.Memory.Span;
         var index = BinaryPrimitives.ReadInt32BigEndian(span[..4]);
         var begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
         var length = BinaryPrimitives.ReadInt32BigEndian(span[8..12]);
@@ -428,13 +428,13 @@ internal class PeerConnection(
         await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
     }
 
-    public int IncrementUploadRequested() => Interlocked.Increment(ref _uploadRequestedCount);
+    public ulong IncrementUploadRequested() => Interlocked.Increment(ref _uploadRequestedCount);
 
-    public int DecrementUploadRequested() => Interlocked.Decrement(ref _uploadRequestedCount);
+    public ulong DecrementUploadRequested() => Interlocked.Decrement(ref _uploadRequestedCount);
 
-    public int IncrementRequestedBlock() => Interlocked.Increment(ref _requestedBlocksCount);
+    public ulong IncrementRequestedBlock() => Interlocked.Increment(ref _requestedBlocksCount);
 
-    public int DecrementRequestedBlock() => Interlocked.Decrement(ref _requestedBlocksCount);
+    public ulong DecrementRequestedBlock() => Interlocked.Decrement(ref _requestedBlocksCount);
 
     private void RegisterPiece(int index) => piecePicker.IncreaseRarity(index);
 

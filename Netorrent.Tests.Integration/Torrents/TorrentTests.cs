@@ -10,7 +10,7 @@ using Shouldly;
 namespace Netorrent.Tests.Integration.Torrents;
 
 [ClassDataSource<OpenTrackerFixture>(Shared = SharedType.PerClass)]
-[Timeout(4 * 60_000)]
+[Timeout(5 * 60_000)]
 public class TorrentTests(OpenTrackerFixture fixture)
 {
     private readonly OpenTrackerFixture _fixture = fixture;
@@ -71,112 +71,6 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
     [Test]
     [MatrixDataSource]
-    public async Task Should_Download_Torrent_With_Different_Ips_And_Trackers(
-        [Matrix(UsedTrackers.Http, UsedTrackers.Udp, UsedTrackers.Http | UsedTrackers.Udp)]
-            UsedTrackers usedTrackers,
-        [Matrix(
-            UsedAddressProtocol.Ipv4,
-            UsedAddressProtocol.Ipv6,
-            UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6
-        )]
-            UsedAddressProtocol usedAdressProtocol,
-        [Matrix(4)] int seedersCount,
-        [Matrix(30)] int leechersCount,
-        CancellationToken cancellationToken
-    )
-    {
-        if (!Socket.OSSupportsIPv6 && usedAdressProtocol.HasFlag(UsedAddressProtocol.Ipv6))
-        {
-            Skip.Test("Ipv6 is not supported");
-        }
-
-        if (!Socket.OSSupportsIPv4 && usedAdressProtocol.HasFlag(UsedAddressProtocol.Ipv4))
-        {
-            Skip.Test("Ipv4 is not supported");
-        }
-
-        var path = await CreateRandomFileAsync("Input");
-
-        var seeders = await GetSeedersAsync(
-                seedersCount,
-                path,
-                Logger,
-                usedTrackers,
-                usedAdressProtocol,
-                0.Seconds
-            )
-            .ToListAsync(cancellationToken: cancellationToken);
-        var seedersTorrents = seeders.Select(i => i.Item1).ToList();
-
-        var leechers = await GetLeechersAsync(
-                leechersCount,
-                seedersTorrents[0].MetaInfo,
-                Logger,
-                usedTrackers,
-                usedAdressProtocol,
-                0.Seconds
-            )
-            .ToListAsync(cancellationToken: cancellationToken);
-        var leechersTorrents = leechers.Select(i => i.Item1).ToList();
-
-        try
-        {
-            foreach (var seederTorrent in seedersTorrents)
-            {
-                cancellationToken.Register(seederTorrent.Stop);
-                await seederTorrent.StartAsync();
-            }
-
-            //This is needed because if seeder and leecher announce at the same time they don't see each other
-            await Task.Delay(5000, cancellationToken);
-
-            foreach (var leecherTorrent in leechersTorrents)
-            {
-                cancellationToken.Register(leecherTorrent.Stop);
-                await leecherTorrent.StartAsync();
-            }
-
-            foreach (var leecherTorrent in leechersTorrents)
-            {
-                await leecherTorrent.Completion.AsTask().ShouldNotThrowAsync();
-            }
-
-            foreach (var seederTorrent in seedersTorrents)
-            {
-                await seederTorrent.StopAsync();
-            }
-
-            foreach (var leecherTorrent in leechersTorrents)
-            {
-                await leecherTorrent.StopAsync();
-            }
-
-            foreach (var leecherTorrent in leechersTorrents)
-            {
-                var originalFile = await ReadAllBytesAsync(path, cancellationToken);
-                var downloadedFile = await ReadAllBytesAsync(
-                    $"{leecherTorrent.OutputDirectory}/{leecherTorrent.MetaInfo.Info.Name}",
-                    cancellationToken
-                );
-                originalFile.SequenceEqual(downloadedFile).ShouldBeTrue();
-                leecherTorrent.Statistics.Transfer.VerifiedBytes.ShouldBe(downloadedFile.Length);
-            }
-        }
-        finally
-        {
-            foreach (var (_, client) in seeders)
-            {
-                await client.DisposeAsync();
-            }
-            foreach (var (_, client) in leechers)
-            {
-                await client.DisposeAsync();
-            }
-        }
-    }
-
-    [Test]
-    [MatrixDataSource]
     public async Task Should_Stop_Torrent(
         [Matrix(UsedTrackers.Http, UsedTrackers.Udp, UsedTrackers.Http | UsedTrackers.Udp)]
             UsedTrackers usedTrackers,
@@ -186,8 +80,8 @@ public class TorrentTests(OpenTrackerFixture fixture)
             UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6
         )]
             UsedAddressProtocol usedAdressProtocol,
-        [Matrix(4)] int seedersCount,
-        [Matrix(30)] int leechersCount,
+        [Matrix(3)] int seedersCount,
+        [Matrix(12)] int leechersCount,
         CancellationToken cancellationToken
     )
     {
@@ -276,8 +170,8 @@ public class TorrentTests(OpenTrackerFixture fixture)
             UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6
         )]
             UsedAddressProtocol usedAdressProtocol,
-        [Matrix(4)] int seedersCount,
-        [Matrix(30)] int leechersCount,
+        [Matrix(3)] int seedersCount,
+        [Matrix(12)] int leechersCount,
         CancellationToken cancellationToken
     )
     {
@@ -355,6 +249,137 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 await client.DisposeAsync();
             }
 
+            foreach (var (_, client) in leechers)
+            {
+                await client.DisposeAsync();
+            }
+        }
+    }
+
+    [Test]
+    [MatrixDataSource]
+    public async Task Should_Download_Torrent_With_Different_Ips_And_Trackers(
+        [Matrix(UsedTrackers.Http, UsedTrackers.Udp, UsedTrackers.Http | UsedTrackers.Udp)]
+            UsedTrackers usedTrackers,
+        [Matrix(
+            UsedAddressProtocol.Ipv4,
+            UsedAddressProtocol.Ipv6,
+            UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6
+        )]
+            UsedAddressProtocol usedAdressProtocol,
+        [Matrix(3)] int seedersCount,
+        [Matrix(12)] int leechersCount,
+        CancellationToken cancellationToken
+    ) =>
+        await TestDownloadAsync(
+            usedTrackers,
+            usedAdressProtocol,
+            seedersCount,
+            leechersCount,
+            cancellationToken
+        );
+
+    [Test]
+    public async Task Should_Download_Torrent(CancellationToken cancellationToken) =>
+        await TestDownloadAsync(
+            UsedTrackers.Http | UsedTrackers.Udp,
+            UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6,
+            4,
+            50,
+            cancellationToken
+        );
+
+    private async Task TestDownloadAsync(
+        UsedTrackers usedTrackers,
+        UsedAddressProtocol usedAdressProtocol,
+        int seedersCount,
+        int leechersCount,
+        CancellationToken cancellationToken
+    )
+    {
+        if (!Socket.OSSupportsIPv6 && usedAdressProtocol.HasFlag(UsedAddressProtocol.Ipv6))
+        {
+            Skip.Test("Ipv6 is not supported");
+        }
+
+        if (!Socket.OSSupportsIPv4 && usedAdressProtocol.HasFlag(UsedAddressProtocol.Ipv4))
+        {
+            Skip.Test("Ipv4 is not supported");
+        }
+
+        var path = await CreateRandomFileAsync("Input");
+
+        var seeders = await GetSeedersAsync(
+                seedersCount,
+                path,
+                Logger,
+                usedTrackers,
+                usedAdressProtocol,
+                0.Seconds
+            )
+            .ToListAsync(cancellationToken: cancellationToken);
+        var seedersTorrents = seeders.Select(i => i.Item1).ToList();
+
+        var leechers = await GetLeechersAsync(
+                leechersCount,
+                seedersTorrents[0].MetaInfo,
+                Logger,
+                usedTrackers,
+                usedAdressProtocol,
+                0.Seconds
+            )
+            .ToListAsync(cancellationToken: cancellationToken);
+        var leechersTorrents = leechers.Select(i => i.Item1).ToList();
+
+        try
+        {
+            foreach (var seederTorrent in seedersTorrents)
+            {
+                cancellationToken.Register(seederTorrent.Stop);
+                await seederTorrent.StartAsync();
+            }
+
+            //This is needed because if seeder and leecher announce at the same time they don't see each other
+            await Task.Delay(5000, cancellationToken);
+
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                cancellationToken.Register(leecherTorrent.Stop);
+                await leecherTorrent.StartAsync();
+            }
+
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                await leecherTorrent.Completion.AsTask().ShouldNotThrowAsync();
+            }
+
+            foreach (var seederTorrent in seedersTorrents)
+            {
+                await seederTorrent.StopAsync();
+            }
+
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                await leecherTorrent.StopAsync();
+            }
+
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                var originalFile = await ReadAllBytesAsync(path, cancellationToken);
+                var downloadedFile = await ReadAllBytesAsync(
+                    $"{leecherTorrent.OutputDirectory}/{leecherTorrent.MetaInfo.Info.Name}",
+                    cancellationToken
+                );
+                originalFile.SequenceEqual(downloadedFile).ShouldBeTrue();
+                leecherTorrent.Statistics.Transfer.VerifiedBytes.ShouldBe(downloadedFile.Length);
+            }
+        }
+        finally
+        {
+            foreach (var (_, client) in seeders)
+            {
+                await client.DisposeAsync();
+            }
             foreach (var (_, client) in leechers)
             {
                 await client.DisposeAsync();

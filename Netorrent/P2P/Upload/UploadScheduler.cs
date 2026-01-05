@@ -21,7 +21,7 @@ internal class UploadScheduler(
     ILogger logger
 ) : IUploadScheduler
 {
-    const int MaxActivePeers = 4; //TODO Add an option for this to be changed
+    const int MaxActivePeers = 4; //TODO Add an option for this to be changed or rate based
 
     private readonly Channel<RequestBlock> _pendingRequests = Channel.CreateBounded<RequestBlock>(
         new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
@@ -347,12 +347,9 @@ internal class UploadScheduler(
 
     private async ValueTask DrainChannelsAsync()
     {
-        using (await _semaphore.LockAsync(default).ConfigureAwait(false))
+        foreach (var item in _interestedDisposables.Values)
         {
-            foreach (var item in _interestedDisposables.Values)
-            {
-                item.Dispose();
-            }
+            item.Dispose();
         }
         await foreach (var _ in _pendingRequests.Reader.ReadAllAsync().ConfigureAwait(false)) { }
     }

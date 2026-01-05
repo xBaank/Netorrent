@@ -18,15 +18,15 @@ internal interface IPeerConnection : IAsyncDisposable
     Bitfield? PeerBitField { get; }
     PeerEndpoint PeerEndpoint { get; }
     PeerRequestWindow PeerRequestWindow { get; }
-    int RequestedBlocksCount { get; }
-    int UploadRequestedBlocksCount { get; }
+    ulong RequestedBlocksCount { get; }
+    ulong UploadRequestedBlocksCount { get; }
     TimeSpan TimeSinceReceivedBlock { get; }
     TimeSpan TimeSinceSentBlock { get; }
 
-    int DecrementRequestedBlock();
-    int DecrementUploadRequested();
-    int IncrementRequestedBlock();
-    int IncrementUploadRequested();
+    ulong DecrementRequestedBlock();
+    ulong DecrementUploadRequested();
+    ulong IncrementRequestedBlock();
+    ulong IncrementUploadRequested();
     bool TrySendBlock(Block block);
     bool TrySendCancel(RequestBlock request);
     bool TrySendRequest(RequestBlock nextBlock);
