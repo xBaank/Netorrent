@@ -39,9 +39,8 @@ public readonly struct PeerId
         var toFill = data[(_clientCode.Length + _version.Length)..];
         for (int i = 0; i < toFill.Length; i++)
         {
-            toFill.Span[i] = (byte)Random.Shared.Next(33, 127);
+            toFill.Span[i] = (byte)RandomNumberGenerator.GetInt32(33, 127); //Limit to representable ascii characters
         }
-        RandomNumberGenerator.Shuffle(toFill.Span);
         return data;
     }
 
