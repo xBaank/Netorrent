@@ -97,6 +97,7 @@ internal class PeersClient(
         }
         catch (OperationCanceledException)
         {
+            activePeers.Remove(peerConnection.PeerEndpoint, out _);
             await peerConnection.DisposeAsync().ConfigureAwait(false);
             return;
         }

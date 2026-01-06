@@ -132,6 +132,21 @@ internal class RequestScheduler(
     {
         while (!cancellationToken.IsCancellationRequested)
         {
+            var timeoutRequestBlocks = piecePicker.GetTimeoutRequestBlocks();
+
+            if (timeoutRequestBlocks.Length == 0)
+            {
+                await Task.Delay(1.Seconds, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
+            var peersAvailable = peers
+                .Values.AsValueEnumerable()
+                .Where(i => i.AmInterested.CurrentValue)
+                .Where(i => !i.PeerChoking.CurrentValue)
+                .OrderByDescending(i => i.PeerRequestWindow.MaxInFlightRequests)
+                .ToArray();
+
             foreach (var requestBlock in piecePicker.GetTimeoutRequestBlocks())
             {
                 var lastRequestedFrom = piecePicker.GetLastRequesterOrNull(requestBlock);
@@ -139,25 +154,15 @@ internal class RequestScheduler(
 
                 IPeerConnection? freePeer = null;
 
-                foreach (
-                    var peerConnection in peers
-                        .Values.AsValueEnumerable()
-                        .Where(i => i.AmInterested.CurrentValue)
-                        .Where(i => !i.PeerChoking.CurrentValue)
-                        .OrderByDescending(i => i.PeerRequestWindow.MaxInFlightRequests)
-                )
+                foreach (var peerConnection in peersAvailable)
                 {
                     if (peerConnection == lastRequestedFrom)
                     {
                         continue;
                     }
 
-                    //Request only if the peers has not reached window limit?
-                    if (peerConnection.PeerBitField?.HasPiece(requestBlock.Index) == true)
-                    {
-                        freePeer = peerConnection;
-                        break;
-                    }
+                    freePeer = peerConnection;
+                    break;
                 }
 
                 //If we can't find a peer we retry with the same one only if its responding again
