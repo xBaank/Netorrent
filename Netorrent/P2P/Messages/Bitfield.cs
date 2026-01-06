@@ -69,23 +69,31 @@ internal class Bitfield
         lock (_lock)
         {
             if (index >= _bits.Length)
+            {
                 return;
+            }
 
             if (_bits[index])
+            {
                 return;
+            }
 
             _bits[index] = true;
             _stateChanged.OnNext(index);
 
             if (IsComplete)
+            {
                 _stateChanged.OnCompleted();
+            }
         }
     }
 
     internal bool HasAnyMissingPiece(Bitfield other)
     {
         if (other.Length != Length)
+        {
             throw new ArgumentException("Bitfields must have the same length.", nameof(other));
+        }
 
         for (int i = 0; i < Length; i++)
         {
@@ -122,7 +130,10 @@ internal class Bitfield
     {
         int byteLen = (_bits.Length + 7) / 8;
         if (dest.Length < byteLen)
+        {
             throw new ArgumentException("dest too small", nameof(dest));
+        }
+
         dest[..byteLen].Clear();
 
         for (int i = 0; i < _bits.Length; i++)

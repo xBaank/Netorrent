@@ -136,16 +136,23 @@ internal class RequestScheduler(
             {
                 var lastRequestedFrom = piecePicker.GetLastRequesterOrNull(requestBlock);
                 piecePicker.SetBlockToPending(requestBlock);
-                lastRequestedFrom?.DecrementRequestedBlock();
 
                 IPeerConnection? freePeer = null;
 
                 lock (_activePeersLock)
                 {
-                    foreach (var peerConnection in _activePeers)
+                    foreach (
+                        var peerConnection in _activePeers
+                            .AsValueEnumerable()
+                            .OrderByDescending(i => i.PeerRequestWindow.MaxInFlightRequests)
+                    )
                     {
                         if (peerConnection == lastRequestedFrom)
+                        {
                             continue;
+                        }
+
+                        //Request only if the peers has not reached window limit?
                         if (peerConnection.PeerBitField?.HasPiece(requestBlock.Index) == true)
                         {
                             freePeer = peerConnection;
@@ -154,10 +161,13 @@ internal class RequestScheduler(
                     }
                 }
 
-                //If we can't find a peer we retry with the same one
-                freePeer ??= lastRequestedFrom;
-
-                if (freePeer is null)
+                //If we can't find a peer we retry with the same one only if its responding again
+                if (freePeer is null && lastRequestedFrom is not null)
+                {
+                    lastRequestedFrom.DecrementRequestedBlock();
+                    freePeer = lastRequestedFrom;
+                }
+                else
                 {
                     continue;
                 }
@@ -246,18 +256,9 @@ internal class RequestScheduler(
         CancellationToken cancellationToken
     )
     {
-        IPeerConnection? nextPeer = null;
-
         lock (_activePeersLock)
         {
             _activePeers.Remove(peerConnection);
-        }
-
-        if (nextPeer is not null)
-        {
-            await _slotsChannel
-                .Writer.WriteAsync(nextPeer, cancellationToken)
-                .ConfigureAwait(false);
         }
     }
 

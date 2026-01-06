@@ -4,7 +4,7 @@ namespace Netorrent.P2P.Download;
 
 internal class PeerRequestWindow(int blockSize)
 {
-    private const double SafetyFactor = 1.5;
+    private const double SafetyFactor = 2;
     private const ulong MinRequests = 4;
 
     private ulong _maxInFlightRequests = MinRequests;
