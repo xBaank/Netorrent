@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Netorrent.P2P;
 using Netorrent.P2P.Messages;
 using Netorrent.P2P.Upload;
 using Netorrent.Statistics;
@@ -18,6 +19,10 @@ public class UploadSchedulerTests
         var bitfield = new Bitfield(5, true);
         await using var peerConnection = new FakePeerConnection(bitfield);
         await using var uploadScheduler = new UploadScheduler(
+            new Dictionary<PeerEndpoint, IPeerConnection>()
+            {
+                [peerConnection.PeerEndpoint] = peerConnection,
+            },
             new FakePieceStorage(),
             bitfield,
             new TransferStatistics(10),
@@ -28,7 +33,6 @@ public class UploadSchedulerTests
         var blockTask = peerConnection.SentBlocks.FirstAsync(cancellationToken);
         peerConnection.PeerInterested.Value = true;
         requestBlock.RequestedFrom.Add(peerConnection);
-        await uploadScheduler.AddPeerAsync(peerConnection, cancellationToken);
         var uploadTask = uploadScheduler.StartAsync(cancellationToken);
         var chokeState = await amChokingTask;
         await uploadScheduler.AddRequestAsync(requestBlock, cancellationToken);

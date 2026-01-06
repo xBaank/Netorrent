@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.Collections.Concurrent;
+using System.Net;
 using System.Net.Sockets;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
@@ -64,7 +65,7 @@ public sealed class Torrent : IAsyncDisposable
             (int)metaInfo.Info.PieceLength,
             [.. metaInfo.Info.Pieces.AsValueEnumerable().Chunk(20)]
         );
-
+        var activePeers = new ConcurrentDictionary<PeerEndpoint, IPeerConnection>();
         var transferStatistics = new TransferStatistics(totalSize);
         var piecePicker = new PiecePicker(
             _myBitfield,
@@ -73,6 +74,7 @@ public sealed class Torrent : IAsyncDisposable
             totalSize
         );
         var requestScheduler = new RequestScheduler(
+            activePeers,
             piecePicker,
             _myBitfield,
             transferStatistics,
@@ -81,6 +83,7 @@ public sealed class Torrent : IAsyncDisposable
             torrentClientOptions.Logger
         );
         var uploadScheduler = new UploadScheduler(
+            activePeers,
             _pieceStorage,
             _myBitfield,
             transferStatistics,
@@ -88,6 +91,7 @@ public sealed class Torrent : IAsyncDisposable
         );
 
         _peersClient = new PeersClient(
+            activePeers,
             peerId,
             requestScheduler,
             uploadScheduler,

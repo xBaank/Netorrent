@@ -1,3 +1,4 @@
+using System.Net;
 using Netorrent.Extensions;
 using Netorrent.P2P;
 using Netorrent.P2P.Download;
@@ -15,14 +16,14 @@ internal class FakePeerConnection(Bitfield myBitfield) : IPeerConnection
     public SynchronizedReactiveProperty<bool> PeerChoking { get; } = new(true);
 
     public SynchronizedReactiveProperty<bool> PeerInterested { get; } = new(false);
+    public SynchronizedReactiveProperty<bool> ActiveDownloader { get; } = new(false);
 
+    public PeerEndpoint PeerEndpoint { get; } = new(new(IPAddress.Loopback, 50), new());
     public TimeSpan ConnectionDuration => throw new NotImplementedException();
 
     public SpeedTracker DownloadTracker => new();
 
     public SpeedTracker UploadTracker => new();
-
-    public PeerEndpoint PeerEndpoint => throw new NotImplementedException();
 
     public ulong RequestedBlocksCount => throw new NotImplementedException();
 
@@ -41,6 +42,7 @@ internal class FakePeerConnection(Bitfield myBitfield) : IPeerConnection
     ReadOnlyReactiveProperty<bool> IPeerConnection.PeerChoking => PeerChoking;
 
     ReadOnlyReactiveProperty<bool> IPeerConnection.PeerInterested => PeerInterested;
+    ReactiveProperty<bool> IPeerConnection.ActiveDownloader => ActiveDownloader;
 
     public TimeSpan TimeSinceReceivedBlock => 0.Seconds;
 

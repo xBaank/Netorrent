@@ -7,6 +7,5 @@ internal interface IUploadScheduler : IAsyncDisposable
     Task StartAsync(CancellationToken cancellationToken);
     ValueTask AddRequestAsync(RequestBlock request, CancellationToken cancellationToken);
     void CancelRequest(RequestBlock request);
-    ValueTask AddPeerAsync(IPeerConnection peerConnection, CancellationToken cancellationToken);
-    ValueTask RemovePeerAsync(IPeerConnection peerConnection, CancellationToken cancellationToken);
+    void CheckRound(IPeerConnection peerConnection);
 }

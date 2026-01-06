@@ -21,6 +21,11 @@ internal class FakeUploadScheduler : IUploadScheduler
         throw new NotImplementedException();
     }
 
+    public void CheckRound(IPeerConnection peerConnection)
+    {
+        throw new NotImplementedException();
+    }
+
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public async ValueTask RemovePeerAsync(

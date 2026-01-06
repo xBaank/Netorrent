@@ -11,6 +11,7 @@ using ZLinq;
 namespace Netorrent.P2P;
 
 internal class PeersClient(
+    ConcurrentDictionary<PeerEndpoint, IPeerConnection> activePeers,
     PeerId peerId,
     IRequestScheduler requestScheduler,
     IUploadScheduler uploadScheduler,
@@ -21,7 +22,6 @@ internal class PeersClient(
 {
     const int MAX_ACTIVE_PEER_COUNT = 100;
 
-    private readonly ConcurrentDictionary<PeerEndpoint, PeerConnection> _activePeers = [];
     private readonly ConcurrentQueue<PeerEndpoint> _knownPeers = [];
     private readonly List<Task> _peerTasks = [];
     private readonly Subject<PeerEndpoint> _peerConnected = new();
@@ -32,7 +32,7 @@ internal class PeersClient(
 
     public PeerId PeerId => peerId;
     public Observable<PeerEndpoint> PeerConnected => _peerConnected;
-    public IReadOnlyDictionary<PeerEndpoint, PeerConnection> ActivePeers => _activePeers;
+    public IReadOnlyDictionary<PeerEndpoint, IPeerConnection> ActivePeers => activePeers;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -111,7 +111,7 @@ internal class PeersClient(
                 );
             }
 
-            _activePeers.Remove(peerConnection.PeerEndpoint, out _);
+            activePeers.Remove(peerConnection.PeerEndpoint, out _);
             await peerConnection.DisposeAsync().ConfigureAwait(false);
         }
     }
@@ -133,22 +133,25 @@ internal class PeersClient(
         }
 
         if (
-            _activePeers.ContainsKey(peerConnection.PeerEndpoint)
-            || _activePeers
+            activePeers.ContainsKey(peerConnection.PeerEndpoint)
+            || activePeers
                 .Keys.AsValueEnumerable()
                 .Any(i => i.PeerId == peerConnection.PeerEndpoint.PeerId)
         )
         {
             if (logger.IsEnabled(LogLevel.Information))
+            {
                 logger.LogInformation(
                     "Ignored active peer from {EndPoint}",
                     peerConnection.PeerEndpoint
                 );
+            }
+
             await peerConnection.DisposeAsync().ConfigureAwait(false);
             return false;
         }
 
-        if (_activePeers.Count >= MAX_ACTIVE_PEER_COUNT)
+        if (activePeers.Count >= MAX_ACTIVE_PEER_COUNT)
         {
             _knownPeers.Enqueue(peerConnection.PeerEndpoint);
             await peerConnection.DisposeAsync().ConfigureAwait(false);
@@ -156,15 +159,17 @@ internal class PeersClient(
         }
 
         if (logger.IsEnabled(LogLevel.Information))
+        {
             logger.LogInformation("Connected to peer {PeerId}", peerConnection.PeerEndpoint.PeerId);
+        }
 
-        _activePeers[peerConnection.PeerEndpoint] = peerConnection;
+        activePeers[peerConnection.PeerEndpoint] = peerConnection;
         return true;
     }
 
     public async ValueTask DisposeAsync()
     {
-        var peersDisposeTasks = _activePeers.Values.Select(i => i.DisposeAsync().AsTask());
+        var peersDisposeTasks = activePeers.Values.Select(i => i.DisposeAsync().AsTask());
         await Task.WhenAll(peersDisposeTasks).ConfigureAwait(false);
         await requestScheduler.DisposeAsync().ConfigureAwait(false);
         await uploadScheduler.DisposeAsync().ConfigureAwait(false);

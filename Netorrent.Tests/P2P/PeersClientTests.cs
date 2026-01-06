@@ -91,6 +91,7 @@ internal class PeersClientTests
 
     private static PeersClient CreatePeersClient(PeerId peerId, ILogger logger) =>
         new(
+            [],
             peerId,
             new FakeRequestScheduler(),
             new FakeUploadScheduler(),

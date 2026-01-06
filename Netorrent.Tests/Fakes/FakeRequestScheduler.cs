@@ -18,7 +18,7 @@ internal class FakeRequestScheduler : IRequestScheduler
         throw new NotImplementedException();
     }
 
-    public ValueTask RequestSlotAsync(
+    public ValueTask CheckSlotAsync(
         IPeerConnection peerConnection,
         CancellationToken cancellationToken
     ) => ValueTask.CompletedTask;

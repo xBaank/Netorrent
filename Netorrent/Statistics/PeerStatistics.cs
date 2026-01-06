@@ -15,8 +15,8 @@ public class PeerStatistics
     }
 
     private ValueEnumerable<
-        Where<FromEnumerable<PeerConnection>, PeerConnection>,
-        PeerConnection
+        Where<FromEnumerable<IPeerConnection>, IPeerConnection>,
+        IPeerConnection
     > PeersNotChocking =>
         _peersClient
             .ActivePeers.Values.AsValueEnumerable()

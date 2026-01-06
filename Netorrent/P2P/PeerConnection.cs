@@ -30,6 +30,7 @@ internal class PeerConnection(
     private readonly SynchronizedReactiveProperty<bool> _amInterested = new(amInterested);
     private readonly SynchronizedReactiveProperty<bool> _peerChoking = new(peerChoking);
     private readonly SynchronizedReactiveProperty<bool> _peerInterested = new(peerInterested);
+    private readonly SynchronizedReactiveProperty<bool> _activeDownloader = new(false);
 
     private DateTimeOffset _lastSentMessageTime;
     private DateTimeOffset _lastReceivedMessageTime;
@@ -59,12 +60,10 @@ internal class PeerConnection(
     public TimeSpan ConnectionDuration => DateTimeOffset.UtcNow - _startedConnectionTime;
 
     public ReadOnlyReactiveProperty<bool> AmChoking => _amChoking;
-
     public ReadOnlyReactiveProperty<bool> AmInterested => _amInterested;
-
     public ReadOnlyReactiveProperty<bool> PeerChoking => _peerChoking;
-
     public ReadOnlyReactiveProperty<bool> PeerInterested => _peerInterested;
+    public ReactiveProperty<bool> ActiveDownloader => _activeDownloader;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -131,9 +130,9 @@ internal class PeerConnection(
         );
 
         using var amChokingDisposable = _amChoking.SubscribeAwait(
-            async (chokeState, cancellationToken) =>
+            async (state, cancellationToken) =>
             {
-                var message = chokeState ? Message.CreateChoke() : Message.CreateUnchoke();
+                var message = state ? Message.CreateChoke() : Message.CreateUnchoke();
                 await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
             },
             AwaitOperation.Switch,
@@ -141,46 +140,38 @@ internal class PeerConnection(
         );
 
         using var amInterestedDisposable = _amInterested.SubscribeAwait(
-            async (interestState, cancellationToken) =>
+            async (state, cancellationToken) =>
             {
-                var message = interestState
-                    ? Message.CreateInterested()
-                    : Message.CreateNotInterested();
+                var message = state ? Message.CreateInterested() : Message.CreateNotInterested();
 
                 await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
-                if (!interestState)
-                {
-                    await requestScheduler
-                        .FreeSlotAsync(this, cancellationToken)
-                        .ConfigureAwait(false);
-                }
+                await requestScheduler
+                    .CheckSlotAsync(this, cancellationToken)
+                    .ConfigureAwait(false);
             },
             AwaitOperation.Switch,
             configureAwait: false
         );
 
         using var peerChokingDisposable = _peerChoking.SubscribeAwait(
-            async (peerChokeState, cancellationToken) =>
+            async (state, cancellationToken) =>
             {
-                if (peerChokeState)
-                {
-                    await requestScheduler
-                        .FreeSlotAsync(this, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    await requestScheduler
-                        .RequestSlotAsync(this, cancellationToken)
-                        .ConfigureAwait(false);
-                }
+                await requestScheduler
+                    .CheckSlotAsync(this, cancellationToken)
+                    .ConfigureAwait(false);
             },
             AwaitOperation.Switch,
             configureAwait: false
         );
 
+        using var peerInterestedDisposable = _peerInterested.Subscribe(
+            (state) =>
+            {
+                uploadScheduler.CheckRound(this);
+            }
+        );
+
         await SendBitfieldAsync(MyBitField, cancellationTokenSource.Token).ConfigureAwait(false);
-        await uploadScheduler.AddPeerAsync(this, cancellationTokenSource.Token);
 
         await using var downloadTimer = DownloadTracker
             .StartSampling(100.Milliseconds)
@@ -481,9 +472,6 @@ internal class PeerConnection(
             {
                 UnregisterPieces(PeerBitField);
             }
-
-            await uploadScheduler.RemovePeerAsync(this, default).ConfigureAwait(false);
-            await requestScheduler.FreeSlotAsync(this, default).ConfigureAwait(false);
 
             _cancellationTokenSource?.Cancel();
 

@@ -9,6 +9,7 @@ using ZLinq;
 namespace Netorrent.P2P.Download;
 
 internal class RequestScheduler(
+    IReadOnlyDictionary<PeerEndpoint, IPeerConnection> peers,
     IPiecePicker piecePicker,
     Bitfield myBitfield,
     TransferStatistics transfer,
@@ -27,9 +28,7 @@ internal class RequestScheduler(
             new BoundedChannelOptions(256) { SingleReader = true, SingleWriter = false }
         );
 
-    private readonly HashSet<IPeerConnection> _activePeers = [];
     private readonly Dictionary<int, PieceBuffer> _pieceBuffers = [];
-    private readonly Lock _activePeersLock = new();
     private CancellationTokenSource? _cts;
     private Task? _runningTask;
     private bool _disposed;
@@ -75,6 +74,7 @@ internal class RequestScheduler(
 
     private async ValueTask ProcessBlockAsync(Block block, CancellationToken cancellationToken)
     {
+        //TODO penalize?
         if (!piecePicker.TryGetRequestedBlock(block, out var requestedBlock))
         {
             return;
@@ -139,25 +139,24 @@ internal class RequestScheduler(
 
                 IPeerConnection? freePeer = null;
 
-                lock (_activePeersLock)
+                foreach (
+                    var peerConnection in peers
+                        .Values.AsValueEnumerable()
+                        .Where(i => i.AmInterested.CurrentValue)
+                        .Where(i => !i.PeerChoking.CurrentValue)
+                        .OrderByDescending(i => i.PeerRequestWindow.MaxInFlightRequests)
+                )
                 {
-                    foreach (
-                        var peerConnection in _activePeers
-                            .AsValueEnumerable()
-                            .OrderByDescending(i => i.PeerRequestWindow.MaxInFlightRequests)
-                    )
+                    if (peerConnection == lastRequestedFrom)
                     {
-                        if (peerConnection == lastRequestedFrom)
-                        {
-                            continue;
-                        }
+                        continue;
+                    }
 
-                        //Request only if the peers has not reached window limit?
-                        if (peerConnection.PeerBitField?.HasPiece(requestBlock.Index) == true)
-                        {
-                            freePeer = peerConnection;
-                            break;
-                        }
+                    //Request only if the peers has not reached window limit?
+                    if (peerConnection.PeerBitField?.HasPiece(requestBlock.Index) == true)
+                    {
+                        freePeer = peerConnection;
+                        break;
                     }
                 }
 
@@ -185,16 +184,14 @@ internal class RequestScheduler(
         var warmupDeadline = DateTime.UtcNow + warmupTime;
         while (DateTime.UtcNow < warmupDeadline && !cancellationToken.IsCancellationRequested)
         {
-            int minPeersReady;
-            lock (_activePeersLock)
-            {
-                minPeersReady = _activePeers.Count(i =>
-                    i.AmInterested.CurrentValue && !i.PeerChoking.CurrentValue
-                );
-            }
+            var minPeersReady = peers
+                .Values.AsValueEnumerable()
+                .Count(i => i.AmInterested.CurrentValue && !i.PeerChoking.CurrentValue);
 
             if (minPeersReady >= MinPeersForRarity)
+            {
                 return;
+            }
 
             await Task.Delay(100, cancellationToken).ConfigureAwait(false);
         }
@@ -203,7 +200,9 @@ internal class RequestScheduler(
     private void ScheduleRequests(IPeerConnection peerConnection)
     {
         if (peerConnection.PeerBitField is null)
+        {
             return;
+        }
 
         while (
             peerConnection.RequestedBlocksCount
@@ -213,52 +212,43 @@ internal class RequestScheduler(
             var requestBlock = piecePicker.GetBlock(peerConnection.PeerBitField);
 
             if (requestBlock is null)
+            {
                 return;
+            }
 
             piecePicker.SetBlockToRequested(requestBlock, peerConnection);
 
             if (peerConnection.TrySendRequest(requestBlock))
             {
                 peerConnection.IncrementRequestedBlock();
-                continue;
             }
-
-            if (logger.IsEnabled(LogLevel.Information))
             {
-                logger.LogInformation(
-                    "Failed to send request block {Index}:{Begin} to peer {Peer}",
-                    requestBlock.Index,
-                    requestBlock.Begin,
-                    peerConnection.PeerEndpoint.PeerId
-                );
+                if (logger.IsEnabled(LogLevel.Information))
+                {
+                    logger.LogInformation(
+                        "Failed to send request block {Index}:{Begin} to peer {Peer} with {blocks}/{maxblocks}",
+                        requestBlock.Index,
+                        requestBlock.Begin,
+                        peerConnection.PeerEndpoint.PeerId,
+                        peerConnection.RequestedBlocksCount,
+                        peerConnection.PeerRequestWindow.MaxInFlightRequests
+                    );
+                }
+                break;
             }
-            peerConnection.DecrementRequestedBlock();
-            break;
         }
     }
 
-    public async ValueTask RequestSlotAsync(
+    public async ValueTask CheckSlotAsync(
         IPeerConnection peerConnection,
         CancellationToken cancellationToken
     )
     {
-        lock (_activePeersLock)
+        if (!peerConnection.PeerChoking.CurrentValue && peerConnection.AmInterested.CurrentValue)
         {
-            _activePeers.Add(peerConnection);
-        }
-        await _slotsChannel
-            .Writer.WriteAsync(peerConnection, cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public async ValueTask FreeSlotAsync(
-        IPeerConnection peerConnection,
-        CancellationToken cancellationToken
-    )
-    {
-        lock (_activePeersLock)
-        {
-            _activePeers.Remove(peerConnection);
+            await _slotsChannel
+                .Writer.WriteAsync(peerConnection, cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 
@@ -274,8 +264,9 @@ internal class RequestScheduler(
         await foreach (
             var item in _receiveBlocksChannel.Reader.ReadAllAsync().ConfigureAwait(false)
         )
+        {
             item.Dispose();
-
+        }
         await foreach (var _ in _slotsChannel.Reader.ReadAllAsync().ConfigureAwait(false)) { }
 
         foreach (var item in _pieceBuffers.Values)

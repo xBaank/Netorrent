@@ -11,6 +11,7 @@ internal interface IPeerConnection : IAsyncDisposable
     ReadOnlyReactiveProperty<bool> AmInterested { get; }
     ReadOnlyReactiveProperty<bool> PeerChoking { get; }
     ReadOnlyReactiveProperty<bool> PeerInterested { get; }
+    ReactiveProperty<bool> ActiveDownloader { get; }
     TimeSpan ConnectionDuration { get; }
     SpeedTracker DownloadTracker { get; }
     SpeedTracker UploadTracker { get; }

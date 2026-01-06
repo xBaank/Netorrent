@@ -20,6 +20,5 @@ public class RealTorrentTests
         cancellationToken.Register(torrent.Stop);
         await torrent.StartAsync();
         await torrent.Completion;
-        await torrent.StopAsync();
     }
 }
