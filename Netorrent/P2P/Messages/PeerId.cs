@@ -1,5 +1,6 @@
 ﻿using System.Security.Cryptography;
 using System.Text;
+using ZLinq;
 
 namespace Netorrent.P2P.Messages;
 
@@ -36,7 +37,11 @@ public readonly struct PeerId
         _clientCode.CopyTo(data);
         _version.CopyTo(data[_clientCode.Length..]);
         var toFill = data[(_clientCode.Length + _version.Length)..];
-        RandomNumberGenerator.Fill(toFill.Span);
+        for (int i = 0; i < toFill.Length; i++)
+        {
+            toFill.Span[i] = (byte)Random.Shared.Next(33, 127);
+        }
+        RandomNumberGenerator.Shuffle(toFill.Span);
         return data;
     }
 
