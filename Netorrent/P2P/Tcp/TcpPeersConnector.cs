@@ -38,7 +38,7 @@ internal class TcpPeersConnector(
                 {
                     if (logger.IsEnabled(LogLevel.Information))
                     {
-                        logger.LogInformation("Unsupported {family}", targetEndPoint.AddressFamily);
+                        logger.LogInformation("Unsupported {endpoint}", targetEndPoint);
                     }
                     continue;
                 }
@@ -54,7 +54,7 @@ internal class TcpPeersConnector(
                             .AsTask()
                     );
 
-                    if (tasks.Count >= 250)
+                    if (tasks.Count >= 1000)
                     {
                         try
                         {

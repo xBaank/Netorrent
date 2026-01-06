@@ -25,13 +25,13 @@ internal static class ChannelExtensions
 
         public bool TryWriteOrDispose(T item)
         {
-            if (!source.TryWrite(item))
+            if (source.TryWrite(item))
             {
-                item.Dispose();
-                return false;
+                return true;
             }
 
-            return true;
+            item.Dispose();
+            return false;
         }
     }
 }

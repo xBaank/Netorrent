@@ -125,7 +125,7 @@ internal class PeerConnection(
     private async Task RunAsync(CancellationTokenSource cancellationTokenSource)
     {
         using var stateChangedDisposable = MyBitField.StateChanged.SubscribeAwait(
-            async (i, ct) => await SendHaveAsync(i, ct),
+            async (i, ct) => await SendHaveAsync(i, ct).ConfigureAwait(false),
             configureAwait: false
         );
 
@@ -146,7 +146,7 @@ internal class PeerConnection(
 
                 await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
                 await requestScheduler
-                    .CheckSlotAsync(this, cancellationToken)
+                    .TryRequestAsync(this, cancellationToken)
                     .ConfigureAwait(false);
             },
             AwaitOperation.Switch,
@@ -157,7 +157,7 @@ internal class PeerConnection(
             async (state, cancellationToken) =>
             {
                 await requestScheduler
-                    .CheckSlotAsync(this, cancellationToken)
+                    .TryRequestAsync(this, cancellationToken)
                     .ConfigureAwait(false);
             },
             AwaitOperation.Switch,
@@ -396,9 +396,9 @@ internal class PeerConnection(
 
     private async Task SendHaveAsync(int pieceIndex, CancellationToken cancellationToken)
     {
+        CheckInterest();
         var message = Message.CreateHave(pieceIndex);
         await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
-        CheckInterest();
     }
 
     private void CheckInterest()

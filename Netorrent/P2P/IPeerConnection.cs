@@ -1,4 +1,5 @@
-﻿using Netorrent.P2P.Download;
+﻿using Netorrent.IO;
+using Netorrent.P2P.Download;
 using Netorrent.P2P.Measurement;
 using Netorrent.P2P.Messages;
 using R3;

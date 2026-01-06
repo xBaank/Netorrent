@@ -25,7 +25,7 @@ internal class RequestScheduler(
     );
     private readonly Channel<IPeerConnection> _slotsChannel =
         Channel.CreateBounded<IPeerConnection>(
-            new BoundedChannelOptions(256) { SingleReader = true, SingleWriter = false }
+            new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
         );
 
     private readonly Dictionary<int, PieceBuffer> _pieceBuffers = [];
@@ -66,9 +66,7 @@ internal class RequestScheduler(
         {
             using var block = receiveBlock;
             await ProcessBlockAsync(block, cancellationToken).ConfigureAwait(false);
-            await _slotsChannel
-                .Writer.WriteAsync(block.FromPeer, cancellationToken)
-                .ConfigureAwait(false);
+            await TryRequestAsync(receiveBlock.FromPeer, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -147,7 +145,7 @@ internal class RequestScheduler(
                 .OrderByDescending(i => i.PeerRequestWindow.MaxInFlightRequests)
                 .ToArray();
 
-            foreach (var requestBlock in piecePicker.GetTimeoutRequestBlocks())
+            foreach (var requestBlock in timeoutRequestBlocks)
             {
                 var lastRequestedFrom = piecePicker.GetLastRequesterOrNull(requestBlock);
                 piecePicker.SetBlockToPending(requestBlock);
@@ -222,11 +220,11 @@ internal class RequestScheduler(
             }
 
             piecePicker.SetBlockToRequested(requestBlock, peerConnection);
-
             if (peerConnection.TrySendRequest(requestBlock))
             {
                 peerConnection.IncrementRequestedBlock();
             }
+            else
             {
                 if (logger.IsEnabled(LogLevel.Information))
                 {
@@ -239,12 +237,27 @@ internal class RequestScheduler(
                         peerConnection.PeerRequestWindow.MaxInFlightRequests
                     );
                 }
-                break;
+
+                var freePeer = peers
+                    .Values.AsValueEnumerable()
+                    .Where(i => i.AmInterested.CurrentValue)
+                    .Where(i => !i.PeerChoking.CurrentValue)
+                    .OrderByDescending(i => i.PeerRequestWindow.MaxInFlightRequests)
+                    .FirstOrDefault();
+
+                piecePicker.SetBlockToPending(requestBlock);
+
+                if (freePeer is null || !_slotsChannel.Writer.TryWrite(freePeer))
+                {
+                    piecePicker.SetBlockToRequested(requestBlock, peerConnection);
+                }
+
+                return;
             }
         }
     }
 
-    public async ValueTask CheckSlotAsync(
+    public async ValueTask TryRequestAsync(
         IPeerConnection peerConnection,
         CancellationToken cancellationToken
     )
