@@ -170,16 +170,12 @@ internal class UploadScheduler(
 
             if (_activePeers.Remove(worstPeer))
             {
-                await worstPeer.ChokeAsync(cancellationToken).ConfigureAwait(false);
+                worstPeer.Choke();
             }
         }
 
-        await peerToUnchoke.UnchokeAsync(cancellationToken).ConfigureAwait(false);
-
-        if (!peerToUnchoke.AmChoking.CurrentValue && peerToUnchoke.PeerInterested.CurrentValue)
-        {
-            _activePeers.Add(peerToUnchoke);
-        }
+        peerToUnchoke.Unchoke();
+        _activePeers.Add(peerToUnchoke);
     }
 
     //TODO implement new choke algorithm as seeder to avoid free riders
@@ -201,7 +197,7 @@ internal class UploadScheduler(
             if (peer.TimeSinceReceivedBlock >= 30.Seconds)
             {
                 _activePeers.Remove(peer);
-                await peer.ChokeAsync(cancellationToken).ConfigureAwait(false);
+                peer.Choke();
                 continue;
             }
 
@@ -215,12 +211,12 @@ internal class UploadScheduler(
             //Peer can be unchoked
             if (activePeersCount < toUnchokeCount)
             {
-                await peer.UnchokeAsync(cancellationToken).ConfigureAwait(false);
+                peer.Unchoke();
             }
             //Peer can't be added so it's choked and removed if it's an active downloader
             else
             {
-                await peer.ChokeAsync(cancellationToken).ConfigureAwait(false);
+                peer.Choke();
                 _activePeers.Remove(peer);
             }
 
@@ -256,7 +252,10 @@ internal class UploadScheduler(
 
         using (await _semaphore.LockAsync(cancellationToken).ConfigureAwait(false))
         {
-            if (_connectedPeers.Add(peerConnection))
+            if (
+                _connectedPeers.Add(peerConnection)
+                && !_interestedDisposables.ContainsKey(peerConnection)
+            )
             {
                 _interestedDisposables[peerConnection] = subscription;
             }
@@ -288,7 +287,7 @@ internal class UploadScheduler(
         await CheckRoundAsync(peerConnection, cancellationToken).ConfigureAwait(false);
         try
         {
-            await peerConnection.ChokeAsync(cancellationToken).ConfigureAwait(false);
+            peerConnection.Choke();
         }
         catch (Exception ex)
         {

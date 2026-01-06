@@ -30,7 +30,7 @@ internal interface IPeerConnection : IAsyncDisposable
     bool TrySendBlock(Block block);
     bool TrySendCancel(RequestBlock request);
     bool TrySendRequest(RequestBlock nextBlock);
-    ValueTask UnchokeAsync(CancellationToken cancellationToken);
-    ValueTask ChokeAsync(CancellationToken cancellationToken);
+    void Unchoke();
+    void Choke();
     Task StartAsync(CancellationToken cancellationToken);
 }

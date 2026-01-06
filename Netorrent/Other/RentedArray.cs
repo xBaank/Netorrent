@@ -6,12 +6,11 @@ namespace Netorrent.Other;
 
 internal class RentedArray<T>(T[] array, int length, int start = 0) : IDisposable
 {
-    private readonly Memory<T> memory = array.AsMemory(start, length);
-    public Memory<T> Memory =>
-        _disposed ? throw new ObjectDisposedException(nameof(RentedArray<>)) : memory;
+    private readonly Memory<T> _memory = array.AsMemory(start, length);
     private bool _disposed;
-
-    public int Length => memory.Length;
+    public Memory<T> Memory =>
+        _disposed ? throw new ObjectDisposedException(nameof(RentedArray<>)) : _memory;
+    public int Length => _memory.Length;
 
     ~RentedArray()
     {

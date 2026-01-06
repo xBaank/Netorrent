@@ -85,12 +85,12 @@ internal class FakePeerConnection(Bitfield myBitfield) : IPeerConnection
         throw new NotImplementedException();
     }
 
-    public async ValueTask UnchokeAsync(CancellationToken cancellationToken)
+    public void Unchoke()
     {
         AmChoking.Value = false;
     }
 
-    public async ValueTask ChokeAsync(CancellationToken cancellationToken)
+    public void Choke()
     {
         AmChoking.Value = true;
     }

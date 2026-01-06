@@ -55,7 +55,8 @@ public class PeerConectionTests
 
         _ = peerConnection.StartAsync(cancellationToken);
         var statesTask = peerConnection.AmChoking.Take(2).ToListAsync(cancellationToken);
-        await peerConnection.UnchokeAsync(cancellationToken);
+
+        peerConnection.Unchoke();
         var states = await statesTask;
 
         states.First().ShouldBeTrue();
