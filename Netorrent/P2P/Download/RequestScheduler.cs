@@ -78,13 +78,18 @@ internal class RequestScheduler(
             return;
         }
 
+        //Initialize pieceBuffer
         if (!_pieceBuffers.TryGetValue(block.Index, out var pieceBuffer))
         {
             pieceBuffer = new PieceBuffer(block.Index, pieceStorage, piecePicker);
             _pieceBuffers[block.Index] = pieceBuffer;
         }
 
-        block.FromPeer.DecrementRequestedBlock();
+        foreach (var peerConnection in requestedBlock.RequestedFrom)
+        {
+            peerConnection.DecrementRequestedBlock();
+        }
+
         block.FromPeer.PeerRequestWindow.ReceivedBlock(
             (ulong)block.FromPeer.DownloadTracker.Speed.Bps
         );
@@ -128,7 +133,7 @@ internal class RequestScheduler(
 
     private async Task ReScheduleTimeoutBlocksAsync(CancellationToken cancellationToken)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        while (true)
         {
             var timeoutRequestBlocks = piecePicker.GetTimeoutRequestBlocks();
 
@@ -138,13 +143,6 @@ internal class RequestScheduler(
                 continue;
             }
 
-            var peersAvailable = peers
-                .Values.AsValueEnumerable()
-                .Where(i => i.AmInterested.CurrentValue)
-                .Where(i => !i.PeerChoking.CurrentValue)
-                .OrderByDescending(i => i.PeerRequestWindow.MaxInFlightRequests)
-                .ToArray();
-
             foreach (var requestBlock in timeoutRequestBlocks)
             {
                 var lastRequestedFrom = piecePicker.GetLastRequesterOrNull(requestBlock);
@@ -152,31 +150,35 @@ internal class RequestScheduler(
 
                 IPeerConnection? freePeer = null;
 
-                foreach (var peerConnection in peersAvailable)
+                foreach (var peerConnection in peers.Values.AsValueEnumerable())
                 {
                     if (peerConnection == lastRequestedFrom)
                     {
                         continue;
                     }
 
-                    freePeer = peerConnection;
-                    break;
+                    if (
+                        peerConnection.AmInterested.CurrentValue
+                        && !peerConnection.PeerChoking.CurrentValue
+                    )
+                    {
+                        freePeer = peerConnection;
+                        break;
+                    }
                 }
 
-                //If we can't find a peer we retry with the same one only if its responding again
                 if (freePeer is null && lastRequestedFrom is not null)
                 {
-                    lastRequestedFrom.DecrementRequestedBlock();
                     freePeer = lastRequestedFrom;
-                }
-                else
-                {
-                    continue;
+                    lastRequestedFrom.DecrementRequestedBlock();
                 }
 
-                await _slotsChannel
-                    .Writer.WriteAsync(freePeer, cancellationToken)
-                    .ConfigureAwait(false);
+                if (freePeer is not null)
+                {
+                    await _slotsChannel
+                        .Writer.WriteAsync(freePeer, cancellationToken)
+                        .ConfigureAwait(false);
+                }
             }
             await Task.Delay(1.Seconds, cancellationToken).ConfigureAwait(false);
         }
@@ -219,9 +221,9 @@ internal class RequestScheduler(
                 return;
             }
 
-            piecePicker.SetBlockToRequested(requestBlock, peerConnection);
             if (peerConnection.TrySendRequest(requestBlock))
             {
+                piecePicker.SetBlockToRequested(requestBlock, peerConnection);
                 peerConnection.IncrementRequestedBlock();
             }
             else
@@ -237,21 +239,6 @@ internal class RequestScheduler(
                         peerConnection.PeerRequestWindow.MaxInFlightRequests
                     );
                 }
-
-                var freePeer = peers
-                    .Values.AsValueEnumerable()
-                    .Where(i => i.AmInterested.CurrentValue)
-                    .Where(i => !i.PeerChoking.CurrentValue)
-                    .OrderByDescending(i => i.PeerRequestWindow.MaxInFlightRequests)
-                    .FirstOrDefault();
-
-                piecePicker.SetBlockToPending(requestBlock);
-
-                if (freePeer is null || !_slotsChannel.Writer.TryWrite(freePeer))
-                {
-                    piecePicker.SetBlockToRequested(requestBlock, peerConnection);
-                }
-
                 return;
             }
         }
