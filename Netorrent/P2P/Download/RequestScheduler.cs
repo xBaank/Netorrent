@@ -146,8 +146,6 @@ internal class RequestScheduler(
             foreach (var requestBlock in timeoutRequestBlocks)
             {
                 var lastRequestedFrom = piecePicker.GetLastRequesterOrNull(requestBlock);
-                piecePicker.SetBlockToPending(requestBlock);
-
                 IPeerConnection? freePeer = null;
 
                 foreach (var peerConnection in peers.Values.AsValueEnumerable())
@@ -167,14 +165,9 @@ internal class RequestScheduler(
                     }
                 }
 
-                if (freePeer is null && lastRequestedFrom is not null)
-                {
-                    freePeer = lastRequestedFrom;
-                    lastRequestedFrom.DecrementRequestedBlock();
-                }
-
                 if (freePeer is not null)
                 {
+                    piecePicker.SetBlockToPending(requestBlock);
                     await _slotsChannel
                         .Writer.WriteAsync(freePeer, cancellationToken)
                         .ConfigureAwait(false);
