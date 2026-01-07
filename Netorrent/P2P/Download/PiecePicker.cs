@@ -13,8 +13,7 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
 
     private readonly int[] _pieceRarity = new int[myBitfield.Length];
     private readonly Lock _requestBlocksLock = new();
-    private readonly ConcurrentDictionary<int, RequestBlock[]> _requestBlocks = [];
-    private readonly ConcurrentDictionary<int, PieceBuffer> _pieceBuffers = [];
+    private readonly Dictionary<int, RequestBlock[]> _requestBlocks = [];
     public int BlockSize => blockSize;
 
     public void IncreaseRarity(int index)
@@ -39,7 +38,10 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
 
     public void CompletePiece(int index)
     {
-        _requestBlocks.TryRemove(index, out _);
+        lock (_requestBlocksLock)
+        {
+            _requestBlocks.Remove(index);
+        }
     }
 
     public bool TryGetRequestedBlock(
@@ -47,9 +49,9 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         [NotNullWhen(true)] out RequestBlock? requestBlock
     )
     {
-        if (_requestBlocks.TryGetValue(receiveBlock.Index, out var requestBlocks))
+        lock (_requestBlocksLock)
         {
-            lock (_requestBlocksLock)
+            if (_requestBlocks.TryGetValue(receiveBlock.Index, out var requestBlocks))
             {
                 foreach (var requestedBlock in requestBlocks)
                 {
@@ -89,17 +91,14 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
                 )
                     return requestBlock;
             }
-        }
 
-        var piece = GetPiece(bitfield, excludedIndices);
+            var piece = GetPiece(bitfield, excludedIndices);
 
-        if (piece is null)
-            return null;
+            if (piece is null)
+                return null;
 
-        var blockCount = GetBlockCountByPieceIndex(piece.Value);
+            var blockCount = GetBlockCountByPieceIndex(piece.Value);
 
-        lock (_requestBlocksLock)
-        {
             if (!_requestBlocks.TryGetValue(piece.Value, out var requestBlocks))
             {
                 requestBlocks = new RequestBlock[blockCount];
@@ -237,11 +236,5 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         return new RequestBlock(pieceIndex, begin, length);
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        foreach (var item in _pieceBuffers)
-        {
-            item.Value.Dispose();
-        }
-    }
+    public async ValueTask DisposeAsync() { }
 }
