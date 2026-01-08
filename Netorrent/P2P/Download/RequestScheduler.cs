@@ -87,6 +87,10 @@ internal class RequestScheduler(
 
         foreach (var peerConnection in requestedBlock.RequestedFrom)
         {
+            if (peerConnection != block.FromPeer)
+            {
+                peerConnection.TrySendCancel(requestedBlock);
+            }
             peerConnection.DecrementRequestedBlock();
         }
 
