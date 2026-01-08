@@ -1,8 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Net;
-using System.Net.Sockets;
 using System.Threading.Channels;
-using Microsoft.Extensions.Logging;
 using Netorrent.Bencoding;
 using Netorrent.Extensions;
 using Netorrent.IO.Disk;

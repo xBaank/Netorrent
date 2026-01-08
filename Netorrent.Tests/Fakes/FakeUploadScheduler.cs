@@ -21,7 +21,7 @@ internal class FakeUploadScheduler : IUploadScheduler
         throw new NotImplementedException();
     }
 
-    public void CheckRound(IPeerConnection peerConnection)
+    public void TryRunRound(IPeerConnection peerConnection)
     {
         throw new NotImplementedException();
     }

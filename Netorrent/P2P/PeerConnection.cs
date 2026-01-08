@@ -1,6 +1,5 @@
 ﻿using System.Buffers;
 using System.Buffers.Binary;
-using System.Threading;
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.Other;
@@ -151,19 +150,17 @@ internal class PeerConnection(
             configureAwait: false
         );
 
-        using var peerChokingDisposable = _peerChoking.SubscribeAwait(
-            async (state, cancellationToken) =>
+        using var peerChokingDisposable = _peerChoking.Subscribe(
+            (state) =>
             {
                 requestScheduler.TryRequest(this);
-            },
-            AwaitOperation.Switch,
-            configureAwait: false
+            }
         );
 
         using var peerInterestedDisposable = _peerInterested.Subscribe(
             (state) =>
             {
-                uploadScheduler.CheckRound(this);
+                uploadScheduler.TryRunRound(this);
             }
         );
 

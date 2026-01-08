@@ -1,5 +1,4 @@
-﻿using System.Collections.Concurrent;
-using System.Diagnostics.CodeAnalysis;
+﻿using System.Diagnostics.CodeAnalysis;
 using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 using ZLinq;
@@ -111,8 +110,7 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
                 i?.State == RequestBlockState.Requested
                 && i.RequestedAt is not null
                 && (now - i.RequestedAt.Value) > timeout
-            )
-            .Cast<RequestBlock>();
+            );
     }
 
     public IPeerConnection? GetLastRequesterOrNull(RequestBlock requestBlock)

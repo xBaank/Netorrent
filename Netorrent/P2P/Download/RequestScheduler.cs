@@ -25,6 +25,7 @@ internal class RequestScheduler(
             new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
         );
 
+    private static readonly DownloadMessage.CheckTimeoutMessage _timeoutMessage = new();
     private readonly Dictionary<int, PieceBuffer> _pieceBuffers = [];
     private CancellationTokenSource? _cts;
     private Task? _runningTask;
@@ -35,10 +36,19 @@ internal class RequestScheduler(
         ObjectDisposedException.ThrowIf(_disposed, this);
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _runningTask = _cts.CancelOnFirstCompletionAndAwaitAllAsync([
-            ReScheduleTimeoutBlocksAsync(_cts.Token),
+            ScheduleTimeoutsBlocksAsync(_cts.Token),
             ProcessDownloadMessagesAsync(_cts.Token),
         ]);
         return _runningTask;
+    }
+
+    private async Task ScheduleTimeoutsBlocksAsync(CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            _downloadMessageChannel.Writer.TryWrite(_timeoutMessage);
+            await Task.Delay(10.Seconds, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public async Task ProcessDownloadMessagesAsync(CancellationToken cancellationToken)
@@ -134,16 +144,6 @@ internal class RequestScheduler(
             // Retry with a fresh buffer
             _pieceBuffers[block.Index] = new PieceBuffer(block.Index, pieceStorage, piecePicker);
             transfer.AddDiscardedBytes(pieceBuffer.Size);
-        }
-    }
-
-    private async Task ReScheduleTimeoutBlocksAsync(CancellationToken cancellationToken)
-    {
-        var timeoutMessage = new DownloadMessage.CheckTimeoutMessage();
-        while (true)
-        {
-            _downloadMessageChannel.Writer.TryWrite(timeoutMessage);
-            await Task.Delay(10.Seconds, cancellationToken).ConfigureAwait(false);
         }
     }
 

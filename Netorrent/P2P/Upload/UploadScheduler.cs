@@ -1,5 +1,4 @@
-﻿using System.Threading;
-using System.Threading.Channels;
+﻿using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.IO;
@@ -12,7 +11,6 @@ namespace Netorrent.P2P.Upload;
 
 //https://www.bittorrent.org/beps/bep_0003.html
 //https://read.seas.harvard.edu/~kohler/pubs/legout07clustering.pdf Section 2.3
-
 internal class UploadScheduler(
     IReadOnlyDictionary<PeerEndpoint, IPeerConnection> peers,
     IPieceStorage pieceStorage,
@@ -23,11 +21,12 @@ internal class UploadScheduler(
 {
     const int MaxActivePeers = 4; //TODO Add an option for this to be changed or rate based
 
-    private readonly Channel<RequestBlock> _pendingRequests = Channel.CreateBounded<RequestBlock>(
-        new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
-    );
+    private readonly Channel<UploadMessage> _uploadMessagesChannel =
+        Channel.CreateBounded<UploadMessage>(
+            new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
+        );
 
-    private readonly Lock _lock = new();
+    private static readonly UploadMessage.CheckRoundMessage _checkRoundMessage = new();
     private readonly TimeSpan _interval = 10.Seconds;
 
     private byte _round = 1;
@@ -41,102 +40,115 @@ internal class UploadScheduler(
 
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _runningTask = _cts.CancelOnFirstCompletionAndAwaitAllAsync([
-            ProcessRequestsAsync(_cts.Token),
-            ProcessRegularChokingAsync(_cts.Token),
+            ScheduleRoundsAsync(_cts.Token),
+            ProcessUploadMessagesAsync(_cts.Token),
         ]);
         return _runningTask;
     }
 
-    public async Task ProcessRegularChokingAsync(CancellationToken cancellationToken)
+    public async Task ScheduleRoundsAsync(CancellationToken cancellationToken)
     {
         while (true)
         {
-            RunRound();
+            await _uploadMessagesChannel
+                .Writer.WriteAsync(_checkRoundMessage, cancellationToken)
+                .ConfigureAwait(false);
             await Task.Delay(_interval, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    public async Task ProcessUploadMessagesAsync(CancellationToken cancellationToken)
+    {
+        await foreach (
+            var uploadMessage in _uploadMessagesChannel.Reader.ReadAllAsync(cancellationToken)
+        )
+        {
+            if (uploadMessage is UploadMessage.CheckRoundMessage)
+            {
+                RunRound();
+                continue;
+            }
+
+            if (uploadMessage is UploadMessage.RequestBlockMessage requestBlockMessage)
+            {
+                await ProcessRequestAsync(requestBlockMessage.RequestBlock, cancellationToken)
+                    .ConfigureAwait(false);
+                continue;
+            }
         }
     }
 
     private void RunRound()
     {
-        lock (_lock)
+        try
         {
-            try
-            {
-                RegularChoke();
-                _round++;
+            RegularChoke();
+            _round++;
 
-                if (_round == 3)
-                {
-                    OptimisticChoke();
-                    _round = 1;
-                }
-            }
-            catch (Exception ex)
+            if (_round == 3)
             {
-                if (logger.IsEnabled(LogLevel.Error))
-                {
-                    logger.LogError(ex, "Error running round {round}", _round);
-                }
+                OptimisticChoke();
+                _round = 1;
+            }
+        }
+        catch (Exception ex)
+        {
+            if (logger.IsEnabled(LogLevel.Error))
+            {
+                logger.LogError(ex, "Error running round {round}", _round);
             }
         }
     }
 
-    public async Task ProcessRequestsAsync(CancellationToken cancellationToken)
+    private async ValueTask ProcessRequestAsync(
+        RequestBlock requestBlock,
+        CancellationToken cancellationToken
+    )
     {
-        await foreach (
-            var requestBlock in _pendingRequests
-                .Reader.ReadAllAsync(cancellationToken)
-                .ConfigureAwait(false)
+        if (
+            requestBlock.State == RequestBlockState.Cancelled
+            || requestBlock.RequestedFrom.Count == 0
         )
         {
-            if (
-                requestBlock.State == RequestBlockState.Cancelled
-                || requestBlock.RequestedFrom.Count == 0
-            )
-                continue;
+            return;
+        }
 
-            var peer = requestBlock.RequestedFrom[0];
-            var pieceData = await pieceStorage
-                .ReadAsync(
+        var peer = requestBlock.RequestedFrom[0];
+        var pieceData = await pieceStorage
+            .ReadAsync(
+                requestBlock.Index,
+                requestBlock.Begin,
+                requestBlock.Length,
+                cancellationToken
+            )
+            .ConfigureAwait(false);
+
+        try
+        {
+            using var block = new Block(requestBlock.Index, requestBlock.Begin, pieceData, peer);
+
+            if (peer.TrySendBlock(block))
+            {
+                transfer.AddUploadedBytes(block.Payload.Length); //TODO Move this to message stream after data if flushed ?
+            }
+        }
+        catch (Exception ex)
+        {
+            if (logger.IsEnabled(LogLevel.Error))
+            {
+                logger.LogError(
+                    ex,
+                    "Failed to send block Index: {Index}, Begin: {Begin}, Length: {Length} to Peer: {PeerEndPoint}",
                     requestBlock.Index,
                     requestBlock.Begin,
                     requestBlock.Length,
-                    cancellationToken
-                )
-                .ConfigureAwait(false);
-
-            try
-            {
-                using var block = new Block(
-                    requestBlock.Index,
-                    requestBlock.Begin,
-                    pieceData,
                     peer
                 );
-
-                if (peer.TrySendBlock(block))
-                {
-                    transfer.AddUploadedBytes(block.Payload.Length); //TODO Move this to message stream after data if flushed ?
-                }
             }
-            catch (Exception ex)
-            {
-                if (logger.IsEnabled(LogLevel.Error))
-                {
-                    logger.LogError(
-                        ex,
-                        "Failed to send block Index: {Index}, Begin: {Begin}, Length: {Length} to Peer: {PeerEndPoint}",
-                        requestBlock.Index,
-                        requestBlock.Begin,
-                        requestBlock.Length,
-                        peer
-                    );
-                }
-            }
-            finally
-            {
-                peer.DecrementUploadRequested();
-            }
+        }
+        finally
+        {
+            peer.DecrementUploadRequested();
         }
     }
 
@@ -168,10 +180,10 @@ internal class UploadScheduler(
                         ? i.UploadTracker.Speed.Bps
                         : i.DownloadTracker.Speed.Bps
                 )
-                .First();
+                .FirstOrDefault();
 
-            worstPeer.ActiveDownloader.Value = false;
-            worstPeer.Choke();
+            worstPeer?.ActiveDownloader.Value = false;
+            worstPeer?.Choke();
         }
 
         peerToUnchoke.ActiveDownloader.Value = true;
@@ -229,11 +241,11 @@ internal class UploadScheduler(
         }
     }
 
-    public void CheckRound(IPeerConnection peerConnection)
+    public void TryRunRound(IPeerConnection peerConnection)
     {
         if (peerConnection.PeerInterested.CurrentValue && !peerConnection.AmChoking.CurrentValue)
         {
-            RunRound();
+            _uploadMessagesChannel.Writer.TryWrite(_checkRoundMessage);
         }
     }
 
@@ -272,7 +284,9 @@ internal class UploadScheduler(
         }
 
         from.IncrementUploadRequested();
-        await _pendingRequests.Writer.WriteAsync(request, cancellationToken).ConfigureAwait(false);
+        await _uploadMessagesChannel
+            .Writer.WriteAsync(new UploadMessage.RequestBlockMessage(request), cancellationToken)
+            .ConfigureAwait(false);
     }
 
     //TODO properly implement cancellation
@@ -286,7 +300,8 @@ internal class UploadScheduler(
 
     private async ValueTask DrainChannelsAsync()
     {
-        await foreach (var _ in _pendingRequests.Reader.ReadAllAsync().ConfigureAwait(false)) { }
+        await foreach (var _ in _uploadMessagesChannel.Reader.ReadAllAsync().ConfigureAwait(false))
+        { }
     }
 
     public async ValueTask DisposeAsync()
@@ -295,7 +310,7 @@ internal class UploadScheduler(
         {
             _disposed = true;
             _cts?.Cancel();
-            _pendingRequests.Writer.TryComplete();
+            _uploadMessagesChannel.Writer.TryComplete();
 
             try
             {
