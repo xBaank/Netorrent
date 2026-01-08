@@ -11,7 +11,7 @@ internal class PeerRequestWindow(int blockSize)
     private ulong _lastbytesPerSecond = 0;
     private bool _slowStart = true;
 
-    public ulong MaxInFlightRequests => Volatile.Read(ref _maxInFlightRequests);
+    public ulong MaxInFlightRequests => _maxInFlightRequests;
 
     private void CalculateWindow(ulong bytesPerSecond)
     {
