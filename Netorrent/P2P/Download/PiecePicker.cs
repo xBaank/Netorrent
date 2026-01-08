@@ -12,7 +12,6 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
     public const int TimeoutSeconds = 10;
 
     private readonly int[] _pieceRarity = new int[myBitfield.Length];
-    private readonly Lock _requestBlocksLock = new();
     private readonly Dictionary<int, RequestBlock[]> _requestBlocks = [];
     public int BlockSize => blockSize;
 
@@ -28,20 +27,14 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
 
     public void CompleteRequestBlock(RequestBlock requestBlock)
     {
-        lock (_requestBlocksLock)
-        {
-            requestBlock.State = RequestBlockState.Completed;
-            requestBlock.RequestedAt = null;
-            requestBlock.RequestedFrom.Clear();
-        }
+        requestBlock.State = RequestBlockState.Completed;
+        requestBlock.RequestedAt = null;
+        requestBlock.RequestedFrom.Clear();
     }
 
     public void CompletePiece(int index)
     {
-        lock (_requestBlocksLock)
-        {
-            _requestBlocks.Remove(index);
-        }
+        _requestBlocks.Remove(index);
     }
 
     public bool TryGetRequestedBlock(
@@ -49,23 +42,20 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         [NotNullWhen(true)] out RequestBlock? requestBlock
     )
     {
-        lock (_requestBlocksLock)
+        if (_requestBlocks.TryGetValue(receiveBlock.Index, out var requestBlocks))
         {
-            if (_requestBlocks.TryGetValue(receiveBlock.Index, out var requestBlocks))
+            foreach (var requestedBlock in requestBlocks)
             {
-                foreach (var requestedBlock in requestBlocks)
+                if (
+                    requestedBlock.State != RequestBlockState.Completed
+                    && requestedBlock.Index == receiveBlock.Index
+                    && requestedBlock.Begin == receiveBlock.Begin
+                    && requestedBlock.Length == receiveBlock.Payload.Length
+                    && requestedBlock.RequestedFrom.Contains(receiveBlock.FromPeer)
+                )
                 {
-                    if (
-                        requestedBlock.State != RequestBlockState.Completed
-                        && requestedBlock.Index == receiveBlock.Index
-                        && requestedBlock.Begin == receiveBlock.Begin
-                        && requestedBlock.Length == receiveBlock.Payload.Length
-                        && requestedBlock.RequestedFrom.Contains(receiveBlock.FromPeer)
-                    )
-                    {
-                        requestBlock = requestedBlock;
-                        return true;
-                    }
+                    requestBlock = requestedBlock;
+                    return true;
                 }
             }
         }
@@ -77,89 +67,70 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
     public RequestBlock? GetBlock(Bitfield bitfield)
     {
         HashSet<int> excludedIndices = [];
-        lock (_requestBlocksLock)
+
+        foreach (var requestBlock in _requestBlocks.Values.AsValueEnumerable().SelectMany(i => i))
         {
-            foreach (
-                var requestBlock in _requestBlocks.Values.AsValueEnumerable().SelectMany(i => i)
+            excludedIndices.Add(requestBlock.Index);
+
+            if (
+                requestBlock.State == RequestBlockState.Pending
+                && bitfield.HasPiece(requestBlock.Index)
             )
-            {
-                excludedIndices.Add(requestBlock.Index);
-
-                if (
-                    requestBlock.State == RequestBlockState.Pending
-                    && bitfield.HasPiece(requestBlock.Index)
-                )
-                    return requestBlock;
-            }
-
-            var piece = GetPiece(bitfield, excludedIndices);
-
-            if (piece is null)
-                return null;
-
-            var blockCount = GetBlockCountByPieceIndex(piece.Value);
-
-            if (!_requestBlocks.TryGetValue(piece.Value, out var requestBlocks))
-            {
-                requestBlocks = new RequestBlock[blockCount];
-                _requestBlocks[piece.Value] = requestBlocks;
-
-                for (int i = 0; i < blockCount; i++)
-                {
-                    requestBlocks[i] = GetRequestBlockByBlockIndex(piece.Value, i);
-                }
-            }
-
-            return requestBlocks[0];
+                return requestBlock;
         }
+
+        var piece = GetPiece(bitfield, excludedIndices);
+
+        if (piece is null)
+            return null;
+
+        var blockCount = GetBlockCountByPieceIndex(piece.Value);
+
+        if (!_requestBlocks.TryGetValue(piece.Value, out var requestBlocks))
+        {
+            requestBlocks = new RequestBlock[blockCount];
+            _requestBlocks[piece.Value] = requestBlocks;
+
+            for (int i = 0; i < blockCount; i++)
+            {
+                requestBlocks[i] = GetRequestBlockByBlockIndex(piece.Value, i);
+            }
+        }
+
+        return requestBlocks[0];
     }
 
-    public RequestBlock[] GetTimeoutRequestBlocks()
+    public IEnumerable<RequestBlock> GetTimeoutRequestBlocks()
     {
         var timeout = TimeoutSeconds.Seconds;
         var now = DateTime.UtcNow;
-        lock (_requestBlocksLock)
-        {
-            return
-            [
-                .. _requestBlocks
-                    .Values.AsValueEnumerable()
-                    .SelectMany(i => i)
-                    .Where(i =>
-                        i?.State == RequestBlockState.Requested
-                        && i.RequestedAt is not null
-                        && (now - i.RequestedAt.Value) > timeout
-                    )
-                    .Cast<RequestBlock>(),
-            ];
-        }
+
+        return _requestBlocks
+            .Values.SelectMany(i => i)
+            .Where(i =>
+                i?.State == RequestBlockState.Requested
+                && i.RequestedAt is not null
+                && (now - i.RequestedAt.Value) > timeout
+            )
+            .Cast<RequestBlock>();
     }
 
     public IPeerConnection? GetLastRequesterOrNull(RequestBlock requestBlock)
     {
-        lock (_requestBlocksLock)
-        {
-            return requestBlock.RequestedFrom.Count == 0 ? null : requestBlock.RequestedFrom[^1];
-        }
+        return requestBlock.RequestedFrom.Count == 0 ? null : requestBlock.RequestedFrom[^1];
     }
 
     public void SetBlockToPending(RequestBlock requestBlock)
     {
-        lock (_requestBlocksLock)
-        {
-            requestBlock.State = RequestBlockState.Pending;
-            requestBlock.RequestedAt = null;
-        }
+        requestBlock.State = RequestBlockState.Pending;
+        requestBlock.RequestedAt = null;
     }
 
     public void SetBlockToRequested(RequestBlock requestBlock, IPeerConnection peerConnection)
     {
-        lock (_requestBlocksLock)
-        {
-            requestBlock.State = RequestBlockState.Requested;
-            requestBlock.RequestedFrom.Add(peerConnection);
-            requestBlock.RequestedAt = DateTimeOffset.UtcNow;
-        }
+        requestBlock.State = RequestBlockState.Requested;
+        requestBlock.RequestedFrom.Add(peerConnection);
+        requestBlock.RequestedAt = DateTimeOffset.UtcNow;
     }
 
     private int? GetPiece(Bitfield peerBitfield, HashSet<int> excluded)

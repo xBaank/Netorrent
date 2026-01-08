@@ -20,11 +20,8 @@ internal class RequestScheduler(
 {
     const int MinPeersForRarity = 6;
 
-    private readonly Channel<Block> _receiveBlocksChannel = Channel.CreateBounded<Block>(
-        new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
-    );
-    private readonly Channel<IPeerConnection> _slotsChannel =
-        Channel.CreateBounded<IPeerConnection>(
+    private readonly Channel<DownloadMessage> _downloadMessageChannel =
+        Channel.CreateBounded<DownloadMessage>(
             new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
         );
 
@@ -38,35 +35,39 @@ internal class RequestScheduler(
         ObjectDisposedException.ThrowIf(_disposed, this);
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _runningTask = _cts.CancelOnFirstCompletionAndAwaitAllAsync([
-            ReceiveBlocksAsync(_cts.Token),
             ReScheduleTimeoutBlocksAsync(_cts.Token),
-            ProcessSlotsAsync(_cts.Token),
+            ProcessDownloadMessagesAsync(_cts.Token),
         ]);
         return _runningTask;
     }
 
-    public async Task ProcessSlotsAsync(CancellationToken cancellationToken)
+    public async Task ProcessDownloadMessagesAsync(CancellationToken cancellationToken)
     {
         await WarmupAsync(cancellationToken).ConfigureAwait(false);
         await foreach (
-            var peerConnection in _slotsChannel
+            var downloadMessage in _downloadMessageChannel
                 .Reader.ReadAllAsync(cancellationToken)
                 .ConfigureAwait(false)
         )
         {
-            ScheduleRequests(peerConnection);
-        }
-    }
+            if (downloadMessage is DownloadMessage.BlockMessage blockMessage)
+            {
+                using var block = blockMessage.Block;
+                await ProcessBlockAsync(block, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
 
-    private async Task ReceiveBlocksAsync(CancellationToken cancellationToken)
-    {
-        await foreach (
-            var receiveBlock in _receiveBlocksChannel.Reader.ReadAllAsync(cancellationToken)
-        )
-        {
-            using var block = receiveBlock;
-            await ProcessBlockAsync(block, cancellationToken).ConfigureAwait(false);
-            await TryRequestAsync(receiveBlock.FromPeer, cancellationToken).ConfigureAwait(false);
+            if (downloadMessage is DownloadMessage.CheckTimeoutMessage)
+            {
+                CheckTimeout();
+                continue;
+            }
+
+            if (downloadMessage is DownloadMessage.ScheduleMessage scheduleMessage)
+            {
+                ScheduleRequests(scheduleMessage.PeerConnection);
+                continue;
+            }
         }
     }
 
@@ -99,6 +100,7 @@ internal class RequestScheduler(
         );
         piecePicker.CompleteRequestBlock(requestedBlock);
         pieceBuffer.AddBlock(block);
+        TryRequest(block.FromPeer);
 
         if (!pieceBuffer.IsComplete)
         {
@@ -137,47 +139,45 @@ internal class RequestScheduler(
 
     private async Task ReScheduleTimeoutBlocksAsync(CancellationToken cancellationToken)
     {
+        var timeoutMessage = new DownloadMessage.CheckTimeoutMessage();
         while (true)
         {
-            var timeoutRequestBlocks = piecePicker.GetTimeoutRequestBlocks();
+            _downloadMessageChannel.Writer.TryWrite(timeoutMessage);
+            await Task.Delay(10.Seconds, cancellationToken).ConfigureAwait(false);
+        }
+    }
 
-            if (timeoutRequestBlocks.Length == 0)
+    private void CheckTimeout()
+    {
+        foreach (var requestBlock in piecePicker.GetTimeoutRequestBlocks())
+        {
+            var lastRequestedFrom = piecePicker.GetLastRequesterOrNull(requestBlock);
+            IPeerConnection? freePeer = null;
+
+            foreach (var peerConnection in peers.Values.AsValueEnumerable())
             {
-                await Task.Delay(1.Seconds, cancellationToken).ConfigureAwait(false);
-                continue;
-            }
-
-            foreach (var requestBlock in timeoutRequestBlocks)
-            {
-                var lastRequestedFrom = piecePicker.GetLastRequesterOrNull(requestBlock);
-                IPeerConnection? freePeer = null;
-
-                foreach (var peerConnection in peers.Values.AsValueEnumerable())
+                if (peerConnection == lastRequestedFrom)
                 {
-                    if (peerConnection == lastRequestedFrom)
-                    {
-                        continue;
-                    }
-
-                    if (
-                        peerConnection.AmInterested.CurrentValue
-                        && !peerConnection.PeerChoking.CurrentValue
-                    )
-                    {
-                        freePeer = peerConnection;
-                        break;
-                    }
+                    continue;
                 }
 
-                if (freePeer is not null)
+                if (
+                    peerConnection.AmInterested.CurrentValue
+                    && !peerConnection.PeerChoking.CurrentValue
+                )
                 {
-                    piecePicker.SetBlockToPending(requestBlock);
-                    await _slotsChannel
-                        .Writer.WriteAsync(freePeer, cancellationToken)
-                        .ConfigureAwait(false);
+                    freePeer = peerConnection;
+                    break;
                 }
             }
-            await Task.Delay(1.Seconds, cancellationToken).ConfigureAwait(false);
+
+            if (freePeer is not null)
+            {
+                piecePicker.SetBlockToPending(requestBlock);
+                _downloadMessageChannel.Writer.TryWrite(
+                    new DownloadMessage.ScheduleMessage(freePeer)
+                );
+            }
         }
     }
 
@@ -241,35 +241,42 @@ internal class RequestScheduler(
         }
     }
 
-    public async ValueTask TryRequestAsync(
-        IPeerConnection peerConnection,
-        CancellationToken cancellationToken
-    )
+    public void TryRequest(IPeerConnection peerConnection)
     {
         if (!peerConnection.PeerChoking.CurrentValue && peerConnection.AmInterested.CurrentValue)
         {
-            await _slotsChannel
-                .Writer.WriteAsync(peerConnection, cancellationToken)
-                .ConfigureAwait(false);
+            _downloadMessageChannel.Writer.TryWrite(
+                new DownloadMessage.ScheduleMessage(peerConnection)
+            );
         }
     }
 
     public async ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken)
     {
-        await _receiveBlocksChannel
-            .Writer.WriteOrDisposeAsync(block, cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            await _downloadMessageChannel
+                .Writer.WriteAsync(new DownloadMessage.BlockMessage(block), cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            block.Dispose();
+            throw;
+        }
     }
 
     private async ValueTask DrainChannelsAsync()
     {
         await foreach (
-            var item in _receiveBlocksChannel.Reader.ReadAllAsync().ConfigureAwait(false)
+            var item in _downloadMessageChannel.Reader.ReadAllAsync().ConfigureAwait(false)
         )
         {
-            item.Dispose();
+            if (item is DownloadMessage.BlockMessage blockMessage)
+            {
+                blockMessage.Block.Dispose();
+            }
         }
-        await foreach (var _ in _slotsChannel.Reader.ReadAllAsync().ConfigureAwait(false)) { }
 
         foreach (var item in _pieceBuffers.Values)
         {
@@ -283,8 +290,7 @@ internal class RequestScheduler(
         {
             _disposed = true;
             _cts?.Cancel();
-            _receiveBlocksChannel.Writer.TryComplete();
-            _slotsChannel.Writer.TryComplete();
+            _downloadMessageChannel.Writer.TryComplete();
 
             try
             {

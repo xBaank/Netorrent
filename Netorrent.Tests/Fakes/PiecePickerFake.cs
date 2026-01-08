@@ -48,7 +48,7 @@ internal class FakePiecePicker : IPiecePicker
         throw new NotImplementedException();
     }
 
-    public RequestBlock[] GetTimeoutRequestBlocks()
+    public IEnumerable<RequestBlock> GetTimeoutRequestBlocks()
     {
         throw new NotImplementedException();
     }

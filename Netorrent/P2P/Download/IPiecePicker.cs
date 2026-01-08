@@ -15,7 +15,7 @@ internal interface IPiecePicker : IAsyncDisposable
     IPeerConnection? GetLastRequesterOrNull(RequestBlock requestBlock);
     int GetPieceSize(int pieceIndex);
     RequestBlock GetRequestBlockByBlockIndex(int pieceIndex, int blockIndex);
-    RequestBlock[] GetTimeoutRequestBlocks();
+    IEnumerable<RequestBlock> GetTimeoutRequestBlocks();
     void IncreaseRarity(int index);
     void SetBlockToPending(RequestBlock requestBlock);
     void SetBlockToRequested(RequestBlock requestBlock, IPeerConnection peerConnection);

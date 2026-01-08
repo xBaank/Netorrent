@@ -145,9 +145,7 @@ internal class PeerConnection(
                 var message = state ? Message.CreateInterested() : Message.CreateNotInterested();
 
                 await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
-                await requestScheduler
-                    .TryRequestAsync(this, cancellationToken)
-                    .ConfigureAwait(false);
+                requestScheduler.TryRequest(this);
             },
             AwaitOperation.Switch,
             configureAwait: false
@@ -156,9 +154,7 @@ internal class PeerConnection(
         using var peerChokingDisposable = _peerChoking.SubscribeAwait(
             async (state, cancellationToken) =>
             {
-                await requestScheduler
-                    .TryRequestAsync(this, cancellationToken)
-                    .ConfigureAwait(false);
+                requestScheduler.TryRequest(this);
             },
             AwaitOperation.Switch,
             configureAwait: false
