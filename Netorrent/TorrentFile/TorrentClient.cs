@@ -19,7 +19,7 @@ public sealed class TorrentClient : IAsyncDisposable
 {
     private readonly PeerId _peerId = new();
     private readonly TorrentClientOptions _options;
-    private readonly List<Torrent> _torrents = [];
+    private readonly Dictionary<InfoHash, Torrent> _torrents = [];
     private readonly TcpPeersListener _peersListener;
     private readonly UdpTrackerHandler _udpTrackerHandler;
     private readonly HttpTrackerHandler _httpTrackerHandler;
@@ -78,17 +78,7 @@ public sealed class TorrentClient : IAsyncDisposable
 
         var metaInfo = ParseMetaInfo(bDictionary);
 
-        var torrent = new Torrent(
-            metaInfo,
-            _httpTrackerHandler,
-            _udpTrackerHandler,
-            _peersListener,
-            _peerId,
-            Path.GetFullPath(outputDirectory),
-            _options
-        );
-        _torrents.Add(torrent);
-        return torrent;
+        return LoadTorrent(metaInfo, outputDirectory);
     }
 
     /// <summary>
@@ -108,7 +98,7 @@ public sealed class TorrentClient : IAsyncDisposable
             Path.GetFullPath(outputDirectory),
             _options
         );
-        _torrents.Add(torrent);
+        _torrents.Add(metaInfo.Info.InfoHash, torrent);
         return torrent;
     }
 
@@ -153,7 +143,7 @@ public sealed class TorrentClient : IAsyncDisposable
             _options,
             true
         );
-        _torrents.Add(torrent);
+        _torrents.Add(torrent.MetaInfo.Info.InfoHash, torrent);
         return torrent;
     }
 
@@ -162,7 +152,7 @@ public sealed class TorrentClient : IAsyncDisposable
         string announceUrl,
         List<string>? announceUrls,
         List<string>? webUrls,
-        int pieceLength = 256 * 1024, // 256 KB default
+        int pieceLength,
         CancellationToken cancellationToken = default
     )
     {
@@ -248,7 +238,7 @@ public sealed class TorrentClient : IAsyncDisposable
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            using var fs = new FileStream(
+            await using var fs = new FileStream(
                 fullPath,
                 FileMode.Open,
                 FileAccess.Read,
@@ -464,7 +454,7 @@ public sealed class TorrentClient : IAsyncDisposable
     {
         await _peersListener.DisposeAsync().ConfigureAwait(false);
         await _udpTrackerHandler.DisposeAsync().ConfigureAwait(false);
-        var torrentsDisposeTasks = _torrents.Select(i => i.DisposeAsync().AsTask());
+        var torrentsDisposeTasks = _torrents.Values.Select(i => i.DisposeAsync().AsTask());
         await Task.WhenAll(torrentsDisposeTasks).ConfigureAwait(false);
     }
 }
