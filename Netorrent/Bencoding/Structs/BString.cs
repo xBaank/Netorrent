@@ -39,13 +39,18 @@ public struct BString : IBencodingNode
 
     public override string ToString() => Data;
 
-    public override bool Equals(object? obj)
+    public override readonly bool Equals(object? obj)
     {
-        return obj is BString @string && Data == @string.Data;
+        return obj is BString @string && RawData.SequenceEqual(@string.RawData);
     }
 
-    public override int GetHashCode()
+    public override readonly int GetHashCode()
     {
-        return HashCode.Combine(Data);
+        var hash = new HashCode();
+        foreach (var b in RawData)
+        {
+            hash.Add(b);
+        }
+        return hash.ToHashCode();
     }
 }

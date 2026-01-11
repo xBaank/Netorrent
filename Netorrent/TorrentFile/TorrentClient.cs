@@ -139,7 +139,7 @@ public sealed class TorrentClient : IAsyncDisposable
             _udpTrackerHandler,
             _peersListener,
             _peerId,
-            Path.GetFullPath(Path.GetDirectoryName(path) ?? ""),
+            Directory.Exists(path) ? Path.GetFullPath(path) : Path.GetDirectoryName(path) ?? "/",
             _options,
             true
         );
@@ -243,8 +243,7 @@ public sealed class TorrentClient : IAsyncDisposable
                 FileMode.Open,
                 FileAccess.Read,
                 FileShare.ReadWrite,
-                4096,
-                useAsync: true
+                4096
             );
             while (true)
             {
@@ -264,8 +263,8 @@ public sealed class TorrentClient : IAsyncDisposable
                 // If buffer full, hash and reset
                 if (bufferPos == pieceLength)
                 {
-                    var pieceData = pieceBuffer[..pieceLength].ToArray();
-                    var hash = SHA1.HashData(pieceData);
+                    var pieceData = pieceBuffer[..pieceLength];
+                    var hash = SHA1.HashData(pieceData.Span);
                     piecesBytes.AddRange(hash);
                     bufferPos = 0;
                 }
@@ -274,8 +273,8 @@ public sealed class TorrentClient : IAsyncDisposable
 
         if (bufferPos > 0)
         {
-            var lastPiece = pieceBuffer[..bufferPos].ToArray();
-            var hash = SHA1.HashData(lastPiece);
+            var lastPiece = pieceBuffer[..bufferPos];
+            var hash = SHA1.HashData(lastPiece.Span);
             piecesBytes.AddRange(hash);
         }
 

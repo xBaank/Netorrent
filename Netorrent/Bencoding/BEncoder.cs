@@ -3,7 +3,7 @@ using Netorrent.Bencoding.Structs;
 
 namespace Netorrent.Bencoding;
 
-public sealed class BEncoder : IAsyncDisposable, IDisposable
+internal sealed class BEncoder : IAsyncDisposable, IDisposable
 {
     private readonly MemoryStream _stream;
 

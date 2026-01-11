@@ -12,15 +12,15 @@ internal class DiskStorage : IPieceStorage
     private readonly string _outputDirectory;
     private readonly List<TorrentFileEntry> _files = [];
     private readonly int _pieceLength;
-    private readonly List<byte[]> _pieceHashes;
+    private readonly IReadOnlyList<byte[]> _pieceHashes;
 
     public string OutputDirectory => _outputDirectory;
 
     public DiskStorage(
         string outputDirectory,
-        List<InfoFile> torrentFiles,
+        IReadOnlyList<InfoFile> torrentFiles,
         int pieceLength,
-        List<byte[]> pieceHashes
+        IReadOnlyList<byte[]> pieceHashes
     )
     {
         _outputDirectory = outputDirectory;
@@ -67,11 +67,7 @@ internal class DiskStorage : IPieceStorage
     )
     {
         var expectedHash = _pieceHashes[pieceIndex];
-        var actualHash =
-            pieceData.Length > 1024 * 1024
-                ? await Task.Run(() => SHA1.HashData(pieceData.Span), ct).ConfigureAwait(false)
-                : SHA1.HashData(pieceData.Span);
-
+        var actualHash = SHA1.HashData(pieceData.Span);
         return expectedHash.SequenceEqual(actualHash);
     }
 

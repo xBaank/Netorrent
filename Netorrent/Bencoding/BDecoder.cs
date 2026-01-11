@@ -2,7 +2,7 @@
 
 namespace Netorrent.Bencoding;
 
-public class BDecoder(byte[] data)
+internal class BDecoder(byte[] data)
 {
     private readonly byte[] _data = data;
     private int _pos;
@@ -99,6 +99,6 @@ public class BDecoder(byte[] data)
             dic.Add(key, item);
         }
         _pos++;
-        return dic;
+        return new BDictionary(dic);
     }
 }

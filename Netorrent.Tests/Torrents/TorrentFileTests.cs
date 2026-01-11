@@ -93,4 +93,22 @@ public class TorrentFileTests
         torrent.MetaInfo.Info.Files.ShouldBeNull();
         torrent.MetaInfo.Info.Name.ShouldBe("test.txt");
     }
+
+    [Test]
+    [Arguments("Data/MultifileTest/test.txt")]
+    [Arguments("Data/MultifileTest")]
+    public async Task Should_Verify_File(string path, CancellationToken cancellationToken)
+    {
+        await using var torrentClient = new TorrentClient();
+        await using var torrent = await torrentClient.CreateTorrentAsync(
+            path,
+            "http://test.com",
+            ["http://test.com"],
+            ["http://test.com"],
+            cancellationToken: cancellationToken
+        );
+
+        await torrent.VerifyAsync(cancellationToken);
+        torrent.Bitfield.DownloadedPiecesCount.ShouldBe(torrent.Bitfield.Length);
+    }
 }

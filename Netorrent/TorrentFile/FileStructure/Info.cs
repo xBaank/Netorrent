@@ -1,6 +1,7 @@
 ﻿using System.Security.Cryptography;
 using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
+using ZLinq;
 
 namespace Netorrent.TorrentFile.FileStructure;
 
@@ -26,15 +27,17 @@ public record Info(
 {
     public InfoHash InfoHash = ComputeInfoHash(RawInfo);
 
+    public IReadOnlyList<InfoFile> NormalizedFiles { get; } =
+        Type == InfoType.Single ? [new InfoFile(Length ?? 0, [Name], Md5sum)] : Files ?? [];
+    public IReadOnlyList<byte[]> PiecesHashes { get; } =
+        Pieces.AsValueEnumerable().Chunk(20).ToList();
+
     private static InfoHash ComputeInfoHash(BDictionary info)
     {
         using var encoder = new BEncoder();
         var infoBytes = encoder.Encode(info);
         return SHA1.HashData(infoBytes);
     }
-
-    public List<InfoFile> NormalizedFiles() =>
-        Type == InfoType.Single ? [new InfoFile(Length ?? 0, [Name], Md5sum)] : Files ?? [];
 }
 
 public record InfoFile(long Length, List<string> Path, string? Md5sum = null);

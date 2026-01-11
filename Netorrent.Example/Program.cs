@@ -213,11 +213,9 @@ static async Task RunStatusUI(Torrent torrent, CancellationToken token) =>
         .Columns(
             new TaskDescriptionColumn(),
             new ProgressBarColumn(),
-            new PercentageColumn(),
-            new RemainingTimeColumn(),
-            new SpinnerColumn(),
+            new DownloadedColumn(),
             new TransferSpeedColumn(),
-            new DownloadedColumn()
+            new RemainingTimeColumn()
         )
         .StartAsync(async ctx =>
         {
@@ -227,7 +225,7 @@ static async Task RunStatusUI(Torrent torrent, CancellationToken token) =>
             // Initialize
             var totalBytes = torrent.Statistics.Transfer.TotalBytes.Bytes;
             progressTask.MaxValue(totalBytes);
-            uploadTask.MaxValue(int.MaxValue);
+            uploadTask.IsIndeterminate(true);
 
             while (!token.IsCancellationRequested)
             {

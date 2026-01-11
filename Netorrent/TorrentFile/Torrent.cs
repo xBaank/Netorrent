@@ -1,4 +1,5 @@
-﻿using System.Collections.Concurrent;
+﻿using System.Buffers;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Threading.Channels;
 using Netorrent.Bencoding;
@@ -25,6 +26,7 @@ public sealed class Torrent : IAsyncDisposable
     public TorrentStatisticsClient Statistics { get; }
     public string OutputDirectory { get; }
     public State State { get; private set; } = State.Stopped;
+    internal Bitfield Bitfield => _myBitfield;
 
     private readonly TcpPeersConnector _peerConnector;
     private readonly TcpPeersListener _peersListener;
@@ -47,7 +49,7 @@ public sealed class Torrent : IAsyncDisposable
         bool bitfieldInitialized = false
     )
     {
-        var files = metaInfo.Info.NormalizedFiles();
+        var files = metaInfo.Info.NormalizedFiles;
         var totalSize = files.AsValueEnumerable().Sum(i => i.Length);
         var trackersChannel = Channel.CreateBounded<IPEndPoint>(
             new BoundedChannelOptions(100) { SingleWriter = false, SingleReader = true }
@@ -61,10 +63,10 @@ public sealed class Torrent : IAsyncDisposable
             OutputDirectory,
             files,
             (int)metaInfo.Info.PieceLength,
-            [.. metaInfo.Info.Pieces.AsValueEnumerable().Chunk(20)]
+            metaInfo.Info.PiecesHashes
         );
-        var activePeers = new ConcurrentDictionary<PeerEndpoint, IPeerConnection>();
         var transferStatistics = new TransferStatistics(totalSize);
+        var activePeers = new ConcurrentDictionary<PeerEndpoint, IPeerConnection>();
         var piecePicker = new PiecePicker(
             _myBitfield,
             16 * 1024, //This should be constant?
@@ -236,6 +238,128 @@ public sealed class Torrent : IAsyncDisposable
         await using var encoder = new BEncoder();
         await File.WriteAllBytesAsync(outputPath, encoder.Encode(rawMetainfo), cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Asynchronously read downloaded files and verify it's content
+    /// </summary>
+    /// <param name="outputPath"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    public async ValueTask VerifyAsync(CancellationToken cancellationToken = default)
+    {
+        await StopAsync().ConfigureAwait(false);
+        _myBitfield.Reset();
+
+        var channelSize = 250;
+        var piecesChannel = Channel.CreateBounded<(int PieceIndex, ReadOnlyMemory<byte> Piece)>(
+            new BoundedChannelOptions(channelSize) { SingleReader = true, SingleWriter = true }
+        );
+        var processPiecesTask = ProcessPiecesAsync();
+        var getPiecesTask = GetPiecesAsync();
+
+        await Task.WhenAll(processPiecesTask, getPiecesTask).ConfigureAwait(false);
+
+        Statistics.Transfer.SetVerifiedBytes(
+            _myBitfield.DownloadedPiecesCount * MetaInfo.Info.PieceLength
+        );
+
+        async Task ProcessPiecesAsync()
+        {
+            await foreach (
+                var items in piecesChannel.Reader.ReadAllAsync(cancellationToken).Chunk(channelSize)
+            )
+            {
+                await Parallel
+                    .ForEachAsync(
+                        items,
+                        cancellationToken,
+                        async (item, ct) =>
+                            await VerifyPieceAsync(item.PieceIndex, item.Piece, ct)
+                                .ConfigureAwait(false)
+                    )
+                    .ConfigureAwait(false);
+            }
+        }
+
+        async Task GetPiecesAsync()
+        {
+            var pieceIndex = 0;
+            var bufferPos = 0;
+            var pieceLength = (int)MetaInfo.Info.PieceLength;
+            using var pool = MemoryPool<byte>.Shared.Rent(pieceLength);
+            var pieceBuffer = pool.Memory[..pieceLength];
+
+            foreach (var filePath in MetaInfo.Info.NormalizedFiles)
+            {
+                var path = Path.Combine([OutputDirectory, .. filePath.Path]);
+                cancellationToken.ThrowIfCancellationRequested();
+
+                await using var fs = new FileStream(
+                    path,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.ReadWrite,
+                    4096
+                );
+                while (true)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    var toRead = pieceLength - bufferPos;
+                    int bytesRead = await fs.ReadAsync(
+                            pieceBuffer.Slice(bufferPos, toRead),
+                            cancellationToken
+                        )
+                        .ConfigureAwait(false);
+
+                    if (bytesRead <= 0)
+                    {
+                        break;
+                    }
+
+                    bufferPos += bytesRead;
+
+                    // If buffer is full, verify piece
+                    if (bufferPos == pieceLength)
+                    {
+                        var pieceData = pieceBuffer[..pieceLength];
+                        await piecesChannel
+                            .Writer.WriteAsync((pieceIndex, pieceData.ToArray()), cancellationToken)
+                            .ConfigureAwait(false);
+                        pieceIndex++;
+                        bufferPos = 0;
+                    }
+                }
+            }
+
+            if (bufferPos > 0)
+            {
+                var lastPiece = pieceBuffer[..bufferPos];
+                await piecesChannel
+                    .Writer.WriteAsync((pieceIndex, lastPiece.ToArray()), cancellationToken)
+                    .ConfigureAwait(false);
+                pieceIndex++;
+            }
+
+            piecesChannel.Writer.TryComplete();
+        }
+
+        async ValueTask VerifyPieceAsync(
+            int pieceIndex,
+            ReadOnlyMemory<byte> pieceData,
+            CancellationToken cancellationToken
+        )
+        {
+            var hasPiece = await _pieceStorage
+                .VerifyPieceAsync(pieceIndex, pieceData, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (hasPiece)
+            {
+                _myBitfield.SetPiece(pieceIndex);
+            }
+        }
     }
 
     public async ValueTask DisposeAsync()

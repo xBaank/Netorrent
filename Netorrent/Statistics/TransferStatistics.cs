@@ -16,6 +16,12 @@ public class TransferStatistics(long totalBytes)
     public ByteSize TotalBytes => totalBytes;
     public ByteSize LeftBytes => TotalBytes - DownloadedBytes;
 
+    internal void SetVerifiedBytes(long bytes)
+    {
+        Interlocked.Exchange(ref _verifiedBytes, bytes);
+        Interlocked.Exchange(ref _downloadedBytes, bytes);
+    }
+
     internal void AddVerifiedBytes(long bytes)
     {
         Interlocked.Add(ref _verifiedBytes, bytes);

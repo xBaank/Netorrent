@@ -37,9 +37,24 @@ internal class Bitfield
 
     public bool IsComplete => _bits.HasAllSet();
 
+    public int DownloadedPiecesCount
+    {
+        get
+        {
+            var pieces = 0;
+            for (int i = 0; i < Length; i++)
+            {
+                if (_bits[i])
+                {
+                    pieces++;
+                }
+            }
+            return pieces;
+        }
+    }
+
     public bool HasPiece(int index) => index < _bits.Length && _bits[index];
 
-    //Because set piece is not called concurrently there is not need use lock
     internal void SetPiece(int index)
     {
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, _bits.Length, nameof(index));
@@ -55,6 +70,14 @@ internal class Bitfield
         if (IsComplete)
         {
             _stateChanged.OnCompleted();
+        }
+    }
+
+    internal void Reset()
+    {
+        for (int i = 0; i < _bits.Length; i++)
+        {
+            _bits[i] = false;
         }
     }
 
