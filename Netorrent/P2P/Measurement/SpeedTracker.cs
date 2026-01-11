@@ -11,13 +11,13 @@ public sealed class SpeedTracker(double alpha = 0.3)
     private long _bytesSinceLast;
     private long _totalBytes;
 
-    private double _currentBps;
+    private long _currentBps;
     private long _lastTimestamp = Stopwatch.GetTimestamp();
 
     private readonly double _alpha = alpha;
 
     public ByteSize TotalBytes => Interlocked.Read(ref _totalBytes);
-    public DownloadSpeed Speed => Volatile.Read(ref _currentBps);
+    public DownloadSpeed Speed => Interlocked.Read(ref _currentBps);
 
     internal Timer StartSampling(TimeSpan period)
     {
@@ -46,6 +46,6 @@ public sealed class SpeedTracker(double alpha = 0.3)
             return;
 
         double instant = bytes / elapsedSec;
-        _currentBps = _alpha * instant + (1 - _alpha) * _currentBps;
+        _currentBps = (long)(_alpha * instant + (1 - _alpha) * _currentBps);
     }
 }

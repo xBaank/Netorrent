@@ -53,8 +53,8 @@ internal class PeerConnection(
     private ulong _requestedBlocksCount;
     private ulong _uploadRequestedCount;
 
-    public ulong RequestedBlocksCount => Volatile.Read(ref _requestedBlocksCount);
-    public ulong UploadRequestedBlocksCount => Volatile.Read(ref _uploadRequestedCount);
+    public ulong RequestedBlocksCount => Interlocked.Read(ref _requestedBlocksCount);
+    public ulong UploadRequestedBlocksCount => Interlocked.Read(ref _uploadRequestedCount);
 
     public TimeSpan ConnectionDuration => DateTimeOffset.UtcNow - _startedConnectionTime;
 
