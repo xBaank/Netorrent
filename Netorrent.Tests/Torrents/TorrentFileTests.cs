@@ -77,6 +77,7 @@ public class TorrentFileTests
         paths.ShouldContain("Folder1/Folder2/test3.txt");
     }
 
+    //TODO add some cases where there is no file/folder
     [Test]
     public async Task Should_Create_Torrent_File_From_File(CancellationToken cancellationToken)
     {
@@ -94,6 +95,7 @@ public class TorrentFileTests
         torrent.MetaInfo.Info.Name.ShouldBe("test.txt");
     }
 
+    //TODO add some cases where the files are have some corrupted pieces
     [Test]
     [Arguments("Data/MultifileTest/test.txt")]
     [Arguments("Data/MultifileTest")]

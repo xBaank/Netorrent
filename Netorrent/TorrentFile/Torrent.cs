@@ -151,9 +151,10 @@ public sealed class Torrent : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (State == State.Started)
+        {
             return;
-
-        await StopAndWaitToFinishAsync();
+        }
+        await VerifyAsync().ConfigureAwait(false);
         Completion.Reset();
         _cancellationTokenSource?.Dispose();
         _cancellationTokenSource = new CancellationTokenSource();
@@ -248,7 +249,7 @@ public sealed class Torrent : IAsyncDisposable
     /// <returns></returns>
     public async ValueTask VerifyAsync(CancellationToken cancellationToken = default)
     {
-        await StopAsync().ConfigureAwait(false);
+        await StopAndWaitToFinishAsync().ConfigureAwait(false);
         _myBitfield.Reset();
 
         var channelSize = 250;
@@ -292,33 +293,36 @@ public sealed class Torrent : IAsyncDisposable
 
             foreach (var filePath in MetaInfo.Info.NormalizedFiles)
             {
+                var fileRemaining = filePath.Length;
                 var path = Path.Combine([OutputDirectory, .. filePath.Path]);
                 cancellationToken.ThrowIfCancellationRequested();
 
                 await using var fs = new FileStream(
                     path,
-                    FileMode.Open,
+                    FileMode.OpenOrCreate,
                     FileAccess.Read,
                     FileShare.ReadWrite,
-                    4096
+                    4096,
+                    FileOptions.SequentialScan
                 );
                 while (true)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
                     var toRead = pieceLength - bufferPos;
-                    int bytesRead = await fs.ReadAsync(
-                            pieceBuffer.Slice(bufferPos, toRead),
-                            cancellationToken
-                        )
+                    await fs.ReadAsync(pieceBuffer.Slice(bufferPos, toRead), cancellationToken)
                         .ConfigureAwait(false);
-
-                    if (bytesRead <= 0)
+                    if (fileRemaining >= toRead)
                     {
+                        fileRemaining -= toRead;
+                        bufferPos += toRead;
+                    }
+                    else
+                    {
+                        bufferPos += (int)fileRemaining;
+                        fileRemaining = 0;
                         break;
                     }
-
-                    bufferPos += bytesRead;
 
                     // If buffer is full, verify piece
                     if (bufferPos == pieceLength)
