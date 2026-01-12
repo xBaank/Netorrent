@@ -45,8 +45,7 @@ public sealed class Torrent : IAsyncDisposable
         TcpPeersListener peersListener,
         PeerId peerId,
         string outputDirectory,
-        TorrentClientOptions torrentClientOptions,
-        bool bitfieldInitialized = false
+        TorrentClientOptions torrentClientOptions
     )
     {
         var files = metaInfo.Info.NormalizedFiles;
@@ -58,7 +57,7 @@ public sealed class Torrent : IAsyncDisposable
         MetaInfo = metaInfo;
         OutputDirectory = Path.Combine(outputDirectory, MetaInfo.Title ?? "");
         _peersListener = peersListener;
-        _myBitfield = new Bitfield(metaInfo.Info.Pieces.Length / 20, bitfieldInitialized);
+        _myBitfield = new Bitfield(metaInfo.Info.Pieces.Length / 20);
         _pieceStorage = new DiskStorage(
             OutputDirectory,
             files,
@@ -233,7 +232,9 @@ public sealed class Torrent : IAsyncDisposable
         var folder = Path.GetDirectoryName(outputPath);
 
         if (folder is not null)
+        {
             Directory.CreateDirectory(folder);
+        }
 
         var rawMetainfo = MetaInfo.ToBDictionary();
         await using var encoder = new BEncoder();

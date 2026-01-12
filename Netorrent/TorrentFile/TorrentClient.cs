@@ -140,8 +140,7 @@ public sealed class TorrentClient : IAsyncDisposable
             _peersListener,
             _peerId,
             Directory.Exists(path) ? Path.GetFullPath(path) : Path.GetDirectoryName(path) ?? "/",
-            _options,
-            true
+            _options
         );
         _torrents.Add(torrent.MetaInfo.Info.InfoHash, torrent);
         return torrent;
