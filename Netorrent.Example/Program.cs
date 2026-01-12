@@ -236,7 +236,7 @@ static async Task RunStatusUI(Torrent torrent, CancellationToken token) =>
                 uploadTask.Value(t.UploadedBytes.Bytes);
 
                 progressTask.Description =
-                    $@"[green]{(torrent.MetaInfo.Title ?? torrent.MetaInfo.Info.Name).EscapeMarkup()} ({torrent.State} {torrent.VerifiedPercentage})[/]";
+                    $@"[green]{(torrent.MetaInfo.Title ?? torrent.MetaInfo.Info.Name).EscapeMarkup()} ({torrent.State} {torrent.VerifiedPiecesCount}/{torrent.Bitfield.Length})[/]";
 
                 await Task.Delay(1000, token);
             }

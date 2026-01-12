@@ -14,7 +14,7 @@ public class TorrentFileTests
         await using var torrent = await torrentClient.LoadTorrentAsync(
             "Data/nosferatu.torrent",
             "Output",
-            cancellationToken
+            cancellationToken: cancellationToken
         );
         File.Delete("Output/asd.torrent");
         await torrent.ExportAsync("Output/asd.torrent", cancellationToken);
@@ -156,7 +156,7 @@ public class TorrentFileTests
 
         torrent.Statistics.Transfer.DownloadedBytes.ShouldBe(pieceLength * torrent.Bitfield.Length);
         torrent.Statistics.Transfer.VerifiedBytes.ShouldBe(pieceLength * torrent.Bitfield.Length);
-        torrent.Bitfield.DownloadedPiecesCount.ShouldBe(torrent.Bitfield.Length);
+        torrent.Bitfield.DownloadedPieces.Count.ShouldBe(torrent.Bitfield.Length);
     }
 
     [Test]
@@ -200,6 +200,6 @@ public class TorrentFileTests
 
         torrent.Statistics.Transfer.DownloadedBytes.ShouldBe(pieceLength * expectedPieceCount);
         torrent.Statistics.Transfer.VerifiedBytes.ShouldBe(pieceLength * expectedPieceCount);
-        torrent.Bitfield.DownloadedPiecesCount.ShouldBe(expectedPieceCount);
+        torrent.Bitfield.DownloadedPieces.Count.ShouldBe(expectedPieceCount);
     }
 }

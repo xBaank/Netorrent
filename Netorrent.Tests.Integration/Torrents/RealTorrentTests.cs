@@ -15,7 +15,7 @@ public class RealTorrentTests
         await using var torrent = await torrentClient.LoadTorrentAsync(
             "Data/debian-13.3.0-amd64-netinst.iso.torrent",
             "Output",
-            cancellationToken
+            cancellationToken: cancellationToken
         );
         cancellationToken.Register(torrent.Stop);
         await torrent.StartAsync();

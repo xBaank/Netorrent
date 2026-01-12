@@ -65,6 +65,7 @@ public sealed class TorrentClient : IAsyncDisposable
     public async ValueTask<Torrent> LoadTorrentAsync(
         string path,
         string outputDirectory,
+        int[]? downloadedPieces = null,
         CancellationToken cancellationToken = default
     )
     {
@@ -78,7 +79,7 @@ public sealed class TorrentClient : IAsyncDisposable
 
         var metaInfo = ParseMetaInfo(bDictionary);
 
-        return LoadTorrent(metaInfo, outputDirectory);
+        return LoadTorrent(metaInfo, outputDirectory, downloadedPieces);
     }
 
     /// <summary>
@@ -87,7 +88,11 @@ public sealed class TorrentClient : IAsyncDisposable
     /// <param name="metaInfo">The metadata information describing the torrent to import. Cannot be null.</param>
     /// <param name="outputDirectory">The path to the directory where the torrent's data will be stored. Must be a valid file system path.</param>
     /// <returns>A Torrent instance representing the imported torrent.</returns>
-    public Torrent LoadTorrent(MetaInfo metaInfo, string outputDirectory)
+    public Torrent LoadTorrent(
+        MetaInfo metaInfo,
+        string outputDirectory,
+        int[]? downloadedPieces = null
+    )
     {
         var torrent = new Torrent(
             metaInfo,
@@ -96,7 +101,8 @@ public sealed class TorrentClient : IAsyncDisposable
             _peersListener,
             _peerId,
             Path.GetFullPath(outputDirectory),
-            _options
+            _options,
+            downloadedPieces?.ToHashSet() ?? []
         );
         _torrents.Add(metaInfo.Info.InfoHash, torrent);
         return torrent;
@@ -125,22 +131,24 @@ public sealed class TorrentClient : IAsyncDisposable
         CancellationToken cancellationToken = default
     )
     {
+        var metainfo = await CreateMetaInfoFromPathAsync(
+                path,
+                announceUrl,
+                announceUrls,
+                webUrls,
+                pieceLength,
+                cancellationToken
+            )
+            .ConfigureAwait(false);
         var torrent = new Torrent(
-            await CreateMetaInfoFromPathAsync(
-                    path,
-                    announceUrl,
-                    announceUrls,
-                    webUrls,
-                    pieceLength,
-                    cancellationToken
-                )
-                .ConfigureAwait(false),
+            metainfo,
             _httpTrackerHandler,
             _udpTrackerHandler,
             _peersListener,
             _peerId,
             Directory.Exists(path) ? Path.GetFullPath(path) : Path.GetDirectoryName(path) ?? "/",
-            _options
+            _options,
+            metainfo.Info.PiecesHashes.AsValueEnumerable().Index().Select(i => i.Index).ToHashSet()
         );
         _torrents.Add(torrent.MetaInfo.Info.InfoHash, torrent);
         return torrent;

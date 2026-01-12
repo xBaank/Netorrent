@@ -17,6 +17,7 @@
     </PackageReference>
     <PackageReference Include="Shouldly" Version="4.3.0" />
     <PackageReference Include="TUnit" Version="1.5.37" />
+    <PackageReference Include="PublicApiGenerator" Version="11.5.4" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Netorrent\Netorrent.csproj" />
@@ -42,6 +43,12 @@
     </None>
     <None Update="Data\nosferatu.torrent">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="PublicApi\ApiTest.My_API_Has_No_Changes.approved.txt">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </None>
+    <None Update="PublicApi\ApiTest.My_API_Has_No_Changes.received.txt">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </None>
   </ItemGroup>
 </Project>

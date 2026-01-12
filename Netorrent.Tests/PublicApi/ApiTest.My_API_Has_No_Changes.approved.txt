@@ -1,0 +1,277 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsAotCompatible", "True")]
+[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("DynamicProxyGenAssembly2")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Netorrent.Tests")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Netorrent.Tests.Integration")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace Netorrent.Bencoding.Structs
+{
+    public readonly struct BDictionary : Netorrent.Bencoding.Structs.IBencodingNode
+    {
+        public BDictionary(System.Collections.Generic.Dictionary<Netorrent.Bencoding.Structs.BString, Netorrent.Bencoding.Structs.IBencodingNode> elements) { }
+        public System.Collections.Generic.Dictionary<Netorrent.Bencoding.Structs.BString, Netorrent.Bencoding.Structs.IBencodingNode> Elements { get; }
+        public override bool Equals(object? obj) { }
+        public override int GetHashCode() { }
+        public static System.Collections.Generic.Dictionary<Netorrent.Bencoding.Structs.BString, Netorrent.Bencoding.Structs.IBencodingNode> op_Implicit(Netorrent.Bencoding.Structs.BDictionary other) { }
+        public static Netorrent.Bencoding.Structs.BDictionary op_Implicit(System.Collections.Generic.Dictionary<Netorrent.Bencoding.Structs.BString, Netorrent.Bencoding.Structs.IBencodingNode> data) { }
+        public static bool operator !=(Netorrent.Bencoding.Structs.BDictionary left, Netorrent.Bencoding.Structs.BDictionary right) { }
+        public static bool operator ==(Netorrent.Bencoding.Structs.BDictionary left, Netorrent.Bencoding.Structs.BDictionary right) { }
+    }
+    public readonly struct BInt : Netorrent.Bencoding.Structs.IBencodingNode
+    {
+        public BInt(long data) { }
+        public long Data { get; }
+        public static long op_Implicit(Netorrent.Bencoding.Structs.BInt other) { }
+        public static Netorrent.Bencoding.Structs.BInt op_Implicit(long data) { }
+    }
+    public readonly struct BList : Netorrent.Bencoding.Structs.IBencodingNode
+    {
+        public BList(System.Collections.Generic.List<Netorrent.Bencoding.Structs.IBencodingNode> elements) { }
+        public System.Collections.Generic.List<Netorrent.Bencoding.Structs.IBencodingNode> Elements { get; }
+        public override bool Equals(object? obj) { }
+        public override int GetHashCode() { }
+        public static System.Collections.Generic.List<Netorrent.Bencoding.Structs.IBencodingNode> op_Implicit(Netorrent.Bencoding.Structs.BList other) { }
+        public static Netorrent.Bencoding.Structs.BList op_Implicit(System.Collections.Generic.List<Netorrent.Bencoding.Structs.IBencodingNode> data) { }
+        public static bool operator !=(Netorrent.Bencoding.Structs.BList left, Netorrent.Bencoding.Structs.BList right) { }
+        public static bool operator ==(Netorrent.Bencoding.Structs.BList left, Netorrent.Bencoding.Structs.BList right) { }
+    }
+    public struct BString : Netorrent.Bencoding.Structs.IBencodingNode
+    {
+        public BString(byte[] bytes) { }
+        public BString(string str) { }
+        public string Data { get; }
+        public byte[] RawData { get; }
+        public override bool Equals(object? obj) { }
+        public override int GetHashCode() { }
+        public override string ToString() { }
+        public static string op_Implicit(Netorrent.Bencoding.Structs.BString other) { }
+        public static Netorrent.Bencoding.Structs.BString op_Implicit(string data) { }
+        public static bool operator !=(Netorrent.Bencoding.Structs.BString? left, Netorrent.Bencoding.Structs.BString? right) { }
+        public static bool operator ==(Netorrent.Bencoding.Structs.BString? left, Netorrent.Bencoding.Structs.BString? right) { }
+    }
+    public interface IBencodingNode { }
+}
+namespace Netorrent.Other
+{
+    public readonly struct SemaphoreSlimDisposable : System.IDisposable
+    {
+        public SemaphoreSlimDisposable(System.Threading.SemaphoreSlim semaphoreSlim) { }
+        public void Dispose() { }
+    }
+}
+namespace Netorrent.P2P.Measurement
+{
+    public readonly struct ByteSize
+    {
+        public ByteSize(long bytes) { }
+        public long Bytes { get; }
+        public double Gigabytes { get; }
+        public double Kilobytes { get; }
+        public double Megabytes { get; }
+        public double Terabytes { get; }
+        public override bool Equals(object? obj) { }
+        public override int GetHashCode() { }
+        public override string ToString() { }
+        public static Netorrent.P2P.Measurement.ByteSize op_Implicit(long bytes) { }
+        public static bool operator !=(Netorrent.P2P.Measurement.ByteSize a, Netorrent.P2P.Measurement.ByteSize b) { }
+        public static Netorrent.P2P.Measurement.ByteSize operator +(Netorrent.P2P.Measurement.ByteSize a, Netorrent.P2P.Measurement.ByteSize b) { }
+        public static Netorrent.P2P.Measurement.ByteSize operator -(Netorrent.P2P.Measurement.ByteSize a, Netorrent.P2P.Measurement.ByteSize b) { }
+        public static bool operator <(Netorrent.P2P.Measurement.ByteSize a, Netorrent.P2P.Measurement.ByteSize b) { }
+        public static bool operator <=(Netorrent.P2P.Measurement.ByteSize a, Netorrent.P2P.Measurement.ByteSize b) { }
+        public static bool operator ==(Netorrent.P2P.Measurement.ByteSize a, Netorrent.P2P.Measurement.ByteSize b) { }
+        public static bool operator >(Netorrent.P2P.Measurement.ByteSize a, Netorrent.P2P.Measurement.ByteSize b) { }
+        public static bool operator >=(Netorrent.P2P.Measurement.ByteSize a, Netorrent.P2P.Measurement.ByteSize b) { }
+    }
+    public readonly struct DownloadSpeed : System.IEquatable<Netorrent.P2P.Measurement.DownloadSpeed>
+    {
+        public DownloadSpeed(double Bps) { }
+        public double Bps { get; init; }
+        public double Gbps { get; }
+        public double Kbps { get; }
+        public double Mbps { get; }
+        public override string ToString() { }
+        public static Netorrent.P2P.Measurement.DownloadSpeed op_Implicit(double bps) { }
+        public static Netorrent.P2P.Measurement.DownloadSpeed operator +(Netorrent.P2P.Measurement.DownloadSpeed left, Netorrent.P2P.Measurement.DownloadSpeed right) { }
+        public static Netorrent.P2P.Measurement.DownloadSpeed operator -(Netorrent.P2P.Measurement.DownloadSpeed left, Netorrent.P2P.Measurement.DownloadSpeed right) { }
+        public static bool operator <(Netorrent.P2P.Measurement.DownloadSpeed left, Netorrent.P2P.Measurement.DownloadSpeed right) { }
+        public static bool operator >(Netorrent.P2P.Measurement.DownloadSpeed left, Netorrent.P2P.Measurement.DownloadSpeed right) { }
+    }
+    public sealed class SpeedTracker
+    {
+        public SpeedTracker(double alpha = 0.3) { }
+        public Netorrent.P2P.Measurement.DownloadSpeed Speed { get; }
+        public Netorrent.P2P.Measurement.ByteSize TotalBytes { get; }
+    }
+}
+namespace Netorrent.P2P.Messages
+{
+    public class Bitfield
+    {
+        public System.Collections.Generic.IReadOnlySet<int> DownloadedPieces { get; }
+        public bool IsComplete { get; }
+        public int Length { get; }
+        public bool HasPiece(int index) { }
+    }
+    public readonly struct PeerId
+    {
+        public PeerId() { }
+        public PeerId(System.ReadOnlyMemory<byte> value) { }
+        public System.ReadOnlyMemory<byte> Bytes { get; }
+        public string Value { get; }
+        public override bool Equals(object? obj) { }
+        public override int GetHashCode() { }
+        public byte[] ToBytes() { }
+        public override string ToString() { }
+        public static bool operator !=(Netorrent.P2P.Messages.PeerId? obj1, Netorrent.P2P.Messages.PeerId? obj2) { }
+        public static bool operator ==(Netorrent.P2P.Messages.PeerId? obj1, Netorrent.P2P.Messages.PeerId? obj2) { }
+    }
+}
+namespace Netorrent.P2P
+{
+    public struct PeerEndpoint : System.IEquatable<Netorrent.P2P.PeerEndpoint>
+    {
+        public PeerEndpoint(System.Net.IPEndPoint EndPoint, Netorrent.P2P.Messages.PeerId PeerId) { }
+        public System.Net.IPEndPoint EndPoint { get; set; }
+        public Netorrent.P2P.Messages.PeerId PeerId { get; set; }
+    }
+}
+namespace Netorrent.Statistics
+{
+    public class CompletionTracker
+    {
+        public System.Threading.Tasks.Task AsTask() { }
+        public System.Runtime.CompilerServices.TaskAwaiter GetAwaiter() { }
+    }
+    public class PeerStatistics
+    {
+        public int ActivePeers { get; }
+        public Netorrent.P2P.Measurement.DownloadSpeed DownloadSpeed { get; }
+        public int TotalPeers { get; }
+    }
+    public class TorrentStatisticsClient
+    {
+        public TorrentStatisticsClient(Netorrent.Statistics.TransferStatistics transfer, Netorrent.Statistics.PeerStatistics peers) { }
+        public Netorrent.Statistics.PeerStatistics Peers { get; }
+        public Netorrent.Statistics.TransferStatistics Transfer { get; }
+    }
+    public class TransferStatistics
+    {
+        public TransferStatistics(long totalBytes) { }
+        public Netorrent.P2P.Measurement.ByteSize DiscardedBytes { get; }
+        public Netorrent.P2P.Measurement.ByteSize DownloadedBytes { get; }
+        public Netorrent.P2P.Measurement.ByteSize LeftBytes { get; }
+        public Netorrent.P2P.Measurement.ByteSize TotalBytes { get; }
+        public Netorrent.P2P.Measurement.ByteSize UploadedBytes { get; }
+        public Netorrent.P2P.Measurement.ByteSize VerifiedBytes { get; }
+    }
+}
+namespace Netorrent.TorrentFile.FileStructure
+{
+    public class Info : System.IEquatable<Netorrent.TorrentFile.FileStructure.Info>
+    {
+        public Netorrent.TorrentFile.FileStructure.InfoHash InfoHash;
+        public Info(Netorrent.Bencoding.Structs.BDictionary RawInfo, long PieceLength, byte[] Pieces, long? Private, Netorrent.TorrentFile.FileStructure.InfoType Type, string Name, long? Length = default, string? Md5sum = null, System.Collections.Generic.List<Netorrent.TorrentFile.FileStructure.InfoFile>? Files = null) { }
+        public System.Collections.Generic.List<Netorrent.TorrentFile.FileStructure.InfoFile>? Files { get; init; }
+        public long? Length { get; init; }
+        public string? Md5sum { get; init; }
+        public string Name { get; init; }
+        public System.Collections.Generic.IReadOnlyList<Netorrent.TorrentFile.FileStructure.InfoFile> NormalizedFiles { get; }
+        public long PieceLength { get; init; }
+        public byte[] Pieces { get; init; }
+        public System.Collections.Generic.IReadOnlyList<byte[]> PiecesHashes { get; }
+        public long? Private { get; init; }
+        public Netorrent.Bencoding.Structs.BDictionary RawInfo { get; init; }
+        public Netorrent.TorrentFile.FileStructure.InfoType Type { get; init; }
+    }
+    public class InfoFile : System.IEquatable<Netorrent.TorrentFile.FileStructure.InfoFile>
+    {
+        public InfoFile(long Length, System.Collections.Generic.List<string> Path, string? Md5sum = null) { }
+        public long Length { get; init; }
+        public string? Md5sum { get; init; }
+        public System.Collections.Generic.List<string> Path { get; init; }
+    }
+    public readonly struct InfoHash
+    {
+        public InfoHash(System.ReadOnlyMemory<byte> infoHash) { }
+        public System.ReadOnlyMemory<byte> Data { get; }
+        public override bool Equals(object? obj) { }
+        public override int GetHashCode() { }
+        public static Netorrent.TorrentFile.FileStructure.InfoHash op_Implicit(System.ReadOnlyMemory<byte> data) { }
+        public static Netorrent.TorrentFile.FileStructure.InfoHash op_Implicit(byte[] data) { }
+        public static bool operator !=(Netorrent.TorrentFile.FileStructure.InfoHash left, Netorrent.TorrentFile.FileStructure.InfoHash right) { }
+        public static bool operator ==(Netorrent.TorrentFile.FileStructure.InfoHash left, Netorrent.TorrentFile.FileStructure.InfoHash right) { }
+    }
+    public enum InfoType
+    {
+        Single = 0,
+        Multiple = 1,
+    }
+    public class MetaInfo : System.IEquatable<Netorrent.TorrentFile.FileStructure.MetaInfo>
+    {
+        public MetaInfo(Netorrent.TorrentFile.FileStructure.Info Info, string Announce, System.Collections.Generic.List<string>? AnnounceList = null, long? CreationDate = default, string? Comment = null, string? CreatedBy = null, string? Encoding = null, string? Title = null, System.Collections.Generic.List<string>? UrlList = null) { }
+        public string Announce { get; init; }
+        public System.Collections.Generic.List<string>? AnnounceList { get; init; }
+        public string? Comment { get; init; }
+        public string? CreatedBy { get; init; }
+        public long? CreationDate { get; init; }
+        public string? Encoding { get; init; }
+        public Netorrent.TorrentFile.FileStructure.Info Info { get; init; }
+        public string? Title { get; init; }
+        public System.Collections.Generic.List<string>? UrlList { get; init; }
+        public Netorrent.Bencoding.Structs.BDictionary ToBDictionary() { }
+    }
+}
+namespace Netorrent.TorrentFile
+{
+    public enum State
+    {
+        Started = 0,
+        Stopped = 1,
+        Verifying = 2,
+        Disposed = 3,
+    }
+    public sealed class Torrent : System.IAsyncDisposable
+    {
+        public Netorrent.P2P.Messages.Bitfield Bitfield { get; }
+        public Netorrent.Statistics.CompletionTracker Completion { get; }
+        public Netorrent.TorrentFile.FileStructure.MetaInfo MetaInfo { get; init; }
+        public string OutputDirectory { get; }
+        public Netorrent.TorrentFile.State State { get; }
+        public Netorrent.Statistics.TorrentStatisticsClient Statistics { get; }
+        public long VerifiedPiecesCount { get; }
+        public System.Threading.Tasks.ValueTask DisposeAsync() { }
+        public System.Threading.Tasks.Task ExportAsync(string outputPath, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask StartAsync() { }
+        public void Stop() { }
+        public System.Threading.Tasks.ValueTask StopAsync() { }
+        public System.Threading.Tasks.ValueTask VerifyAsync(System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class TorrentClient : System.IAsyncDisposable
+    {
+        public TorrentClient(System.Func<Netorrent.TorrentFile.TorrentClientOptions, Netorrent.TorrentFile.TorrentClientOptions>? action = null) { }
+        public System.Threading.Tasks.ValueTask<Netorrent.TorrentFile.Torrent> CreateTorrentAsync(string path, string announceUrl, System.Collections.Generic.List<string>? announceUrls = null, System.Collections.Generic.List<string>? webUrls = null, int pieceLength = 262144, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask DisposeAsync() { }
+        public Netorrent.TorrentFile.Torrent LoadTorrent(Netorrent.TorrentFile.FileStructure.MetaInfo metaInfo, string outputDirectory, int[]? downloadedPieces = null) { }
+        public System.Threading.Tasks.ValueTask<Netorrent.TorrentFile.Torrent> LoadTorrentAsync(string path, string outputDirectory, int[]? downloadedPieces = null, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public class TorrentClientOptions : System.IEquatable<Netorrent.TorrentFile.TorrentClientOptions>
+    {
+        public TorrentClientOptions(Microsoft.Extensions.Logging.ILogger Logger, Netorrent.TorrentFile.UsedAddressProtocol UsedAdressProtocol, Netorrent.TorrentFile.UsedTrackers UsedTrackers, System.Net.IPAddress? ForcedIp) { }
+        public System.Net.IPAddress? ForcedIp { get; init; }
+        public Microsoft.Extensions.Logging.ILogger Logger { get; init; }
+        public Netorrent.TorrentFile.UsedAddressProtocol UsedAdressProtocol { get; init; }
+        public Netorrent.TorrentFile.UsedTrackers UsedTrackers { get; init; }
+    }
+    [System.Flags]
+    public enum UsedAddressProtocol
+    {
+        Ipv4 = 1,
+        Ipv6 = 2,
+    }
+    [System.Flags]
+    public enum UsedTrackers
+    {
+        Http = 1,
+        Udp = 2,
+    }
+}

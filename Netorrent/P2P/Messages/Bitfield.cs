@@ -6,11 +6,15 @@ using R3;
 
 namespace Netorrent.P2P.Messages;
 
-internal class Bitfield
+public class Bitfield
 {
     private readonly BitArray _bits;
     private readonly Subject<int> _stateChanged = new();
-    public Subject<int> StateChanged => _stateChanged;
+    private readonly HashSet<int> _downloadedPieces = [];
+    internal Subject<int> StateChanged => _stateChanged;
+    public int Length => _bits.Length;
+
+    public bool IsComplete => _bits.HasAllSet();
 
     internal Bitfield(int pieceCount, bool isInitialized = false)
     {
@@ -33,23 +37,22 @@ internal class Bitfield
         }
     }
 
-    public int Length => _bits.Length;
-
-    public bool IsComplete => _bits.HasAllSet();
-
-    public int DownloadedPiecesCount
+    public IReadOnlySet<int> DownloadedPieces
     {
         get
         {
-            var pieces = 0;
             for (int i = 0; i < Length; i++)
             {
                 if (_bits[i])
                 {
-                    pieces++;
+                    _downloadedPieces.Add(i);
+                }
+                else
+                {
+                    _downloadedPieces.Remove(i);
                 }
             }
-            return pieces;
+            return _downloadedPieces;
         }
     }
 
@@ -70,6 +73,14 @@ internal class Bitfield
         if (IsComplete)
         {
             _stateChanged.OnCompleted();
+        }
+    }
+
+    internal void SetPieces(IReadOnlySet<int> indexes)
+    {
+        foreach (var index in indexes)
+        {
+            SetPiece(index);
         }
     }
 
