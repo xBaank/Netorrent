@@ -46,9 +46,7 @@ internal class PieceBuffer : IDisposable
 
     public async ValueTask<bool> WritePieceAsync(CancellationToken cancellationToken)
     {
-        var isOK = await _pieceWriter
-            .VerifyPieceAsync(_index, _buffer.Memory, cancellationToken)
-            .ConfigureAwait(false);
+        var isOK = _pieceWriter.VerifyPiece(_index, _buffer.Memory);
 
         if (isOK)
         {

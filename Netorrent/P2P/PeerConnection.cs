@@ -167,13 +167,13 @@ internal class PeerConnection(
         await SendBitfieldAsync(MyBitField, cancellationTokenSource.Token).ConfigureAwait(false);
 
         await using var downloadTimer = DownloadTracker
-            .StartSampling(100.Milliseconds)
+            .StartSampling(500.Milliseconds)
             .ConfigureAwait(false);
         await using var uploadTimer = UploadTracker
-            .StartSampling(100.Milliseconds)
+            .StartSampling(500.Milliseconds)
             .ConfigureAwait(false);
         await using var requestWindowTimer = PeerRequestWindow
-            .StartSampling(100.Milliseconds, DownloadTracker)
+            .StartSampling(500.Milliseconds, DownloadTracker)
             .ConfigureAwait(false);
 
         try

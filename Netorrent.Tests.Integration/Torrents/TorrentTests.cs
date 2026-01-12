@@ -58,13 +58,13 @@ public class TorrentTests(OpenTrackerFixture fixture)
             FileAccess.Write,
             FileShare.None,
             bufferSize: 81920,
-            options: FileOptions.Asynchronous | FileOptions.SequentialScan
+            options: FileOptions.SequentialScan
         );
 
         long size = 10L * 1024 * 1024; // 10 MB
         for (long i = 0; i < size; i++)
         {
-            stream.WriteByte((byte)Random.Shared.Next());
+            stream.WriteByte((byte)Random.Shared.Next(0, 255));
         }
         return path;
     }

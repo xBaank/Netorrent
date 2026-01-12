@@ -10,11 +10,7 @@ internal interface IPieceStorage : IDisposable
         int length,
         CancellationToken ct
     );
-    ValueTask<bool> VerifyPieceAsync(
-        int pieceIndex,
-        ReadOnlyMemory<byte> pieceData,
-        CancellationToken ct
-    );
+    bool VerifyPiece(int pieceIndex, ReadOnlyMemory<byte> pieceData);
     ValueTask WriteAsync(
         int pieceIndex,
         int begin,

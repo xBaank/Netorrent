@@ -154,7 +154,7 @@ public sealed class Torrent : IAsyncDisposable
         {
             return;
         }
-        await StopAndWaitToFinishAsync().ConfigureAwait(false);
+        await VerifyAsync().ConfigureAwait(false);
         Completion.Reset();
         _cancellationTokenSource?.Dispose();
         _cancellationTokenSource = new CancellationTokenSource();
@@ -272,15 +272,7 @@ public sealed class Torrent : IAsyncDisposable
                 var items in piecesChannel.Reader.ReadAllAsync(cancellationToken).Chunk(channelSize)
             )
             {
-                await Parallel
-                    .ForEachAsync(
-                        items,
-                        cancellationToken,
-                        async (item, ct) =>
-                            await VerifyPieceAsync(item.PieceIndex, item.Piece, ct)
-                                .ConfigureAwait(false)
-                    )
-                    .ConfigureAwait(false);
+                Parallel.ForEach(items, item => VerifyPiece(item.PieceIndex, item.Piece));
             }
         }
 
@@ -309,7 +301,6 @@ public sealed class Torrent : IAsyncDisposable
                 while (true)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-
                     var toRead = pieceLength - bufferPos;
                     await fs.ReadAsync(pieceBuffer.Slice(bufferPos, toRead), cancellationToken)
                         .ConfigureAwait(false);
@@ -328,10 +319,13 @@ public sealed class Torrent : IAsyncDisposable
                     // If buffer is full, verify piece
                     if (bufferPos == pieceLength)
                     {
-                        var pieceData = pieceBuffer[..pieceLength];
                         await piecesChannel
-                            .Writer.WriteAsync((pieceIndex, pieceData.ToArray()), cancellationToken)
+                            .Writer.WriteAsync(
+                                (pieceIndex, pieceBuffer.ToArray()),
+                                cancellationToken
+                            )
                             .ConfigureAwait(false);
+                        pieceBuffer.Span.Clear();
                         pieceIndex++;
                         bufferPos = 0;
                     }
@@ -350,15 +344,9 @@ public sealed class Torrent : IAsyncDisposable
             piecesChannel.Writer.TryComplete();
         }
 
-        async ValueTask VerifyPieceAsync(
-            int pieceIndex,
-            ReadOnlyMemory<byte> pieceData,
-            CancellationToken cancellationToken
-        )
+        void VerifyPiece(int pieceIndex, ReadOnlyMemory<byte> pieceData)
         {
-            var hasPiece = await _pieceStorage
-                .VerifyPieceAsync(pieceIndex, pieceData, cancellationToken)
-                .ConfigureAwait(false);
+            var hasPiece = _pieceStorage.VerifyPiece(pieceIndex, pieceData);
 
             if (hasPiece)
             {

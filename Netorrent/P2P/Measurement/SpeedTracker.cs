@@ -21,7 +21,6 @@ public sealed class SpeedTracker(double alpha = 0.3)
 
     internal Timer StartSampling(TimeSpan period)
     {
-        // Timer callback should be non-blocking; it calls Sample().
         return new Timer(_ => Sample(), null, TimeSpan.Zero, period);
     }
 

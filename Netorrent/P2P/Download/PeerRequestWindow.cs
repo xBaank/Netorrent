@@ -1,12 +1,14 @@
-﻿using Netorrent.P2P.Measurement;
+﻿using System.Reflection.PortableExecutable;
+using Netorrent.P2P.Measurement;
 
 namespace Netorrent.P2P.Download;
 
 internal class PeerRequestWindow(int blockSize)
 {
     private const double SafetyFactor = 1.5;
+    private const ulong MinRequests = 4;
 
-    private ulong _maxInFlightRequests = 4;
+    private ulong _maxInFlightRequests = MinRequests;
     private double _lastbytesPerSecond = 0;
     private bool _slowStart = true;
 
@@ -20,7 +22,7 @@ internal class PeerRequestWindow(int blockSize)
         }
 
         var neededBlocks = bytesPerSecond / blockSize;
-        _maxInFlightRequests = (ulong)(neededBlocks * SafetyFactor);
+        _maxInFlightRequests = (ulong)(Math.Max(neededBlocks, MinRequests) * SafetyFactor);
     }
 
     public void ReceivedBlock(double bytesPerSecond)

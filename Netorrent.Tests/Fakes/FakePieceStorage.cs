@@ -6,11 +6,7 @@ internal class FakePieceStorage() : IPieceStorage
 {
     public void Dispose() { }
 
-    public ValueTask<bool> VerifyPieceAsync(
-        int pieceIndex,
-        ReadOnlyMemory<byte> pieceData,
-        CancellationToken ct
-    )
+    public bool VerifyPiece(int pieceIndex, ReadOnlyMemory<byte> pieceData)
     {
         throw new NotImplementedException();
     }

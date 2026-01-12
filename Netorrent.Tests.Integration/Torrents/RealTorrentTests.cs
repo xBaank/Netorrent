@@ -13,7 +13,7 @@ public class RealTorrentTests
     {
         await using var torrentClient = new TorrentClient(o => o with { Logger = Logger });
         await using var torrent = await torrentClient.LoadTorrentAsync(
-            "Data/debian-13.2.0-amd64-netinst.iso.torrent",
+            "Data/debian-13.3.0-amd64-netinst.iso.torrent",
             "Output",
             cancellationToken
         );

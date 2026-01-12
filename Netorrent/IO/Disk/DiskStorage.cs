@@ -60,11 +60,7 @@ internal class DiskStorage : IPieceStorage
         await WriteAsync(globalOffset, pieceData, ct).ConfigureAwait(false);
     }
 
-    public async ValueTask<bool> VerifyPieceAsync(
-        int pieceIndex,
-        ReadOnlyMemory<byte> pieceData,
-        CancellationToken ct
-    )
+    public bool VerifyPiece(int pieceIndex, ReadOnlyMemory<byte> pieceData)
     {
         var expectedHash = _pieceHashes[pieceIndex];
         var actualHash = SHA1.HashData(pieceData.Span);

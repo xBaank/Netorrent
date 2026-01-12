@@ -136,7 +136,6 @@ public class TorrentFileTests
             .ShouldThrowAsync<FileNotFoundException>();
     }
 
-    //TODO add some cases where the files are have some corrupted pieces
     [Test]
     [Arguments("Data/MultifileTest/test.txt")]
     [Arguments("Data/MultifileTest")]
