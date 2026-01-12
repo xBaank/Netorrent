@@ -96,7 +96,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 0.Seconds
             )
             .ToListAsync(cancellationToken: cancellationToken);
-        var seedersTorrents = seeders.Select(i => i.Item1).ToList();
+        var seedersTorrents = seeders.Select(i => i.Torrent).ToList();
 
         var leechers = await GetLeechersAsync(
                 leechersCount,
@@ -107,7 +107,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 0.Seconds
             )
             .ToListAsync(cancellationToken: cancellationToken);
-        var leechersTorrents = leechers.Select(i => i.Item1).ToList();
+        var leechersTorrents = leechers.Select(i => i.Torrent).ToList();
 
         try
         {
@@ -186,7 +186,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 0.Seconds
             )
             .ToListAsync(cancellationToken: cancellationToken);
-        var seedersTorrents = seeders.Select(i => i.Item1).ToList();
+        var seedersTorrents = seeders.Select(i => i.Torrent).ToList();
 
         var leechers = await GetLeechersAsync(
                 leechersCount,
@@ -197,7 +197,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 0.Seconds
             )
             .ToListAsync(cancellationToken: cancellationToken);
-        var leechersTorrents = leechers.Select(i => i.Item1).ToList();
+        var leechersTorrents = leechers.Select(i => i.Torrent).ToList();
 
         try
         {
@@ -318,7 +318,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 0.Seconds
             )
             .ToListAsync(cancellationToken: cancellationToken);
-        var seedersTorrents = seeders.Select(i => i.Item1).ToList();
+        var seedersTorrents = seeders.Select(i => i.Torrent).ToList();
 
         var leechers = await GetLeechersAsync(
                 leechersCount,
@@ -329,7 +329,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 0.Seconds
             )
             .ToListAsync(cancellationToken: cancellationToken);
-        var leechersTorrents = leechers.Select(i => i.Item1).ToList();
+        var leechersTorrents = leechers.Select(i => i.Torrent).ToList();
 
         try
         {
@@ -387,7 +387,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
         }
     }
 
-    private async IAsyncEnumerable<(Torrent, TorrentClient)> GetSeedersAsync(
+    private async IAsyncEnumerable<(Torrent Torrent, TorrentClient Client)> GetSeedersAsync(
         int number,
         string path,
         ILogger logger,
@@ -413,7 +413,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
         }
     }
 
-    private static async IAsyncEnumerable<(Torrent, TorrentClient)> GetLeechersAsync(
+    private static async IAsyncEnumerable<(Torrent Torrent, TorrentClient Client)> GetLeechersAsync(
         int number,
         MetaInfo metaInfo,
         ILogger logger,

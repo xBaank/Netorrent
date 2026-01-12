@@ -89,7 +89,6 @@ internal class RequestScheduler(
             return;
         }
 
-        //Initialize pieceBuffer
         if (!_pieceBuffers.TryGetValue(block.Index, out var pieceBuffer))
         {
             pieceBuffer = new PieceBuffer(block.Index, pieceStorage, piecePicker);
@@ -105,9 +104,7 @@ internal class RequestScheduler(
             peerConnection.DecrementRequestedBlock();
         }
 
-        block.FromPeer.PeerRequestWindow.ReceivedBlock(
-            (ulong)block.FromPeer.DownloadTracker.Speed.Bps
-        );
+        block.FromPeer.PeerRequestWindow.ReceivedBlock(block.FromPeer.DownloadTracker.Speed.Bps);
         piecePicker.CompleteRequestBlock(requestedBlock);
         pieceBuffer.AddBlock(block);
         TryRequest(block.FromPeer);
@@ -153,6 +150,7 @@ internal class RequestScheduler(
         {
             var lastRequestedFrom = piecePicker.GetLastRequesterOrNull(requestBlock);
             IPeerConnection? freePeer = null;
+            piecePicker.SetBlockToPending(requestBlock); //TODO set ALL request blocks by lastRequestedFrom requester to pending as they are all more likely to be timed out
 
             foreach (var peerConnection in peers.Values.AsValueEnumerable())
             {
@@ -173,7 +171,6 @@ internal class RequestScheduler(
 
             if (freePeer is not null)
             {
-                piecePicker.SetBlockToPending(requestBlock);
                 _downloadMessageChannel.Writer.TryWrite(
                     new DownloadMessage.ScheduleMessage(freePeer)
                 );

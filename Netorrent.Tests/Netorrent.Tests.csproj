@@ -22,6 +22,15 @@
     <ProjectReference Include="..\Netorrent\Netorrent.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <None Update="Data\CorruptfileTest\Folder1\Folder2\test3.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Data\CorruptfileTest\Folder1\test2.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Data\CorruptfileTest\test.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Data\MultifileTest\Folder1\Folder2\test3.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

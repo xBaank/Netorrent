@@ -69,7 +69,7 @@ public sealed class Torrent : IAsyncDisposable
         var activePeers = new ConcurrentDictionary<PeerEndpoint, IPeerConnection>();
         var piecePicker = new PiecePicker(
             _myBitfield,
-            16 * 1024, //This should be constant?
+            16 * 1024, //TODO This should be constant?
             (int)metaInfo.Info.PieceLength,
             totalSize
         );
@@ -154,7 +154,7 @@ public sealed class Torrent : IAsyncDisposable
         {
             return;
         }
-        await VerifyAsync().ConfigureAwait(false);
+        await StopAndWaitToFinishAsync().ConfigureAwait(false);
         Completion.Reset();
         _cancellationTokenSource?.Dispose();
         _cancellationTokenSource = new CancellationTokenSource();
@@ -249,6 +249,7 @@ public sealed class Torrent : IAsyncDisposable
     /// <returns></returns>
     public async ValueTask VerifyAsync(CancellationToken cancellationToken = default)
     {
+        State = State.Verifying;
         await StopAndWaitToFinishAsync().ConfigureAwait(false);
         _myBitfield.Reset();
 
