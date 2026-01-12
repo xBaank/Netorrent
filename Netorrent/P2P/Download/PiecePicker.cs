@@ -113,11 +113,6 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
             );
     }
 
-    public IPeerConnection? GetLastRequesterOrNull(RequestBlock requestBlock)
-    {
-        return requestBlock.RequestedFrom.Count == 0 ? null : requestBlock.RequestedFrom[^1];
-    }
-
     public void SetBlockToPending(RequestBlock requestBlock)
     {
         requestBlock.State = RequestBlockState.Pending;

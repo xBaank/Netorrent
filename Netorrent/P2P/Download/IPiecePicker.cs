@@ -12,7 +12,6 @@ internal interface IPiecePicker : IAsyncDisposable
     void DecreaseRarity(int index);
     RequestBlock? GetBlock(Bitfield bitfield);
     int GetBlockCountByPieceIndex(int pieceIndex);
-    IPeerConnection? GetLastRequesterOrNull(RequestBlock requestBlock);
     int GetPieceSize(int pieceIndex);
     RequestBlock GetRequestBlockByBlockIndex(int pieceIndex, int blockIndex);
     IEnumerable<RequestBlock> GetTimeoutRequestBlocks();

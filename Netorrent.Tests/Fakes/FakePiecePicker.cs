@@ -33,11 +33,6 @@ internal class FakePiecePicker : IPiecePicker
         throw new NotImplementedException();
     }
 
-    public IPeerConnection GetLastRequesterOrNull(RequestBlock requestBlock)
-    {
-        throw new NotImplementedException();
-    }
-
     public int GetPieceSize(int pieceIndex)
     {
         throw new NotImplementedException();

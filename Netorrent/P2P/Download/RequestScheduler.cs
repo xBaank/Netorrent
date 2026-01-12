@@ -148,26 +148,14 @@ internal class RequestScheduler(
     {
         foreach (var requestBlock in piecePicker.GetTimeoutRequestBlocks())
         {
-            var lastRequestedFrom = piecePicker.GetLastRequesterOrNull(requestBlock);
-            IPeerConnection? freePeer = null;
             piecePicker.SetBlockToPending(requestBlock); //TODO set ALL request blocks by lastRequestedFrom requester to pending as they are all more likely to be timed out
 
-            foreach (var peerConnection in peers.Values.AsValueEnumerable())
-            {
-                if (peerConnection == lastRequestedFrom)
-                {
-                    continue;
-                }
-
-                if (
-                    peerConnection.AmInterested.CurrentValue
-                    && !peerConnection.PeerChoking.CurrentValue
-                )
-                {
-                    freePeer = peerConnection;
-                    break;
-                }
-            }
+            var freePeer = peers
+                .Values.AsValueEnumerable()
+                .Where(i => !i.PeerChoking.CurrentValue)
+                .Where(i => i.AmInterested.CurrentValue)
+                .Where(i => !requestBlock.RequestedFrom.Contains(i))
+                .FirstOrDefault();
 
             if (freePeer is not null)
             {
