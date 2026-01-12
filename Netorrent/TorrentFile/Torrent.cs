@@ -5,6 +5,7 @@ using System.Threading.Channels;
 using Netorrent.Bencoding;
 using Netorrent.Extensions;
 using Netorrent.IO.Disk;
+using Netorrent.Other;
 using Netorrent.P2P;
 using Netorrent.P2P.Download;
 using Netorrent.P2P.Messages;
@@ -28,6 +29,9 @@ public sealed class Torrent : IAsyncDisposable
     public State State { get; private set; } = State.Stopped;
     internal Bitfield Bitfield => _myBitfield;
 
+    public long VerifiedPercentage =>
+        (long)(((double)Interlocked.Read(ref _verifiedPieces) / _myBitfield.Length) * 100);
+
     private readonly TcpPeersConnector _peerConnector;
     private readonly TcpPeersListener _peersListener;
     private readonly PeersClient _peersClient;
@@ -37,6 +41,7 @@ public sealed class Torrent : IAsyncDisposable
     private Task? _runTask;
     private CancellationTokenSource? _cancellationTokenSource;
     private bool _disposed;
+    private long _verifiedPieces;
 
     internal Torrent(
         MetaInfo metaInfo,
@@ -254,8 +259,8 @@ public sealed class Torrent : IAsyncDisposable
         await StopAndWaitToFinishAsync().ConfigureAwait(false);
         _myBitfield.Reset();
 
-        var channelSize = 250;
-        var piecesChannel = Channel.CreateBounded<(int PieceIndex, ReadOnlyMemory<byte> Piece)>(
+        var channelSize = 50;
+        var piecesChannel = Channel.CreateBounded<(int PieceIndex, RentedArray<byte> Piece)>(
             new BoundedChannelOptions(channelSize) { SingleReader = true, SingleWriter = true }
         );
         var processPiecesTask = ProcessPiecesAsync();
@@ -270,10 +275,13 @@ public sealed class Torrent : IAsyncDisposable
         async Task ProcessPiecesAsync()
         {
             await foreach (
-                var items in piecesChannel.Reader.ReadAllAsync(cancellationToken).Chunk(channelSize)
+                var items in piecesChannel.Reader.ReadAllAsync(cancellationToken).Chunk(15)
             )
             {
-                Parallel.ForEach(items, item => VerifyPiece(item.PieceIndex, item.Piece));
+                Parallel.ForEach(
+                    items,
+                    (item) => VerifyPiece(item.PieceIndex, item.Piece, cancellationToken)
+                );
             }
         }
 
@@ -320,11 +328,13 @@ public sealed class Torrent : IAsyncDisposable
                     // If buffer is full, verify piece
                     if (bufferPos == pieceLength)
                     {
+                        var rentedArray = new RentedArray<byte>(
+                            ArrayPool<byte>.Shared.Rent(pieceBuffer.Length),
+                            pieceBuffer.Length
+                        );
+                        pieceBuffer.CopyTo(rentedArray.Memory);
                         await piecesChannel
-                            .Writer.WriteAsync(
-                                (pieceIndex, pieceBuffer.ToArray()),
-                                cancellationToken
-                            )
+                            .Writer.WriteAsync((pieceIndex, rentedArray), cancellationToken)
                             .ConfigureAwait(false);
                         pieceBuffer.Span.Clear();
                         pieceIndex++;
@@ -336,8 +346,13 @@ public sealed class Torrent : IAsyncDisposable
             if (bufferPos > 0)
             {
                 var lastPiece = pieceBuffer[..bufferPos];
+                var rentedArray = new RentedArray<byte>(
+                    ArrayPool<byte>.Shared.Rent(lastPiece.Length),
+                    lastPiece.Length
+                );
+                lastPiece.CopyTo(rentedArray.Memory);
                 await piecesChannel
-                    .Writer.WriteAsync((pieceIndex, lastPiece.ToArray()), cancellationToken)
+                    .Writer.WriteAsync((pieceIndex, rentedArray), cancellationToken)
                     .ConfigureAwait(false);
                 pieceIndex++;
             }
@@ -345,13 +360,23 @@ public sealed class Torrent : IAsyncDisposable
             piecesChannel.Writer.TryComplete();
         }
 
-        void VerifyPiece(int pieceIndex, ReadOnlyMemory<byte> pieceData)
+        void VerifyPiece(
+            int pieceIndex,
+            RentedArray<byte> pieceData,
+            CancellationToken cancellationToken
+        )
         {
-            var hasPiece = _pieceStorage.VerifyPiece(pieceIndex, pieceData);
-
-            if (hasPiece)
+            using (pieceData)
             {
-                _myBitfield.SetPiece(pieceIndex);
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var hasPiece = _pieceStorage.VerifyPiece(pieceIndex, pieceData.Memory);
+
+                if (hasPiece)
+                {
+                    _myBitfield.SetPiece(pieceIndex);
+                }
+                Interlocked.Increment(ref _verifiedPieces);
             }
         }
     }
