@@ -14,7 +14,7 @@
     <ProjectReference Include="..\Netorrent\Netorrent.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Update="Data\debian-13.2.0-amd64-netinst.iso.torrent">
+    <None Update="Data\debian-13.3.0-amd64-netinst.iso.torrent">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
