@@ -107,7 +107,6 @@ namespace Netorrent.P2P.Messages
 {
     public class Bitfield
     {
-        public System.Collections.Generic.IReadOnlySet<int> DownloadedPieces { get; }
         public bool IsComplete { get; }
         public int Length { get; }
         public bool HasPiece(int index) { }

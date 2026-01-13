@@ -23,6 +23,11 @@ internal class FakePiecePicker : IPiecePicker
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
+    public long GetBitfieldSize()
+    {
+        throw new NotImplementedException();
+    }
+
     public RequestBlock? GetBlock(Bitfield bitfield)
     {
         throw new NotImplementedException();

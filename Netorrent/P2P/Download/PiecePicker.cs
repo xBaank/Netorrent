@@ -200,5 +200,18 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         return new RequestBlock(pieceIndex, begin, length);
     }
 
+    public long GetBitfieldSize()
+    {
+        var total = 0L;
+        for (var i = 0; i < myBitfield.Length; i++)
+        {
+            if (myBitfield.HasPiece(i))
+            {
+                total += GetPieceSize(i);
+            }
+        }
+        return total;
+    }
+
     public async ValueTask DisposeAsync() { }
 }

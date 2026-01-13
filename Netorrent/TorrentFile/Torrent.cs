@@ -35,6 +35,7 @@ public sealed class Torrent : IAsyncDisposable
     private readonly TrackerClient _trackerClient;
     private readonly DiskStorage _pieceStorage;
     private readonly Bitfield _myBitfield;
+    private readonly IPiecePicker _piecePicker;
     private Task? _runTask;
     private CancellationTokenSource? _cancellationTokenSource;
     private bool _disposed;
@@ -51,7 +52,7 @@ public sealed class Torrent : IAsyncDisposable
     )
     {
         var files = metaInfo.Info.NormalizedFiles;
-        var totalSize = files.AsValueEnumerable().Sum(i => i.Length);
+        var totalSize = files.Sum(i => i.Length);
         var trackersChannel = Channel.CreateBounded<IPEndPoint>(
             new BoundedChannelOptions(100) { SingleWriter = false, SingleReader = true }
         );
@@ -66,20 +67,24 @@ public sealed class Torrent : IAsyncDisposable
             (int)metaInfo.Info.PieceLength,
             metaInfo.Info.PiecesHashes
         );
-        var dataStatistics = new DataStatistics(totalSize);
-        var checkStatistics = new CheckStatistics(_myBitfield.Length);
-        _myBitfield.SetPieces(downloadedPieces);
-        checkStatistics.SetCheckedPieces(_myBitfield.Length);
-        var activePeers = new ConcurrentDictionary<PeerEndpoint, IPeerConnection>();
-        var piecePicker = new PiecePicker(
+        _piecePicker = new PiecePicker(
             _myBitfield,
             16 * 1024, //TODO This should be constant?
             (int)metaInfo.Info.PieceLength,
             totalSize
         );
+
+        var dataStatistics = new DataStatistics(totalSize);
+        var checkStatistics = new CheckStatistics(_myBitfield.Length);
+
+        _myBitfield.SetPieces(downloadedPieces);
+        checkStatistics.SetCheckedPieces(_myBitfield.Length);
+        dataStatistics.SetVerifiedBytes(_piecePicker.GetBitfieldSize());
+
+        var activePeers = new ConcurrentDictionary<PeerEndpoint, IPeerConnection>();
         var requestScheduler = new RequestScheduler(
             activePeers,
-            piecePicker,
+            _piecePicker,
             _myBitfield,
             dataStatistics,
             torrentClientOptions.WarmupTime,
@@ -99,7 +104,7 @@ public sealed class Torrent : IAsyncDisposable
             peerId,
             requestScheduler,
             uploadScheduler,
-            piecePicker,
+            _piecePicker,
             _myBitfield,
             torrentClientOptions.Logger
         );
@@ -269,9 +274,7 @@ public sealed class Torrent : IAsyncDisposable
 
         await Task.WhenAll(processPiecesTask, getPiecesTask).ConfigureAwait(false);
 
-        Statistics.Data.SetVerifiedBytes(
-            _myBitfield.DownloadedPieces.Count * MetaInfo.Info.PieceLength
-        );
+        Statistics.Data.SetVerifiedBytes(_piecePicker.GetBitfieldSize());
 
         async Task ProcessPiecesAsync()
         {

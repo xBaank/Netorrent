@@ -69,8 +69,8 @@ public class TorrentFileTests
             cancellationToken: cancellationToken
         );
 
-        torrent.Statistics.Data.Downloaded.ShouldBe(0);
-        torrent.Statistics.Data.Verified.ShouldBe(0);
+        torrent.Statistics.Data.Downloaded.ShouldBe(torrent.Statistics.Data.Total);
+        torrent.Statistics.Data.Verified.ShouldBe(torrent.Statistics.Data.Total);
         torrent.MetaInfo.Info.Type.ShouldBe(TorrentFile.FileStructure.InfoType.Multiple);
         torrent.MetaInfo.Info.Files.ShouldNotBeNull();
         torrent.MetaInfo.Info.Files.Count.ShouldBe(3);
@@ -95,8 +95,8 @@ public class TorrentFileTests
             cancellationToken: cancellationToken
         );
 
-        torrent.Statistics.Data.Downloaded.ShouldBe(0);
-        torrent.Statistics.Data.Verified.ShouldBe(0);
+        torrent.Statistics.Data.Downloaded.ShouldBe(torrent.Statistics.Data.Total);
+        torrent.Statistics.Data.Verified.ShouldBe(torrent.Statistics.Data.Total);
         torrent.MetaInfo.Info.Type.ShouldBe(TorrentFile.FileStructure.InfoType.Single);
         torrent.MetaInfo.Info.Files.ShouldBeNull();
         torrent.MetaInfo.Info.Name.ShouldBe("test.txt");
@@ -151,12 +151,12 @@ public class TorrentFileTests
             pieceLength: pieceLength,
             cancellationToken: cancellationToken
         );
+        var expectedSize = torrent.MetaInfo.Info.NormalizedFiles.Sum(i => i.Length);
 
         await torrent.CheckAsync(cancellationToken);
 
-        torrent.Statistics.Data.Downloaded.ShouldBe(pieceLength * torrent.Bitfield.Length);
-        torrent.Statistics.Data.Verified.ShouldBe(pieceLength * torrent.Bitfield.Length);
-        torrent.Bitfield.DownloadedPieces.Count.ShouldBe(torrent.Bitfield.Length);
+        torrent.Statistics.Data.Downloaded.ShouldBe(expectedSize);
+        torrent.Statistics.Data.Verified.ShouldBe(expectedSize);
     }
 
     [Test]
@@ -182,24 +182,23 @@ public class TorrentFileTests
             pieceLength: pieceLength,
             cancellationToken: cancellationToken
         );
-        var expectedPieceCount = torrent.Bitfield.Length - corruptedPieceCount;
+        var expectedSize =
+            torrent.MetaInfo.Info.NormalizedFiles.Sum(i => i.Length)
+            - corruptedPieceCount * pieceLength;
 
-        await using (
-            var fileStream = new FileStream(
-                fileToModify,
-                FileMode.Open,
-                FileAccess.Write,
-                FileShare.ReadWrite
-            )
-        )
-        {
-            fileStream.Seek(startIndex, SeekOrigin.Begin);
-            await fileStream.WriteAsync(emptyData, cancellationToken);
-        }
+        await using var fileStream = new FileStream(
+            fileToModify,
+            FileMode.Open,
+            FileAccess.Write,
+            FileShare.ReadWrite
+        );
+        fileStream.Seek(startIndex, SeekOrigin.Begin);
+        await fileStream.WriteAsync(emptyData, cancellationToken);
+        await fileStream.FlushAsync(cancellationToken);
+
         await torrent.CheckAsync(cancellationToken);
 
-        torrent.Statistics.Data.Downloaded.ShouldBe(pieceLength * expectedPieceCount);
-        torrent.Statistics.Data.Verified.ShouldBe(pieceLength * expectedPieceCount);
-        torrent.Bitfield.DownloadedPieces.Count.ShouldBe(expectedPieceCount);
+        torrent.Statistics.Data.Downloaded.ShouldBe(expectedSize);
+        torrent.Statistics.Data.Verified.ShouldBe(expectedSize);
     }
 }

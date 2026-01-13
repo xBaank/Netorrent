@@ -10,7 +10,6 @@ public class Bitfield
 {
     private readonly BitArray _bits;
     private readonly Subject<int> _stateChanged = new();
-    private readonly HashSet<int> _downloadedPieces = [];
     internal Subject<int> StateChanged => _stateChanged;
     public int Length => _bits.Length;
 
@@ -34,25 +33,6 @@ public class Bitfield
 
             bool bit = (bytes[byteIndex] & (1 << bitIndex)) != 0;
             _bits[i] = bit;
-        }
-    }
-
-    public IReadOnlySet<int> DownloadedPieces
-    {
-        get
-        {
-            for (int i = 0; i < Length; i++)
-            {
-                if (_bits[i])
-                {
-                    _downloadedPieces.Add(i);
-                }
-                else
-                {
-                    _downloadedPieces.Remove(i);
-                }
-            }
-            return _downloadedPieces;
         }
     }
 

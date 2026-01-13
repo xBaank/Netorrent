@@ -13,6 +13,7 @@ internal interface IPiecePicker : IAsyncDisposable
     RequestBlock? GetBlock(Bitfield bitfield);
     int GetBlockCountByPieceIndex(int pieceIndex);
     int GetPieceSize(int pieceIndex);
+    long GetBitfieldSize();
     RequestBlock GetRequestBlockByBlockIndex(int pieceIndex, int blockIndex);
     IEnumerable<RequestBlock> GetTimeoutRequestBlocks();
     void IncreaseRarity(int index);
