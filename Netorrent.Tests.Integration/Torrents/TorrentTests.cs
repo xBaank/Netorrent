@@ -72,14 +72,6 @@ public class TorrentTests(OpenTrackerFixture fixture)
     [Test]
     [MatrixDataSource]
     public async Task Should_Stop_Torrent(
-        [Matrix(UsedTrackers.Http, UsedTrackers.Udp, UsedTrackers.Http | UsedTrackers.Udp)]
-            UsedTrackers usedTrackers,
-        [Matrix(
-            UsedAddressProtocol.Ipv4,
-            UsedAddressProtocol.Ipv6,
-            UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6
-        )]
-            UsedAddressProtocol usedAdressProtocol,
         [Matrix(3)] int seedersCount,
         [Matrix(12)] int leechersCount,
         CancellationToken cancellationToken
@@ -87,14 +79,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
     {
         var path = await CreateRandomFileAsync("Input");
 
-        var seeders = await GetSeedersAsync(
-                seedersCount,
-                path,
-                Logger,
-                usedTrackers,
-                usedAdressProtocol,
-                0.Seconds
-            )
+        var seeders = await GetSeedersAsync(seedersCount, path, Logger, warmupTime: 0.Seconds)
             .ToListAsync(cancellationToken: cancellationToken);
         var seedersTorrents = seeders.Select(i => i.Torrent).ToList();
 
@@ -102,9 +87,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 leechersCount,
                 seedersTorrents[0].MetaInfo,
                 Logger,
-                usedTrackers,
-                usedAdressProtocol,
-                0.Seconds
+                warmupTime: 0.Seconds
             )
             .ToListAsync(cancellationToken: cancellationToken);
         var leechersTorrents = leechers.Select(i => i.Torrent).ToList();
@@ -161,15 +144,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
     [Test]
     [MatrixDataSource]
-    public async Task Should_Throw_In_Torrent(
-        [Matrix(UsedTrackers.Http, UsedTrackers.Udp, UsedTrackers.Http | UsedTrackers.Udp)]
-            UsedTrackers usedTrackers,
-        [Matrix(
-            UsedAddressProtocol.Ipv4,
-            UsedAddressProtocol.Ipv6,
-            UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6
-        )]
-            UsedAddressProtocol usedAdressProtocol,
+    public async Task Should_Start_Stop_Start_Torrent(
         [Matrix(3)] int seedersCount,
         [Matrix(12)] int leechersCount,
         CancellationToken cancellationToken
@@ -177,14 +152,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
     {
         var path = await CreateRandomFileAsync("Input");
 
-        var seeders = await GetSeedersAsync(
-                seedersCount,
-                path,
-                Logger,
-                usedTrackers,
-                usedAdressProtocol,
-                0.Seconds
-            )
+        var seeders = await GetSeedersAsync(seedersCount, path, Logger, warmupTime: 0.Seconds)
             .ToListAsync(cancellationToken: cancellationToken);
         var seedersTorrents = seeders.Select(i => i.Torrent).ToList();
 
@@ -192,9 +160,89 @@ public class TorrentTests(OpenTrackerFixture fixture)
                 leechersCount,
                 seedersTorrents[0].MetaInfo,
                 Logger,
-                usedTrackers,
-                usedAdressProtocol,
-                0.Seconds
+                warmupTime: 0.Seconds
+            )
+            .ToListAsync(cancellationToken: cancellationToken);
+        var leechersTorrents = leechers.Select(i => i.Torrent).ToList();
+
+        try
+        {
+            foreach (var seederTorrent in seedersTorrents)
+            {
+                cancellationToken.Register(seederTorrent.Stop);
+                await seederTorrent.StartAsync();
+            }
+
+            await Task.Delay(5000, cancellationToken);
+
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                cancellationToken.Register(leecherTorrent.Stop);
+                await leecherTorrent.StartAsync();
+            }
+
+            await Task.Delay(5000, cancellationToken);
+
+            foreach (var seederTorrent in seedersTorrents)
+            {
+                await seederTorrent.StopAsync();
+            }
+
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                await leecherTorrent.StopAsync();
+            }
+
+            foreach (var seederTorrent in seedersTorrents)
+            {
+                await seederTorrent.StartAsync();
+            }
+
+            await Task.Delay(5000, cancellationToken);
+
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                await leecherTorrent.StartAsync();
+            }
+
+            foreach (var leecherTorrent in leechersTorrents)
+            {
+                await leecherTorrent.Completion.AsTask().ShouldNotThrowAsync();
+            }
+        }
+        finally
+        {
+            foreach (var (_, client) in seeders)
+            {
+                await client.DisposeAsync();
+            }
+
+            foreach (var (_, client) in leechers)
+            {
+                await client.DisposeAsync();
+            }
+        }
+    }
+
+    [Test]
+    [MatrixDataSource]
+    public async Task Should_Throw_In_Torrent(
+        [Matrix(3)] int seedersCount,
+        [Matrix(12)] int leechersCount,
+        CancellationToken cancellationToken
+    )
+    {
+        var path = await CreateRandomFileAsync("Input");
+
+        var seeders = await GetSeedersAsync(seedersCount, path, Logger, warmupTime: 0.Seconds)
+            .ToListAsync(cancellationToken: cancellationToken);
+        var seedersTorrents = seeders.Select(i => i.Torrent).ToList();
+
+        var leechers = await GetLeechersAsync(
+                leechersCount,
+                seedersTorrents[0].MetaInfo,
+                Logger,
+                warmupTime: 0.Seconds
             )
             .ToListAsync(cancellationToken: cancellationToken);
         var leechersTorrents = leechers.Select(i => i.Torrent).ToList();
