@@ -14,17 +14,22 @@ try
     var outputPath = await BrowseForOutputDir(cts.Token);
 
     await using var client = new TorrentClient();
-    await using var torrent = await client.LoadTorrentAsync(torrentPath, outputPath);
+    await using var torrent = await client.LoadTorrentAsync(
+        torrentPath,
+        outputPath,
+        cancellationToken: cts.Token
+    );
     cts.Token.Register(torrent.Stop);
     var statusTask = RunStatusUI(torrent, cts.Token);
 
     await torrent.CheckAsync(cts.Token);
     await torrent.StartAsync();
-    await torrent.Completion;
+
+    await Task.WhenAll(Task.Delay(-1, cts.Token), torrent.Completion.AsTask());
 
     AnsiConsole.MarkupLine("[green]Download complete.[/]");
 }
-catch (OperationCanceledException)
+catch (OperationCanceledException oce) when (oce.CancellationToken == cts.Token)
 {
     AnsiConsole.MarkupLine("[yellow]Canceled by user.[/]");
 }
@@ -213,31 +218,45 @@ static async Task RunStatusUI(Torrent torrent, CancellationToken token) =>
         .AutoClear(false)
         .Columns(
             new TaskDescriptionColumn(),
-            new ProgressBarColumn(),
-            new DownloadedColumn(),
-            new TransferSpeedColumn(),
-            new RemainingTimeColumn()
+            new ProgressBarColumn
+            {
+                CompletedStyle = new Style(Color.Green),
+                FinishedStyle = new Style(Color.Lime),
+                RemainingStyle = new Style(Color.Grey),
+            },
+            new PercentageColumn(),
+            new RemainingTimeColumn(),
+            new SpinnerColumn()
         )
         .StartAsync(async ctx =>
         {
-            var progressTask = ctx.AddTask("[green]Torrent Download[/]", autoStart: true);
-            var uploadTask = ctx.AddTask("[green]Torrent Uploaded[/]", autoStart: true);
+            var checkTask = ctx.AddTask("Checking", autoStart: true);
+            var progressTask = ctx.AddTask("Downloading", autoStart: true);
+            var uploadTask = ctx.AddTask("Uploading", autoStart: true);
 
             // Initialize
-            var totalBytes = torrent.Statistics.Data.Total.Bytes;
-            progressTask.MaxValue(totalBytes);
+            checkTask.MaxValue(torrent.Statistics.Check.TotalPiecesCount);
+            progressTask.MaxValue(torrent.Statistics.Data.Total.Bytes);
             uploadTask.IsIndeterminate(true);
+            progressTask.IsIndeterminate(true);
 
             while (!token.IsCancellationRequested)
             {
-                var t = torrent.Statistics.Data;
-                var p = torrent.Statistics.Peers;
+                if (checkTask.IsFinished)
+                {
+                    progressTask.IsIndeterminate(false);
+                }
 
-                progressTask.Value(t.Verified.Bytes);
-                uploadTask.Value(t.Uploaded.Bytes);
+                checkTask.Value(torrent.Statistics.Check.CheckedPiecesCount);
+                progressTask.Value(torrent.Statistics.Data.Verified.Bytes);
+                uploadTask.Value(torrent.Statistics.Data.Uploaded.Bytes);
+                var desc = progressTask.Description = (
+                    torrent.MetaInfo.Title ?? torrent.MetaInfo.Info.Name
+                ).EscapeMarkup();
 
-                progressTask.Description =
-                    $@"[green]{(torrent.MetaInfo.Title ?? torrent.MetaInfo.Info.Name).EscapeMarkup()} ({torrent.State} {torrent.Statistics.Check.CheckedPiecesCount}/{torrent.Statistics.Check.TotalPiecesCount})[/]";
+                checkTask.Description = $@"Checking {desc}";
+                progressTask.Description = $@"Downloading {desc}";
+                uploadTask.Description = $@"Uploading {desc}";
 
                 await Task.Delay(1000, token);
             }
