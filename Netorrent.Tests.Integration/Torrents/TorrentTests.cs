@@ -371,7 +371,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
                     cancellationToken
                 );
                 originalFile.SequenceEqual(downloadedFile).ShouldBeTrue();
-                leecherTorrent.Statistics.Transfer.VerifiedBytes.ShouldBe(downloadedFile.Length);
+                leecherTorrent.Statistics.Data.Verified.ShouldBe(downloadedFile.Length);
             }
         }
         finally

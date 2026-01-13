@@ -12,7 +12,7 @@ internal class RequestScheduler(
     IReadOnlyDictionary<PeerEndpoint, IPeerConnection> peers,
     IPiecePicker piecePicker,
     Bitfield myBitfield,
-    TransferStatistics transfer,
+    DataStatistics data,
     TimeSpan warmupTime,
     IPieceStorage pieceStorage,
     ILogger logger
@@ -132,7 +132,7 @@ internal class RequestScheduler(
         {
             if (!myBitfield.HasPiece(block.Index))
             {
-                transfer.AddVerifiedBytes(pieceBuffer.Size);
+                data.AddVerifiedBytes(pieceBuffer.Size);
                 myBitfield.SetPiece(block.Index);
             }
         }
@@ -140,7 +140,7 @@ internal class RequestScheduler(
         {
             // Retry with a fresh buffer
             _pieceBuffers[block.Index] = new PieceBuffer(block.Index, pieceStorage, piecePicker);
-            transfer.AddDiscardedBytes(pieceBuffer.Size);
+            data.AddDiscardedBytes(pieceBuffer.Size);
         }
     }
 

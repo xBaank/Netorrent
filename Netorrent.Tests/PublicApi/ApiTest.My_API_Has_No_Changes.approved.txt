@@ -137,10 +137,26 @@ namespace Netorrent.P2P
 }
 namespace Netorrent.Statistics
 {
+    public class CheckStatistics
+    {
+        public CheckStatistics(long totalPiecesCount) { }
+        public long CheckedPiecesCount { get; }
+        public long TotalPiecesCount { get; }
+    }
     public class CompletionTracker
     {
         public System.Threading.Tasks.Task AsTask() { }
         public System.Runtime.CompilerServices.TaskAwaiter GetAwaiter() { }
+    }
+    public class DataStatistics
+    {
+        public DataStatistics(long totalBytes) { }
+        public Netorrent.P2P.Measurement.ByteSize Discarded { get; }
+        public Netorrent.P2P.Measurement.ByteSize Downloaded { get; }
+        public Netorrent.P2P.Measurement.ByteSize Left { get; }
+        public Netorrent.P2P.Measurement.ByteSize Total { get; }
+        public Netorrent.P2P.Measurement.ByteSize Uploaded { get; }
+        public Netorrent.P2P.Measurement.ByteSize Verified { get; }
     }
     public class PeerStatistics
     {
@@ -150,19 +166,10 @@ namespace Netorrent.Statistics
     }
     public class TorrentStatisticsClient
     {
-        public TorrentStatisticsClient(Netorrent.Statistics.TransferStatistics transfer, Netorrent.Statistics.PeerStatistics peers) { }
+        public TorrentStatisticsClient(Netorrent.Statistics.DataStatistics data, Netorrent.Statistics.PeerStatistics peers, Netorrent.Statistics.CheckStatistics check) { }
+        public Netorrent.Statistics.CheckStatistics Check { get; }
+        public Netorrent.Statistics.DataStatistics Data { get; }
         public Netorrent.Statistics.PeerStatistics Peers { get; }
-        public Netorrent.Statistics.TransferStatistics Transfer { get; }
-    }
-    public class TransferStatistics
-    {
-        public TransferStatistics(long totalBytes) { }
-        public Netorrent.P2P.Measurement.ByteSize DiscardedBytes { get; }
-        public Netorrent.P2P.Measurement.ByteSize DownloadedBytes { get; }
-        public Netorrent.P2P.Measurement.ByteSize LeftBytes { get; }
-        public Netorrent.P2P.Measurement.ByteSize TotalBytes { get; }
-        public Netorrent.P2P.Measurement.ByteSize UploadedBytes { get; }
-        public Netorrent.P2P.Measurement.ByteSize VerifiedBytes { get; }
     }
 }
 namespace Netorrent.TorrentFile.FileStructure
@@ -238,13 +245,12 @@ namespace Netorrent.TorrentFile
         public string OutputDirectory { get; }
         public Netorrent.TorrentFile.State State { get; }
         public Netorrent.Statistics.TorrentStatisticsClient Statistics { get; }
-        public long VerifiedPiecesCount { get; }
+        public System.Threading.Tasks.ValueTask CheckAsync(System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask DisposeAsync() { }
         public System.Threading.Tasks.Task ExportAsync(string outputPath, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask StartAsync() { }
         public void Stop() { }
         public System.Threading.Tasks.ValueTask StopAsync() { }
-        public System.Threading.Tasks.ValueTask VerifyAsync(System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class TorrentClient : System.IAsyncDisposable
     {

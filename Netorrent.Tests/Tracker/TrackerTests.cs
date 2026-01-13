@@ -104,7 +104,7 @@ public class TrackerTests
 
         var httpTracker = new HttpTracker(
             1,
-            new Statistics.TransferStatistics(3),
+            new Statistics.DataStatistics(3),
             new FakeHttpTrackerHandler(ctx.Ips, ctx.Interval),
             addressFamily,
             new(),
@@ -143,7 +143,7 @@ public class TrackerTests
 
         var httpTracker = new HttpTracker(
             1,
-            new Statistics.TransferStatistics(3),
+            new Statistics.DataStatistics(3),
             new FakeHttpTrackerHandler(ctx.Ips, ctx.Interval, new Exception()),
             addressFamily,
             new(),

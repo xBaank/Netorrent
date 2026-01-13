@@ -18,6 +18,7 @@ try
     cts.Token.Register(torrent.Stop);
     var statusTask = RunStatusUI(torrent, cts.Token);
 
+    await torrent.CheckAsync(cts.Token);
     await torrent.StartAsync();
     await torrent.Completion;
 
@@ -223,20 +224,20 @@ static async Task RunStatusUI(Torrent torrent, CancellationToken token) =>
             var uploadTask = ctx.AddTask("[green]Torrent Uploaded[/]", autoStart: true);
 
             // Initialize
-            var totalBytes = torrent.Statistics.Transfer.TotalBytes.Bytes;
+            var totalBytes = torrent.Statistics.Data.Total.Bytes;
             progressTask.MaxValue(totalBytes);
             uploadTask.IsIndeterminate(true);
 
             while (!token.IsCancellationRequested)
             {
-                var t = torrent.Statistics.Transfer;
+                var t = torrent.Statistics.Data;
                 var p = torrent.Statistics.Peers;
 
-                progressTask.Value(t.VerifiedBytes.Bytes);
-                uploadTask.Value(t.UploadedBytes.Bytes);
+                progressTask.Value(t.Verified.Bytes);
+                uploadTask.Value(t.Uploaded.Bytes);
 
                 progressTask.Description =
-                    $@"[green]{(torrent.MetaInfo.Title ?? torrent.MetaInfo.Info.Name).EscapeMarkup()} ({torrent.State} {torrent.VerifiedPiecesCount}/{torrent.Bitfield.Length})[/]";
+                    $@"[green]{(torrent.MetaInfo.Title ?? torrent.MetaInfo.Info.Name).EscapeMarkup()} ({torrent.State} {torrent.Statistics.Check.CheckedPiecesCount}/{torrent.Statistics.Check.TotalPiecesCount})[/]";
 
                 await Task.Delay(1000, token);
             }

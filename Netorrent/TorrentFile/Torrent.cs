@@ -28,7 +28,6 @@ public sealed class Torrent : IAsyncDisposable
     public string OutputDirectory { get; }
     public State State { get; private set; } = State.Stopped;
     public Bitfield Bitfield => _myBitfield;
-    public long VerifiedPiecesCount => Interlocked.Read(ref _verifiedPieces);
 
     private readonly TcpPeersConnector _peerConnector;
     private readonly TcpPeersListener _peersListener;
@@ -39,7 +38,6 @@ public sealed class Torrent : IAsyncDisposable
     private Task? _runTask;
     private CancellationTokenSource? _cancellationTokenSource;
     private bool _disposed;
-    private long _verifiedPieces;
 
     internal Torrent(
         MetaInfo metaInfo,
@@ -62,15 +60,16 @@ public sealed class Torrent : IAsyncDisposable
         OutputDirectory = Path.Combine(outputDirectory, MetaInfo.Title ?? "");
         _peersListener = peersListener;
         _myBitfield = new Bitfield(metaInfo.Info.Pieces.Length / 20);
-        _myBitfield.SetPieces(downloadedPieces);
-        _verifiedPieces = _myBitfield.Length;
         _pieceStorage = new DiskStorage(
             OutputDirectory,
             files,
             (int)metaInfo.Info.PieceLength,
             metaInfo.Info.PiecesHashes
         );
-        var transferStatistics = new TransferStatistics(totalSize);
+        var dataStatistics = new DataStatistics(totalSize);
+        var checkStatistics = new CheckStatistics(_myBitfield.Length);
+        _myBitfield.SetPieces(downloadedPieces);
+        checkStatistics.SetCheckedPieces(_myBitfield.Length);
         var activePeers = new ConcurrentDictionary<PeerEndpoint, IPeerConnection>();
         var piecePicker = new PiecePicker(
             _myBitfield,
@@ -82,7 +81,7 @@ public sealed class Torrent : IAsyncDisposable
             activePeers,
             piecePicker,
             _myBitfield,
-            transferStatistics,
+            dataStatistics,
             torrentClientOptions.WarmupTime,
             _pieceStorage,
             torrentClientOptions.Logger
@@ -91,7 +90,7 @@ public sealed class Torrent : IAsyncDisposable
             activePeers,
             _pieceStorage,
             _myBitfield,
-            transferStatistics,
+            dataStatistics,
             torrentClientOptions.Logger
         );
 
@@ -110,7 +109,7 @@ public sealed class Torrent : IAsyncDisposable
             torrentClientOptions.SupportedAddressFamilies,
             torrentClientOptions.UsedTrackers,
             peersListener.EndPoint.Port,
-            transferStatistics,
+            dataStatistics,
             peerId,
             trackersChannel.Writer,
             [metaInfo.Announce, .. metaInfo.AnnounceList ?? []],
@@ -130,8 +129,9 @@ public sealed class Torrent : IAsyncDisposable
 
         Completion = new CompletionTracker(_myBitfield);
         Statistics = new TorrentStatisticsClient(
-            transferStatistics,
-            new PeerStatistics(_peersClient)
+            dataStatistics,
+            new PeerStatistics(_peersClient),
+            checkStatistics
         );
     }
 
@@ -249,18 +249,18 @@ public sealed class Torrent : IAsyncDisposable
     }
 
     /// <summary>
-    /// Asynchronously read downloaded files and verify it's content
+    /// Asynchronously read files in the output folder and verify it's content
     /// </summary>
     /// <param name="outputPath"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
-    public async ValueTask VerifyAsync(CancellationToken cancellationToken = default)
+    public async ValueTask CheckAsync(CancellationToken cancellationToken = default)
     {
         State = State.Verifying;
         await StopAndWaitToFinishAsync().ConfigureAwait(false);
         _myBitfield.Reset();
-        _verifiedPieces = 0;
-        var channelSize = 50;
+        Statistics.Check.Reset();
+        var channelSize = 64;
         var piecesChannel = Channel.CreateBounded<(int PieceIndex, RentedArray<byte> Piece)>(
             new BoundedChannelOptions(channelSize) { SingleReader = true, SingleWriter = true }
         );
@@ -269,14 +269,14 @@ public sealed class Torrent : IAsyncDisposable
 
         await Task.WhenAll(processPiecesTask, getPiecesTask).ConfigureAwait(false);
 
-        Statistics.Transfer.SetVerifiedBytes(
+        Statistics.Data.SetVerifiedBytes(
             _myBitfield.DownloadedPieces.Count * MetaInfo.Info.PieceLength
         );
 
         async Task ProcessPiecesAsync()
         {
             await foreach (
-                var items in piecesChannel.Reader.ReadAllAsync(cancellationToken).Chunk(15)
+                var items in piecesChannel.Reader.ReadAllAsync(cancellationToken).Chunk(16)
             )
             {
                 Parallel.ForEach(
@@ -306,7 +306,7 @@ public sealed class Torrent : IAsyncDisposable
                     FileAccess.Read,
                     FileShare.ReadWrite,
                     4096,
-                    FileOptions.SequentialScan
+                    FileOptions.SequentialScan | FileOptions.Asynchronous
                 );
                 while (true)
                 {
@@ -377,7 +377,8 @@ public sealed class Torrent : IAsyncDisposable
                 {
                     _myBitfield.SetPiece(pieceIndex);
                 }
-                Interlocked.Increment(ref _verifiedPieces);
+
+                Statistics.Check.AddCheckedPiece();
             }
         }
     }

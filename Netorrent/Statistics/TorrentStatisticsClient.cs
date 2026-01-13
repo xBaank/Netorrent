@@ -1,7 +1,12 @@
 ﻿namespace Netorrent.Statistics;
 
-public class TorrentStatisticsClient(TransferStatistics transfer, PeerStatistics peers)
+public class TorrentStatisticsClient(
+    DataStatistics data,
+    PeerStatistics peers,
+    CheckStatistics check
+)
 {
-    public TransferStatistics Transfer { get; } = transfer;
+    public DataStatistics Data { get; } = data;
     public PeerStatistics Peers { get; } = peers;
+    public CheckStatistics Check { get; } = check;
 }

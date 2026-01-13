@@ -25,7 +25,7 @@ public class UploadSchedulerTests
             },
             new FakePieceStorage(),
             bitfield,
-            new TransferStatistics(10),
+            new DataStatistics(10),
             logger
         );
         var requestBlock = new RequestBlock(0, 0, 0);

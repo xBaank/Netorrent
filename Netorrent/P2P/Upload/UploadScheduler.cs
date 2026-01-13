@@ -15,7 +15,7 @@ internal class UploadScheduler(
     IReadOnlyDictionary<PeerEndpoint, IPeerConnection> peers,
     IPieceStorage pieceStorage,
     Bitfield bitfield,
-    TransferStatistics transfer,
+    DataStatistics data,
     ILogger logger
 ) : IUploadScheduler
 {
@@ -129,7 +129,7 @@ internal class UploadScheduler(
 
             if (peer.TrySendBlock(block))
             {
-                transfer.AddUploadedBytes(block.Payload.Length); //TODO Move this to message stream after data if flushed ?
+                data.AddUploadedBytes(block.Payload.Length); //TODO Move this to message stream after data if flushed ?
             }
         }
         catch (Exception ex)

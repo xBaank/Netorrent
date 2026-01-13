@@ -20,7 +20,7 @@ internal class TrackerClient(
     IReadOnlySet<AddressFamily> supportedAddressFamilies,
     UsedTrackers usedTrackers,
     int port,
-    TransferStatistics transferStatistics,
+    DataStatistics transferStatistics,
     PeerId peerId,
     ChannelWriter<IPEndPoint> trackersChannel,
     string[] announceList,

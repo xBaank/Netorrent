@@ -11,7 +11,7 @@ namespace Netorrent.Tracker.Http;
 
 internal class HttpTracker(
     int port,
-    TransferStatistics transfer,
+    DataStatistics transfer,
     IHttpTrackerHandler httpTrackerHandler,
     AddressFamily addressFamily,
     PeerId peerId,
@@ -73,9 +73,9 @@ internal class HttpTracker(
                 infoHash,
                 peerId,
                 port,
-                (ulong)transfer.DownloadedBytes.Bytes,
-                (ulong)transfer.UploadedBytes.Bytes,
-                (ulong)transfer.LeftBytes.Bytes,
+                (ulong)transfer.Downloaded.Bytes,
+                (ulong)transfer.Uploaded.Bytes,
+                (ulong)transfer.Left.Bytes,
                 true,
                 false,
                 @event,
