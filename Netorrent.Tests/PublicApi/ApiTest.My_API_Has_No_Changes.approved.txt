@@ -136,7 +136,6 @@ namespace Netorrent.Statistics
     }
     public class CompletionTracker
     {
-        public bool IsCompleted { get; }
         public System.Threading.Tasks.Task AsTask() { }
         public System.Runtime.CompilerServices.TaskAwaiter GetAwaiter() { }
     }
