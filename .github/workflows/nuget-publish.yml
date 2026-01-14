@@ -218,8 +218,6 @@ jobs:
           --source ${{ env.NUGET_SOURCE }} \
           --api-key ${{ secrets.NUGET_API_KEY }} \
           --skip-duplicate
-      env:
-        NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
     
     - name: Create GitHub Release
       if: needs.build.outputs.create-release == 'true'
