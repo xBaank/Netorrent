@@ -51,14 +51,6 @@ namespace Netorrent.Bencoding.Structs
     }
     public interface IBencodingNode { }
 }
-namespace Netorrent.Other
-{
-    public readonly struct SemaphoreSlimDisposable : System.IDisposable
-    {
-        public SemaphoreSlimDisposable(System.Threading.SemaphoreSlim semaphoreSlim) { }
-        public void Dispose() { }
-    }
-}
 namespace Netorrent.P2P.Measurement
 {
     public readonly struct ByteSize
@@ -144,6 +136,7 @@ namespace Netorrent.Statistics
     }
     public class CompletionTracker
     {
+        public bool IsCompleted { get; }
         public System.Threading.Tasks.Task AsTask() { }
         public System.Runtime.CompilerServices.TaskAwaiter GetAwaiter() { }
     }
