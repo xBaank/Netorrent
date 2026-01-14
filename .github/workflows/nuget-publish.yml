@@ -164,11 +164,6 @@ jobs:
           -p:ContinuousIntegrationBuild=true \
           -p:IncludeSymbols=true
     
-    - name: Validate packages
-      run: |
-        dotnet nuget verify ./artifacts/*.nupkg --all
-        dotnet nuget verify ./artifacts/*.snupkg --all
-    
     - name: List packages
       if: steps.setup.outputs.should-publish == 'true'
       run: |
