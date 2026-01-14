@@ -120,11 +120,11 @@ jobs:
               isRelease = true;
               shouldPublish = true;
               environment = 'production';
-            } else if (ref === 'refs/heads/main') {
-              // Main branch builds (preview versions)
+            } else if (ref === 'refs/heads/master') {
+              // master branch builds (preview versions)
               version = `1.0.0-preview-${context.runNumber}`;
               environment = 'staging';
-              shouldPublish = false; // Don't auto-publish from main
+              shouldPublish = false; // Don't auto-publish from master
             }
           }
           
