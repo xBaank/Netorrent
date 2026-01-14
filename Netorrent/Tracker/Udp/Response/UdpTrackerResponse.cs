@@ -8,7 +8,6 @@ using System.Net.Sockets;
 using Netorrent.Tracker.Udp;
 
 internal record UdpTrackerResponse(
-    int Action,
     int TransactionId,
     int Interval,
     int Leechers,
@@ -16,12 +15,13 @@ internal record UdpTrackerResponse(
     IReadOnlyList<IPEndPoint> Peers
 ) : IUdpTrackerReceivePacket
 {
+    public const int Action = 1;
+
     public static UdpTrackerResponse From(ReadOnlySpan<byte> data, AddressFamily addressFamily)
     {
         if (data.Length < 20)
             throw new ArgumentException("Invalid announce response length", nameof(data));
 
-        int action = BinaryPrimitives.ReadInt32BigEndian(data);
         int transactionId = BinaryPrimitives.ReadInt32BigEndian(data.Slice(4, 4));
         int interval = BinaryPrimitives.ReadInt32BigEndian(data.Slice(8, 4));
         int leechers = BinaryPrimitives.ReadInt32BigEndian(data.Slice(12, 4));
@@ -57,6 +57,6 @@ internal record UdpTrackerResponse(
             throw new NotSupportedException($"AddressFamily {addressFamily} is not supported");
         }
 
-        return new UdpTrackerResponse(action, transactionId, interval, leechers, seeders, peers);
+        return new UdpTrackerResponse(transactionId, interval, leechers, seeders, peers);
     }
 }

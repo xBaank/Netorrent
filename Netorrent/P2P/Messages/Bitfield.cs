@@ -1,19 +1,19 @@
-﻿using System;
-using System.Buffers;
+﻿using System.Buffers;
 using System.Collections;
-using System.Reactive.Subjects;
-using System.Threading.Channels;
+using Netorrent.Extensions;
 using Netorrent.Other;
-using ZLinq;
+using R3;
 
 namespace Netorrent.P2P.Messages;
 
 public class Bitfield
 {
-    private readonly Lock _lock = new();
     private readonly BitArray _bits;
     private readonly Subject<int> _stateChanged = new();
-    public IObservable<int> StateChanged => _stateChanged;
+    internal Subject<int> StateChanged => _stateChanged;
+    public int Length => _bits.Length;
+
+    public bool IsComplete => _bits.HasAllSet();
 
     internal Bitfield(int pieceCount, bool isInitialized = false)
     {
@@ -36,58 +36,45 @@ public class Bitfield
         }
     }
 
-    public int Length
-    {
-        get
-        {
-            lock (_lock)
-            {
-                return _bits.Length;
-            }
-        }
-    }
-
-    public bool IsComplete
-    {
-        get
-        {
-            lock (_lock)
-            {
-                return _bits.HasAllSet();
-            }
-        }
-    }
+    public bool HasPiece(int index) => index < _bits.Length && _bits[index];
 
     internal void SetPiece(int index)
     {
-        lock (_lock)
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, _bits.Length, nameof(index));
+
+        if (_bits[index])
         {
-            if (index >= _bits.Length)
-                return;
+            return;
+        }
 
-            if (_bits[index])
-                return;
+        _bits[index] = true;
+        _stateChanged.OnNext(index);
 
-            _bits[index] = true;
-            _stateChanged.OnNext(index);
-
-            if (IsComplete)
-                _stateChanged.OnCompleted();
+        if (IsComplete)
+        {
+            _stateChanged.OnCompleted();
         }
     }
 
-    internal bool HasPiece(int index)
+    internal void SetPieces(IReadOnlySet<int> indexes)
     {
-        lock (_lock)
+        foreach (var index in indexes)
         {
-            return index < _bits.Length && _bits[index];
+            SetPiece(index);
+        }
+    }
+
+    internal void Reset()
+    {
+        for (int i = 0; i < _bits.Length; i++)
+        {
+            _bits[i] = false;
         }
     }
 
     internal bool HasAnyMissingPiece(Bitfield other)
     {
-        if (other.Length != Length)
-            throw new ArgumentException("Bitfields must have the same length.", nameof(other));
+        ArgumentOutOfRangeException.ThrowIfNotEqual(other.Length, Length, nameof(other));
 
         for (int i = 0; i < Length; i++)
         {
@@ -101,22 +88,27 @@ public class Bitfield
 
     internal RentedArray<byte> ToRentedArray()
     {
-        lock (_lock)
+        int byteCount = (_bits.Length + 7) / 8;
+        var array = ArrayPool<byte>.Shared.Rent(byteCount);
+        try
         {
-            int byteCount = (_bits.Length + 7) / 8;
-            var array = ArrayPool<byte>.Shared.Rent(byteCount);
             var memory = array.AsSpan()[..byteCount];
             PackBitsBigEndian(memory);
 
             return new RentedArray<byte>(array, byteCount);
+        }
+        catch
+        {
+            ArrayPool<byte>.Shared.Return(array);
+            throw;
         }
     }
 
     private void PackBitsBigEndian(Span<byte> dest)
     {
         int byteLen = (_bits.Length + 7) / 8;
-        if (dest.Length < byteLen)
-            throw new ArgumentException("dest too small", nameof(dest));
+        ArgumentOutOfRangeException.ThrowIfLessThan(dest.Length, byteLen, nameof(dest));
+
         dest[..byteLen].Clear();
 
         for (int i = 0; i < _bits.Length; i++)

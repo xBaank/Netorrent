@@ -1,5 +1,6 @@
 ﻿using System.Net;
+using Netorrent.P2P.Messages;
 
 namespace Netorrent.P2P;
 
-record struct PeerEndpoint(IPEndPoint IPEndPoint, PeerId PeerId);
+public record struct PeerEndpoint(IPEndPoint EndPoint, PeerId PeerId);

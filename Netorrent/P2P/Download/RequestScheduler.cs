@@ -1,38 +1,32 @@
-﻿using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.Threading.Channels;
+﻿using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.P2P.Messages;
+using Netorrent.Statistics;
 using ZLinq;
 
 namespace Netorrent.P2P.Download;
 
 internal class RequestScheduler(
-    IReadOnlyDictionary<PeerEndpoint, PeerConnection> peers,
-    Bitfield bitfield,
-    PiecePicker piecePicker,
+    IReadOnlyDictionary<PeerEndpoint, IPeerConnection> peers,
+    IPiecePicker piecePicker,
+    Bitfield myBitfield,
+    DataStatistics data,
+    TimeSpan warmupTime,
+    IPieceStorage pieceStorage,
     ILogger logger
 ) : IRequestScheduler
 {
     const int MinPeersForRarity = 6;
-    const int WarmupTimeoutSecods = 8;
-    const int MinPeers = 6;
-    const int MaxPeers = 10;
 
-    private readonly Channel<Block> _receiveBlocksChannel = Channel.CreateBounded<Block>(
-        new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
-    );
-    private readonly Channel<PeerConnection> _slotsChannel = Channel.CreateBounded<PeerConnection>(
-        new BoundedChannelOptions(256) { SingleReader = true, SingleWriter = false }
-    );
+    private readonly Channel<DownloadMessage> _downloadMessageChannel =
+        Channel.CreateBounded<DownloadMessage>(
+            new BoundedChannelOptions(512) { SingleWriter = false, SingleReader = true }
+        );
 
-    private readonly HashSet<PeerConnection> _activePeers = [];
-    private readonly List<PeerConnection> _interestedPeers = [];
-    private readonly Lock _activePeersLock = new();
-    private readonly IReadOnlyDictionary<PeerEndpoint, PeerConnection> peers = peers;
-    private int _maxCurrentPeers = MinPeers;
+    private static readonly DownloadMessage.CheckTimeoutMessage _timeoutMessage = new();
+    private readonly Dictionary<int, PieceBuffer> _pieceBuffers = [];
     private CancellationTokenSource? _cts;
     private Task? _runningTask;
     private bool _disposed;
@@ -42,101 +36,160 @@ internal class RequestScheduler(
         ObjectDisposedException.ThrowIf(_disposed, this);
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _runningTask = _cts.CancelOnFirstCompletionAndAwaitAllAsync([
-            ReceiveBlocksAsync(_cts.Token),
-            ReScheduleTimeoutBlocksAsync(_cts.Token),
-            ProcessSlotsAsync(_cts.Token),
+            ScheduleTimeoutsBlocksAsync(_cts.Token),
+            ProcessDownloadMessagesAsync(_cts.Token),
         ]);
         return _runningTask;
     }
 
-    public async Task ProcessSlotsAsync(CancellationToken cancellationToken)
+    private async Task ScheduleTimeoutsBlocksAsync(CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            _downloadMessageChannel.Writer.TryWrite(_timeoutMessage);
+            await Task.Delay(10.Seconds, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    public async Task ProcessDownloadMessagesAsync(CancellationToken cancellationToken)
     {
         await WarmupAsync(cancellationToken).ConfigureAwait(false);
         await foreach (
-            var peerConnection in _slotsChannel
+            var downloadMessage in _downloadMessageChannel
                 .Reader.ReadAllAsync(cancellationToken)
                 .ConfigureAwait(false)
         )
         {
-            await ScheduleRequests(peerConnection, cancellationToken).ConfigureAwait(false);
-        }
-    }
-
-    private async Task ReceiveBlocksAsync(CancellationToken cancellationToken)
-    {
-        await foreach (
-            var receiveBlock in _receiveBlocksChannel.Reader.ReadAllAsync(cancellationToken)
-        )
-        {
-            using var block = receiveBlock;
-            await piecePicker.ReceiveBlockAsync(block, cancellationToken).ConfigureAwait(false);
-            await _slotsChannel
-                .Writer.WriteAsync(block.FromPeer, cancellationToken)
-                .ConfigureAwait(false);
-        }
-    }
-
-    private async Task ReScheduleTimeoutBlocksAsync(CancellationToken cancellationToken)
-    {
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            foreach (var requestBlock in piecePicker.GetTimeoutRequestBlocks())
+            if (downloadMessage is DownloadMessage.BlockMessage blockMessage)
             {
-                var lastRequestedFrom = piecePicker.GetLastRequester(requestBlock);
-                piecePicker.SetBlockToPending(requestBlock);
-                lastRequestedFrom.DecrementRequestedBlock();
-
-                PeerConnection? freePeer = null;
-
-                lock (_activePeersLock)
-                {
-                    foreach (var peerConnection in _activePeers)
-                    {
-                        if (peerConnection == lastRequestedFrom)
-                            continue;
-                        if (peerConnection.PeerBitField?.HasPiece(requestBlock.Index) == true)
-                        {
-                            freePeer = peerConnection;
-                            break;
-                        }
-                    }
-                }
-
-                //If we can't find a peer we retry with the same one
-                freePeer ??= lastRequestedFrom;
-                await _slotsChannel
-                    .Writer.WriteAsync(freePeer, cancellationToken)
-                    .ConfigureAwait(false);
+                using var block = blockMessage.Block;
+                await ProcessBlockAsync(block, cancellationToken).ConfigureAwait(false);
+                continue;
             }
-            await Task.Delay(1.Seconds, cancellationToken).ConfigureAwait(false);
+
+            if (downloadMessage is DownloadMessage.CheckTimeoutMessage)
+            {
+                CheckTimeout();
+                continue;
+            }
+
+            if (downloadMessage is DownloadMessage.ScheduleMessage scheduleMessage)
+            {
+                ScheduleRequests(scheduleMessage.PeerConnection);
+                continue;
+            }
+        }
+    }
+
+    private async ValueTask ProcessBlockAsync(Block block, CancellationToken cancellationToken)
+    {
+        //TODO penalize?
+        if (!piecePicker.TryGetRequestedBlock(block, out var requestedBlock))
+        {
+            return;
+        }
+
+        if (!_pieceBuffers.TryGetValue(block.Index, out var pieceBuffer))
+        {
+            pieceBuffer = new PieceBuffer(block.Index, pieceStorage, piecePicker);
+            _pieceBuffers[block.Index] = pieceBuffer;
+        }
+
+        foreach (var peerConnection in requestedBlock.RequestedFrom)
+        {
+            if (peerConnection != block.FromPeer)
+            {
+                peerConnection.TrySendCancel(requestedBlock);
+            }
+            peerConnection.DecrementRequestedBlock();
+        }
+
+        block.FromPeer.PeerRequestWindow.ReceivedBlock(block.FromPeer.DownloadTracker.Speed.Bps);
+        piecePicker.CompleteRequestBlock(requestedBlock);
+        pieceBuffer.AddBlock(block);
+        TryRequest(block.FromPeer);
+
+        if (!pieceBuffer.IsComplete)
+        {
+            return;
+        }
+
+        var isWritten = false;
+        try
+        {
+            isWritten = await pieceBuffer.WritePieceAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            piecePicker.CompletePiece(block.Index);
+            if (_pieceBuffers.Remove(block.Index, out var removedBuffer))
+            {
+                removedBuffer.Dispose();
+            }
+        }
+
+        if (isWritten)
+        {
+            if (!myBitfield.HasPiece(block.Index))
+            {
+                data.AddVerifiedBytes(pieceBuffer.Size);
+                myBitfield.SetPiece(block.Index);
+            }
+        }
+        else
+        {
+            // Retry with a fresh buffer
+            _pieceBuffers[block.Index] = new PieceBuffer(block.Index, pieceStorage, piecePicker);
+            data.AddDiscardedBytes(pieceBuffer.Size);
+        }
+    }
+
+    private void CheckTimeout()
+    {
+        foreach (var requestBlock in piecePicker.GetTimeoutRequestBlocks())
+        {
+            piecePicker.SetBlockToPending(requestBlock); //TODO set ALL request blocks by lastRequestedFrom requester to pending as they are all more likely to be timed out
+
+            var freePeer = peers
+                .Values.AsValueEnumerable()
+                .Where(i => !i.PeerChoking.CurrentValue)
+                .Where(i => i.AmInterested.CurrentValue)
+                .Where(i => !requestBlock.RequestedFrom.Contains(i))
+                .FirstOrDefault();
+
+            if (freePeer is not null)
+            {
+                _downloadMessageChannel.Writer.TryWrite(
+                    new DownloadMessage.ScheduleMessage(freePeer)
+                );
+            }
         }
     }
 
     private async Task WarmupAsync(CancellationToken cancellationToken)
     {
-        var warmupDeadline = DateTime.UtcNow + WarmupTimeoutSecods.Seconds;
+        var warmupDeadline = DateTime.UtcNow + warmupTime;
         while (DateTime.UtcNow < warmupDeadline && !cancellationToken.IsCancellationRequested)
         {
-            int minPeersReady;
-            lock (_activePeersLock)
-            {
-                minPeersReady = _activePeers.Count(i => i.AmInterested && !i.PeerChoking);
-            }
+            var minPeersReady = peers
+                .Values.AsValueEnumerable()
+                .Count(i => i.AmInterested.CurrentValue && !i.PeerChoking.CurrentValue);
 
             if (minPeersReady >= MinPeersForRarity)
+            {
                 return;
+            }
 
             await Task.Delay(100, cancellationToken).ConfigureAwait(false);
         }
     }
 
-    private async ValueTask ScheduleRequests(
-        PeerConnection peerConnection,
-        CancellationToken cancellationToken
-    )
+    private void ScheduleRequests(IPeerConnection peerConnection)
     {
         if (peerConnection.PeerBitField is null)
+        {
             return;
+        }
 
         while (
             peerConnection.RequestedBlocksCount
@@ -146,108 +199,74 @@ internal class RequestScheduler(
             var requestBlock = piecePicker.GetBlock(peerConnection.PeerBitField);
 
             if (requestBlock is null)
-                return;
-
-            piecePicker.SetBlockToRequested(requestBlock, peerConnection);
-
-            try
             {
-                await peerConnection
-                    .SendRequestAsync(requestBlock, cancellationToken)
-                    .ConfigureAwait(false);
+                return;
+            }
+
+            if (peerConnection.TrySendRequest(requestBlock))
+            {
+                piecePicker.SetBlockToRequested(requestBlock, peerConnection);
                 peerConnection.IncrementRequestedBlock();
             }
-            catch (Exception ex)
+            else
             {
-                if (logger.IsEnabled(LogLevel.Error))
+                if (logger.IsEnabled(LogLevel.Information))
                 {
-                    logger.LogError(
-                        ex,
-                        "Failed to send request block {Index}:{Begin} to peer {Peer}",
+                    logger.LogInformation(
+                        "Failed to send request block {Index}:{Begin} to peer {Peer} with {blocks}/{maxblocks}",
                         requestBlock.Index,
                         requestBlock.Begin,
-                        peerConnection.IPEndPoint
+                        peerConnection.PeerEndpoint.PeerId,
+                        peerConnection.RequestedBlocksCount,
+                        peerConnection.PeerRequestWindow.MaxInFlightRequests
                     );
                 }
-                peerConnection.DecrementRequestedBlock();
-                break;
-            }
-        }
-    }
-
-    public async ValueTask RequestSlotAsync(
-        PeerConnection peerConnection,
-        CancellationToken cancellationToken
-    )
-    {
-        bool shouldEnqueue;
-
-        lock (_activePeersLock)
-        {
-            if (_activePeers.Count >= _maxCurrentPeers)
-            {
-                _interestedPeers.Add(peerConnection);
                 return;
             }
-            _activePeers.Add(peerConnection);
-            shouldEnqueue = true;
-        }
-
-        if (shouldEnqueue)
-        {
-            await _slotsChannel
-                .Writer.WriteAsync(peerConnection, cancellationToken)
-                .ConfigureAwait(false);
         }
     }
 
-    public async ValueTask FreeSlotAsync(
-        PeerConnection peerConnection,
-        CancellationToken cancellationToken
-    )
+    public void TryRequest(IPeerConnection peerConnection)
     {
-        PeerConnection? nextPeer = null;
-
-        lock (_activePeersLock)
+        if (!peerConnection.PeerChoking.CurrentValue && peerConnection.AmInterested.CurrentValue)
         {
-            _interestedPeers.Remove(peerConnection);
-            _activePeers.Remove(peerConnection);
-
-            if (_interestedPeers.Count > 0)
-            {
-                nextPeer = _interestedPeers[0];
-                _interestedPeers.RemoveAt(0);
-                _activePeers.Add(nextPeer);
-            }
-        }
-
-        if (nextPeer is not null)
-        {
-            await _slotsChannel
-                .Writer.WriteAsync(nextPeer, cancellationToken)
-                .ConfigureAwait(false);
+            _downloadMessageChannel.Writer.TryWrite(
+                new DownloadMessage.ScheduleMessage(peerConnection)
+            );
         }
     }
-
-    public void IncreaseRarity(int index) => piecePicker.IncreaseRarity(index);
-
-    public void DecreaseRarity(int index) => piecePicker.DecreaseRarity(index);
 
     public async ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken)
     {
-        await _receiveBlocksChannel
-            .Writer.WriteOrDisposeAsync(block, cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            await _downloadMessageChannel
+                .Writer.WriteAsync(new DownloadMessage.BlockMessage(block), cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            block.Dispose();
+            throw;
+        }
     }
 
     private async ValueTask DrainChannelsAsync()
     {
         await foreach (
-            var item in _receiveBlocksChannel.Reader.ReadAllAsync().ConfigureAwait(false)
+            var item in _downloadMessageChannel.Reader.ReadAllAsync().ConfigureAwait(false)
         )
-            item.Dispose();
+        {
+            if (item is DownloadMessage.BlockMessage blockMessage)
+            {
+                blockMessage.Block.Dispose();
+            }
+        }
 
-        await foreach (var _ in _slotsChannel.Reader.ReadAllAsync().ConfigureAwait(false)) { }
+        foreach (var item in _pieceBuffers.Values)
+        {
+            item.Dispose();
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -256,8 +275,7 @@ internal class RequestScheduler(
         {
             _disposed = true;
             _cts?.Cancel();
-            _receiveBlocksChannel.Writer.TryComplete();
-            _slotsChannel.Writer.TryComplete();
+            _downloadMessageChannel.Writer.TryComplete();
 
             try
             {

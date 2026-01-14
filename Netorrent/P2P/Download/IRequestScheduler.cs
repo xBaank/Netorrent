@@ -4,9 +4,7 @@ namespace Netorrent.P2P.Download;
 
 internal interface IRequestScheduler : IAsyncDisposable
 {
-    void DecreaseRarity(int index);
-    void IncreaseRarity(int index);
-    ValueTask RequestSlotAsync(PeerConnection peerConnection, CancellationToken cancellationToken);
-    ValueTask FreeSlotAsync(PeerConnection peerConnection, CancellationToken cancellationToken);
+    Task StartAsync(CancellationToken cancellationToken);
+    void TryRequest(IPeerConnection peerConnection);
     ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken);
 }

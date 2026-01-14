@@ -2,18 +2,21 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
-using Netorrent.P2P;
+using Netorrent.P2P.Messages;
+using Netorrent.Statistics;
+using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker.Udp.Request;
 using Netorrent.Tracker.Udp.Response;
 
 namespace Netorrent.Tracker.Udp;
 
 internal class UdpTracker(
-    UdpTrackerTransactionManager transactionManager,
-    P2PClient p2PClient,
+    IUdpTrackerHandler udpTrackerHandler,
+    int port,
+    DataStatistics transfer,
     PeerId peerId,
     ChannelWriter<IPEndPoint> channelWriter,
-    byte[] infoHash,
+    InfoHash infoHash,
     string announceUrl,
     IPEndPoint iPEndPoint,
     ILogger logger,
@@ -75,7 +78,7 @@ internal class UdpTracker(
     {
         try
         {
-            return await transactionManager
+            return await udpTrackerHandler
                 .ConnectAsync(iPEndPoint, _trackerId, cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -99,11 +102,11 @@ internal class UdpTracker(
             if (logger.IsEnabled(LogLevel.Information))
                 logger.LogInformation("Announcing to {url}", announceUrl);
 
-            var connectionId = transactionManager.GetConnectionIdOrNull(_trackerId);
+            var connectionId = udpTrackerHandler.GetConnectionIdOrNull(_trackerId);
 
-            if (connectionId is null || transactionManager.IsOutdated(connectionId.Value))
+            if (connectionId is null || udpTrackerHandler.IsOutdated(connectionId.Value))
             {
-                var response = await transactionManager
+                var response = await udpTrackerHandler
                     .ConnectAsync(iPEndPoint, _trackerId, cancellationToken)
                     .ConfigureAwait(false);
 
@@ -114,18 +117,18 @@ internal class UdpTracker(
                 iPEndPoint,
                 infoHash,
                 peerId,
-                (long)p2PClient.FileManager.GetWrittenBytes(),
-                (long)p2PClient.FileManager.GetWrittenBytes(),
-                0, //TODO implement
+                transfer.Downloaded.Bytes,
+                transfer.Uploaded.Bytes,
+                transfer.Left.Bytes,
                 @event,
-                (ushort)p2PClient.EndPoint.Port,
+                (ushort)port,
                 ConnectionId: connectionId.Value,
-                TransactionId: transactionManager.MakeTransactionId(),
+                TransactionId: udpTrackerHandler.MakeTransactionId(),
                 NumWant: 50,
                 IpAddress: forcedIp
             );
 
-            return await transactionManager
+            return await udpTrackerHandler
                 .SendAsync<UdpTrackerResponse>(updRequest, _trackerId, cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -141,6 +144,9 @@ internal class UdpTracker(
     public async ValueTask DisposeAsync()
     {
         if (iPEndPoint is not null && _lastResponse is not null)
-            await TryAnnounceAsync(iPEndPoint, Events.Stopped, default).ConfigureAwait(false);
+        {
+            using var cts = new CancellationTokenSource(5.Seconds);
+            await TryAnnounceAsync(iPEndPoint, Events.Stopped, cts.Token).ConfigureAwait(false);
+        }
     }
 }

@@ -1,13 +1,16 @@
 ﻿using System.Buffers;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging.Abstractions;
 using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
 using Netorrent.Extensions;
-using Netorrent.Other;
-using Netorrent.P2P;
+using Netorrent.P2P.Messages;
+using Netorrent.P2P.Tcp;
 using Netorrent.TorrentFile.FileStructure;
+using Netorrent.Tracker.Http;
 using Netorrent.Tracker.Udp;
+using Netorrent.Tracker.Udp.Client;
 using ZLinq;
 
 namespace Netorrent.TorrentFile;
@@ -16,15 +19,39 @@ public sealed class TorrentClient : IAsyncDisposable
 {
     private readonly PeerId _peerId = new();
     private readonly TorrentClientOptions _options;
-    private readonly List<Torrent> torrents = [];
-    private readonly UdpTrackerTransactionManager _trackerTransactionManager;
+    private readonly Dictionary<InfoHash, Torrent> _torrents = [];
+    private readonly TcpPeersListener _peersListener;
+    private readonly UdpTrackerHandler _udpTrackerHandler;
+    private readonly HttpTrackerHandler _httpTrackerHandler;
 
     public TorrentClient(Func<TorrentClientOptions, TorrentClientOptions>? action = null)
     {
-        var options = new TorrentClientOptions(new(), NullLogger.Instance, null);
+        var options = new TorrentClientOptions(
+            NullLogger.Instance,
+            UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6,
+            UsedTrackers.Http | UsedTrackers.Udp,
+            null
+        );
         _options = action?.Invoke(options) ?? options;
-        _trackerTransactionManager = new(Udp.GetFreeUdpClient(), _options.Logger);
-        _trackerTransactionManager.Start();
+        _peersListener = new(
+            _peerId,
+            TcpListener.GetFreeTcpListener(_options.UsedAdressProtocol),
+            _options.Logger
+        );
+        _udpTrackerHandler = new(
+            new UdpClientWrapper(UdpClient.GetFreeUdpClient(_options.UsedAdressProtocol)),
+            _options.Logger,
+            15.Seconds,
+            1.Seconds,
+            1.Minutes,
+            8
+        );
+        _httpTrackerHandler = new(
+            HttpClient.CreateHttpClient(AddressFamily.InterNetwork),
+            HttpClient.CreateHttpClient(AddressFamily.InterNetworkV6)
+        );
+        _peersListener.Start();
+        _udpTrackerHandler.Start();
     }
 
     /// <summary>
@@ -35,9 +62,10 @@ public sealed class TorrentClient : IAsyncDisposable
     /// <param name="cancellationToken">A cancellation token that can be used to cancel the import operation.</param>
     /// <returns>A task that represents the asynchronous operation. The task result contains the imported Torrent instance.</returns>
     /// <exception cref="InvalidDataException">Thrown if the specified file does not contain a valid bencoded torrent dictionary.</exception>
-    public async ValueTask<Torrent> ImportTorrentAsync(
+    public async ValueTask<Torrent> LoadTorrentAsync(
         string path,
         string outputDirectory,
+        int[]? downloadedPieces = null,
         CancellationToken cancellationToken = default
     )
     {
@@ -51,17 +79,7 @@ public sealed class TorrentClient : IAsyncDisposable
 
         var metaInfo = ParseMetaInfo(bDictionary);
 
-        var torrent = new Torrent(
-            metaInfo,
-            _options.HttpClient,
-            _trackerTransactionManager,
-            _peerId,
-            Path.GetFullPath(outputDirectory),
-            _options.Logger,
-            peerIpProxy: _options.PeerIpProxy
-        );
-        torrents.Add(torrent);
-        return torrent;
+        return LoadTorrent(metaInfo, outputDirectory, downloadedPieces);
     }
 
     /// <summary>
@@ -70,19 +88,23 @@ public sealed class TorrentClient : IAsyncDisposable
     /// <param name="metaInfo">The metadata information describing the torrent to import. Cannot be null.</param>
     /// <param name="outputDirectory">The path to the directory where the torrent's data will be stored. Must be a valid file system path.</param>
     /// <returns>A Torrent instance representing the imported torrent.</returns>
-    public Torrent ImportTorrent(MetaInfo metaInfo, string outputDirectory)
+    public Torrent LoadTorrent(
+        MetaInfo metaInfo,
+        string outputDirectory,
+        int[]? downloadedPieces = null
+    )
     {
         var torrent = new Torrent(
             metaInfo,
-            _options.HttpClient,
-            _trackerTransactionManager,
+            _httpTrackerHandler,
+            _udpTrackerHandler,
+            _peersListener,
             _peerId,
             Path.GetFullPath(outputDirectory),
-            _options.Logger,
-            _options.ForcedIp,
-            peerIpProxy: _options.PeerIpProxy
+            _options,
+            downloadedPieces?.ToHashSet() ?? []
         );
-        torrents.Add(torrent);
+        _torrents.Add(metaInfo.Info.InfoHash, torrent);
         return torrent;
     }
 
@@ -109,26 +131,26 @@ public sealed class TorrentClient : IAsyncDisposable
         CancellationToken cancellationToken = default
     )
     {
+        var metainfo = await CreateMetaInfoFromPathAsync(
+                path,
+                announceUrl,
+                announceUrls,
+                webUrls,
+                pieceLength,
+                cancellationToken
+            )
+            .ConfigureAwait(false);
         var torrent = new Torrent(
-            await CreateMetaInfoFromPathAsync(
-                    path,
-                    announceUrl,
-                    announceUrls,
-                    webUrls,
-                    pieceLength,
-                    cancellationToken
-                )
-                .ConfigureAwait(false),
-            _options.HttpClient,
-            _trackerTransactionManager,
+            metainfo,
+            _httpTrackerHandler,
+            _udpTrackerHandler,
+            _peersListener,
             _peerId,
-            Path.GetFullPath(Path.GetDirectoryName(path) ?? ""),
-            _options.Logger,
-            _options.ForcedIp,
-            true,
-            peerIpProxy: _options.PeerIpProxy
+            Directory.Exists(path) ? Path.GetFullPath(path) : Path.GetDirectoryName(path) ?? "/",
+            _options,
+            metainfo.Info.PiecesHashes.AsValueEnumerable().Index().Select(i => i.Index).ToHashSet()
         );
-        torrents.Add(torrent);
+        _torrents.Add(torrent.MetaInfo.Info.InfoHash, torrent);
         return torrent;
     }
 
@@ -137,7 +159,7 @@ public sealed class TorrentClient : IAsyncDisposable
         string announceUrl,
         List<string>? announceUrls,
         List<string>? webUrls,
-        int pieceLength = 256 * 1024, // 256 KB default
+        int pieceLength,
         CancellationToken cancellationToken = default
     )
     {
@@ -223,13 +245,12 @@ public sealed class TorrentClient : IAsyncDisposable
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            using var fs = new FileStream(
+            await using var fs = new FileStream(
                 fullPath,
                 FileMode.Open,
                 FileAccess.Read,
                 FileShare.ReadWrite,
-                4096,
-                useAsync: true
+                4096
             );
             while (true)
             {
@@ -249,8 +270,8 @@ public sealed class TorrentClient : IAsyncDisposable
                 // If buffer full, hash and reset
                 if (bufferPos == pieceLength)
                 {
-                    var pieceData = pieceBuffer[..pieceLength].ToArray();
-                    var hash = SHA1.HashData(pieceData);
+                    var pieceData = pieceBuffer[..pieceLength];
+                    var hash = SHA1.HashData(pieceData.Span);
                     piecesBytes.AddRange(hash);
                     bufferPos = 0;
                 }
@@ -259,8 +280,8 @@ public sealed class TorrentClient : IAsyncDisposable
 
         if (bufferPos > 0)
         {
-            var lastPiece = pieceBuffer[..bufferPos].ToArray();
-            var hash = SHA1.HashData(lastPiece);
+            var lastPiece = pieceBuffer[..bufferPos];
+            var hash = SHA1.HashData(lastPiece.Span);
             piecesBytes.AddRange(hash);
         }
 
@@ -437,10 +458,9 @@ public sealed class TorrentClient : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await _trackerTransactionManager.DisposeAsync().ConfigureAwait(false);
-        await Task.WhenAll(
-                torrents.AsValueEnumerable().Select(i => i.DisposeAsync().AsTask()).ToArray()
-            )
-            .ConfigureAwait(false);
+        await _peersListener.DisposeAsync().ConfigureAwait(false);
+        await _udpTrackerHandler.DisposeAsync().ConfigureAwait(false);
+        var torrentsDisposeTasks = _torrents.Values.Select(i => i.DisposeAsync().AsTask());
+        await Task.WhenAll(torrentsDisposeTasks).ConfigureAwait(false);
     }
 }

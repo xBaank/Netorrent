@@ -4,16 +4,17 @@ using Shouldly;
 
 namespace Netorrent.Tests.Torrents;
 
+[Timeout(5_000)]
 public class TorrentFileTests
 {
     [Test]
     public async Task Should_Export_Torrent_File(CancellationToken cancellationToken)
     {
-        var torrentClient = new TorrentClient();
-        var torrent = await torrentClient.ImportTorrentAsync(
+        await using var torrentClient = new TorrentClient();
+        await using var torrent = await torrentClient.LoadTorrentAsync(
             "Data/nosferatu.torrent",
             "Output",
-            cancellationToken
+            cancellationToken: cancellationToken
         );
         File.Delete("Output/asd.torrent");
         await torrent.ExportAsync("Output/asd.torrent", cancellationToken);
@@ -31,6 +32,9 @@ public class TorrentFileTests
 
         var originalMetainfo = TorrentClient.ParseMetaInfo(original);
         var expectedMetainfo = TorrentClient.ParseMetaInfo(expected);
+
+        torrent.Statistics.Data.Downloaded.ShouldBe(0);
+        torrent.Statistics.Data.Verified.ShouldBe(0);
 
         originalMetainfo.Announce.ShouldBeEquivalentTo(expectedMetainfo.Announce);
         originalMetainfo.AnnounceList.ShouldBeEquivalentTo(expectedMetainfo.AnnounceList);
@@ -56,8 +60,8 @@ public class TorrentFileTests
     [Test]
     public async Task Should_Create_Torrent_File_From_Directory(CancellationToken cancellationToken)
     {
-        var torrentClient = new TorrentClient();
-        var torrent = await torrentClient.CreateTorrentAsync(
+        await using var torrentClient = new TorrentClient();
+        await using var torrent = await torrentClient.CreateTorrentAsync(
             "Data/MultifileTest",
             "http://test.com",
             ["http://test.com"],
@@ -65,6 +69,8 @@ public class TorrentFileTests
             cancellationToken: cancellationToken
         );
 
+        torrent.Statistics.Data.Downloaded.ShouldBe(torrent.Statistics.Data.Total);
+        torrent.Statistics.Data.Verified.ShouldBe(torrent.Statistics.Data.Total);
         torrent.MetaInfo.Info.Type.ShouldBe(TorrentFile.FileStructure.InfoType.Multiple);
         torrent.MetaInfo.Info.Files.ShouldNotBeNull();
         torrent.MetaInfo.Info.Files.Count.ShouldBe(3);
@@ -80,8 +86,8 @@ public class TorrentFileTests
     [Test]
     public async Task Should_Create_Torrent_File_From_File(CancellationToken cancellationToken)
     {
-        var torrentClient = new TorrentClient();
-        var torrent = await torrentClient.CreateTorrentAsync(
+        await using var torrentClient = new TorrentClient();
+        await using var torrent = await torrentClient.CreateTorrentAsync(
             "Data/MultifileTest/test.txt",
             "http://test.com",
             ["http://test.com"],
@@ -89,8 +95,110 @@ public class TorrentFileTests
             cancellationToken: cancellationToken
         );
 
+        torrent.Statistics.Data.Downloaded.ShouldBe(torrent.Statistics.Data.Total);
+        torrent.Statistics.Data.Verified.ShouldBe(torrent.Statistics.Data.Total);
         torrent.MetaInfo.Info.Type.ShouldBe(TorrentFile.FileStructure.InfoType.Single);
         torrent.MetaInfo.Info.Files.ShouldBeNull();
         torrent.MetaInfo.Info.Name.ShouldBe("test.txt");
+    }
+
+    [Test]
+    public async Task Should_Not_Create_Torrent_File_From_Directory(
+        CancellationToken cancellationToken
+    )
+    {
+        await using var torrentClient = new TorrentClient();
+        await torrentClient
+            .CreateTorrentAsync(
+                "Data/ASdasd",
+                "http://test.com",
+                ["http://test.com"],
+                ["http://test.com"],
+                cancellationToken: cancellationToken
+            )
+            .AsTask()
+            .ShouldThrowAsync<FileNotFoundException>();
+    }
+
+    [Test]
+    public async Task Should_Not_Create_Torrent_File_From_File(CancellationToken cancellationToken)
+    {
+        await using var torrentClient = new TorrentClient();
+        await torrentClient
+            .CreateTorrentAsync(
+                "Data/MultifileTest/adasdasd.txt",
+                "http://test.com",
+                ["http://test.com"],
+                ["http://test.com"],
+                cancellationToken: cancellationToken
+            )
+            .AsTask()
+            .ShouldThrowAsync<FileNotFoundException>();
+    }
+
+    [Test]
+    [Arguments("Data/MultifileTest/test.txt")]
+    [Arguments("Data/MultifileTest")]
+    public async Task Should_Verify_File(string path, CancellationToken cancellationToken)
+    {
+        var pieceLength = 256 * 1024;
+        await using var torrentClient = new TorrentClient();
+        await using var torrent = await torrentClient.CreateTorrentAsync(
+            path,
+            "http://test.com",
+            ["http://test.com"],
+            ["http://test.com"],
+            pieceLength: pieceLength,
+            cancellationToken: cancellationToken
+        );
+        var expectedSize = torrent.MetaInfo.Info.NormalizedFiles.Sum(i => i.Length);
+
+        await torrent.CheckAsync(cancellationToken);
+
+        torrent.Statistics.Data.Downloaded.ShouldBe(expectedSize);
+        torrent.Statistics.Data.Verified.ShouldBe(expectedSize);
+    }
+
+    [Test]
+    [Arguments("Data/CorruptfileTest/test.txt", "Data/CorruptfileTest/test.txt")]
+    [Arguments("Data/CorruptfileTest/Folder1", "Data/CorruptfileTest/Folder1/Folder2/test3.txt")]
+    public async Task Should_Verify_Corrupt_File(
+        string path,
+        string fileToModify,
+        CancellationToken cancellationToken
+    )
+    {
+        var pieceLength = 256 * 1024;
+        var corruptedPieceCount = 2;
+        var startIndex = corruptedPieceCount * pieceLength;
+        var size = corruptedPieceCount * pieceLength;
+        var emptyData = new byte[size];
+        await using var torrentClient = new TorrentClient();
+        await using var torrent = await torrentClient.CreateTorrentAsync(
+            path,
+            "http://test.com",
+            ["http://test.com"],
+            ["http://test.com"],
+            pieceLength: pieceLength,
+            cancellationToken: cancellationToken
+        );
+        var expectedSize =
+            torrent.MetaInfo.Info.NormalizedFiles.Sum(i => i.Length)
+            - corruptedPieceCount * pieceLength;
+
+        await using var fileStream = new FileStream(
+            fileToModify,
+            FileMode.Open,
+            FileAccess.Write,
+            FileShare.ReadWrite
+        );
+        fileStream.Seek(startIndex, SeekOrigin.Begin);
+        await fileStream.WriteAsync(emptyData, cancellationToken);
+        await fileStream.FlushAsync(cancellationToken);
+
+        await torrent.CheckAsync(cancellationToken);
+
+        torrent.Statistics.Data.Downloaded.ShouldBe(expectedSize);
+        torrent.Statistics.Data.Verified.ShouldBe(expectedSize);
     }
 }

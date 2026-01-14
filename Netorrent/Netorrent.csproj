@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Library</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -6,6 +6,20 @@
     <IsAotCompatible>true</IsAotCompatible>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <Nullable>enable</Nullable>
+    <PackageId>Netorrent</PackageId>
+    <Authors>xBaank</Authors>
+    <Description>A .NET library for torrent operations with support for peer-to-peer networking</Description>
+    <RepositoryUrl>https://github.com/xBaank/Netorrent</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/xBaank/Netorrent</PackageProjectUrl>
+    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <PackageTags>torrent;dotnet;networking;p2p;filesharing;bittorrent</PackageTags>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <RepositoryType>git</RepositoryType>
+    <Copyright>Copyright © 2025</Copyright>
   </PropertyGroup>
   <PropertyGroup>
     <WarningsAsErrors>CS8600;CS8602;CS8603;CS8604;CS8618;CS8625</WarningsAsErrors>
@@ -16,11 +30,15 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.1" />
-    <PackageReference Include="System.Reactive" Version="6.1.0" />
+    <PackageReference Include="R3" Version="1.3.0" />
     <PackageReference Include="ZLinq" Version="1.5.4" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Netorrent.Tests" />
+    <InternalsVisibleTo Include="Netorrent.Tests.Integration" />
     <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

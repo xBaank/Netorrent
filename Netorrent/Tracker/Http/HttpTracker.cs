@@ -1,16 +1,21 @@
 ﻿using System.Net;
+using System.Net.Sockets;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
-using Netorrent.P2P;
+using Netorrent.P2P.Messages;
+using Netorrent.Statistics;
+using Netorrent.TorrentFile.FileStructure;
 
 namespace Netorrent.Tracker.Http;
 
 internal class HttpTracker(
-    P2PClient p2PClient,
-    HttpClient client,
+    int port,
+    DataStatistics transfer,
+    IHttpTrackerHandler httpTrackerHandler,
+    AddressFamily addressFamily,
     PeerId peerId,
-    byte[] infoHash,
+    InfoHash infoHash,
     string announceUrl,
     ILogger logger,
     ChannelWriter<IPEndPoint> channelWriter,
@@ -67,10 +72,10 @@ internal class HttpTracker(
             var request = new HttpTrackerRequest(
                 infoHash,
                 peerId,
-                p2PClient.EndPoint.Port,
-                p2PClient.FileManager.GetWrittenBytes(),
-                0, //TODO Implement this in p2pclient
-                p2PClient.FileManager.GetMissingBytes(),
+                port,
+                (ulong)transfer.Downloaded.Bytes,
+                (ulong)transfer.Uploaded.Bytes,
+                (ulong)transfer.Left.Bytes,
                 true,
                 false,
                 @event,
@@ -78,13 +83,9 @@ internal class HttpTracker(
                 50
             );
 
-            var response = await client
-                .SendAsync(request.GenerateRequest(announceUrl), cancellationToken)
+            return await httpTrackerHandler
+                .SendAsync(announceUrl, addressFamily, request, cancellationToken)
                 .ConfigureAwait(false);
-            var httpTrackerResponse = await HttpTrackerResponse
-                .FromHttpResponseAsync(response, cancellationToken)
-                .ConfigureAwait(false);
-            return httpTrackerResponse;
         }
         catch (Exception ex)
         {
@@ -96,6 +97,7 @@ internal class HttpTracker(
 
     public async ValueTask DisposeAsync()
     {
-        await TryAnnounceAsync(Events.Stopped).ConfigureAwait(false);
+        using var cts = new CancellationTokenSource(5.Seconds);
+        await TryAnnounceAsync(Events.Stopped, cts.Token).ConfigureAwait(false);
     }
 }

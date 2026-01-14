@@ -7,11 +7,11 @@ namespace Netorrent.Tracker.Http;
 
 internal class HttpTrackerResponse
 {
-    public int Interval { get; private set; }
-    public int MinInterval { get; private set; }
-    public int Complete { get; private set; }
-    public int Incomplete { get; private set; }
-    public List<IPEndPoint> Peers { get; } = [];
+    public int Interval { get; internal set; }
+    public int MinInterval { get; internal set; }
+    public int Complete { get; internal set; }
+    public int Incomplete { get; internal set; }
+    public List<IPEndPoint> Peers { get; internal set; } = [];
 
     public static async Task<HttpTrackerResponse> FromHttpResponseAsync(
         HttpResponseMessage response,

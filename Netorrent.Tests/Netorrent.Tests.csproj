@@ -15,17 +15,22 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="NSubstitute" Version="5.3.0" />
     <PackageReference Include="Shouldly" Version="4.3.0" />
-    <PackageReference Include="Testcontainers" Version="4.9.0" />
-    <PackageReference Include="TUnit" Version="1.5.37" />
+    <PackageReference Include="TUnit" Version="1.11.18" />
+    <PackageReference Include="PublicApiGenerator" Version="11.5.4" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Netorrent\Netorrent.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Update="Data\debian-13.2.0-amd64-netinst.iso.torrent">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    <None Update="Data\CorruptfileTest\Folder1\Folder2\test3.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Data\CorruptfileTest\Folder1\test2.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Data\CorruptfileTest\test.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Data\MultifileTest\Folder1\Folder2\test3.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -39,11 +44,11 @@
     <None Update="Data\nosferatu.torrent">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Data\test.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    <None Update="PublicApi\ApiTest.My_API_Has_No_Changes.approved.txt">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </None>
-  </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Data\MultifileTest\" />
+    <None Update="PublicApi\ApiTest.My_API_Has_No_Changes.received.txt">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>
