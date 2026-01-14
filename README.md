@@ -36,152 +36,6 @@ await torrent.Completion;    // Wait for completion
 
 ## Usage Examples
 
-### Basic Downloading
-
-```csharp
-using Netorrent.TorrentFile;
-
-await using var client = new TorrentClient();
-await using var torrent = await client.LoadTorrentAsync(
-    "example.torrent", 
-    "downloads"
-);
-
-await torrent.StartAsync();
-await torrent.Completion;
-Console.WriteLine("Download complete!");
-```
-
-### Advanced Configuration
-
-```csharp
-using Microsoft.Extensions.Logging;
-using Netorrent.TorrentFile;
-
-var logger = LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<Netorrent.TorrentFile.TorrentClient>();
-
-await using var client = new TorrentClient(options => options with
-{
-    Logger = logger,
-    UsedAdressProtocol = UsedAddressProtocol.Ipv4,
-    UsedTrackers = UsedTrackers.Http | UsedTrackers.Udp
-});
-
-await using var torrent = await client.LoadTorrentAsync("file.torrent", "output");
-
-await torrent.CheckAsync();
-await torrent.StartAsync();
-await torrent.Completion;
-```
-
-### Statistics Monitoring
-
-```csharp
-using Netorrent.TorrentFile;
-
-await using var client = new TorrentClient();
-await using var torrent = await client.LoadTorrentAsync("file.torrent", "output");
-
-await torrent.StartAsync();
-
-// Monitor progress
-var progressTask = Task.Run(async () =>
-{
-    while (!torrent.Completion.IsCompleted)
-    {
-        var stats = torrent.Statistics;
-        Console.WriteLine($"Downloaded: {stats.Data.Verified.Bytes} / {stats.Data.Total.Bytes}");
-        Console.WriteLine($"Peers: {stats.Peers.ConnectedCount}");
-        await Task.Delay(1000);
-    }
-});
-
-await torrent.Completion;
-await progressTask;
-```
-
-### Torrent Creation
-
-```csharp
-using Netorrent.TorrentFile;
-
-await using var client = new TorrentClient();
-
-// Create torrent from single file
-var torrent = await client.CreateTorrentAsync(
-    "path/to/file.txt",
-    "http://tracker.example.com/announce"
-);
-
-// Create torrent from directory with multiple trackers
-var torrent = await client.CreateTorrentAsync(
-    "path/to/directory",
-    "http://primary.tracker.com/announce",
-    announceUrls: new List<string>
-    {
-        "http://backup1.tracker.com/announce",
-        "http://backup2.tracker.com/announce"
-    },
-    pieceLength: 512 * 1024  // 512KB pieces
-);
-```
-
-### Stopping and Canceling Torrents
-
-```csharp
-using Netorrent.TorrentFile;
-
-await using var client = new TorrentClient();
-await using var torrent = await client.LoadTorrentAsync("file.torrent", "output");
-
-await torrent.StartAsync();
-
-// Request a stop (doesn't wait for ongoing operations to finish)
-torrent.Stop();
-Console.WriteLine("Stop requested");
-
-// Or stop gracefully (waits for current operations to complete)
-await torrent.StopAsync();
-Console.WriteLine("Torrent stopped gracefully");
-```
-
-### Cancellation with CancellationToken
-
-```csharp
-using Netorrent.TorrentFile;
-
-await using var cts = new CancellationTokenSource();
-await using var client = new TorrentClient();
-
-try
-{
-    await using var torrent = await client.LoadTorrentAsync(
-        "file.torrent", 
-        "output",
-        cancellationToken: cts.Token
-    );
-
-    // Register cancellation callback
-    cts.Token.Register(() => torrent.Stop());
-
-    // Cancel download after 30 seconds
-    cts.CancelAfter(TimeSpan.FromSeconds(30));
-
-    await torrent.StartAsync();
-    await torrent.Completion;
-}
-catch (OperationCanceledException)
-{
-    Console.WriteLine("Download cancelled");
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"Error: {ex.Message}");
-}
-```
-
-
-
 ### Statistics Monitoring
 
 ```csharp
@@ -209,25 +63,68 @@ while (!torrent.Completion.IsCompleted)
 }
 ```
 
-## Configuration
-
-### Client Options
+### Advanced Configuration
 
 ```csharp
+using Microsoft.Extensions.Logging;
+using Netorrent.TorrentFile;
+
+var logger = LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<Netorrent.TorrentFile.TorrentClient>();
+
 await using var client = new TorrentClient(options => options with
 {
-    Logger = myLogger,
-    UsedAdressProtocol = UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6,
-    UsedTrackers = UsedTrackers.Http | UsedTrackers.Udp,
-    ForcedIp = IPAddress.Parse("192.168.1.100")  // Optional: Force specific IP
+    Logger = logger,
+    UsedAdressProtocol = UsedAddressProtocol.Ipv4,
+    UsedTrackers = UsedTrackers.Http | UsedTrackers.Udp
 });
+
+await using var torrent = await client.LoadTorrentAsync("file.torrent", "output");
+
+await torrent.CheckAsync();
+await torrent.StartAsync();
+await torrent.Completion;
 ```
 
-### Protocol Selection
+### Torrent Creation
 
-- **IPv4/IPv6**: Choose which IP protocols to use
-- **HTTP/UDP Trackers**: Select tracker communication protocols
-- **Logging**: Integrate with any Microsoft.Extensions.Logging provider
+```csharp
+using Netorrent.TorrentFile;
+
+await using var client = new TorrentClient();
+
+// Create torrent from single file
+var torrent = await client.CreateTorrentAsync(
+    "path/to/file.txt",
+    "http://tracker.example.com/announce"
+);
+
+// Create torrent from directory with multiple trackers
+var torrent = await client.CreateTorrentAsync(
+    "path/to/directory",
+    "http://primary.tracker.com/announce",
+    announceUrls: ["http://backup1.tracker.com/announce", "http://backup2.tracker.com/announce"],
+    pieceLength: 512 * 1024  // 512KB pieces
+);
+```
+
+### Stopping and Canceling Torrents
+
+```csharp
+using Netorrent.TorrentFile;
+
+await using var client = new TorrentClient();
+await using var torrent = await client.LoadTorrentAsync("file.torrent", "output");
+
+await torrent.StartAsync();
+
+// Request a stop (doesn't wait for ongoing operations to finish)
+torrent.Stop();
+Console.WriteLine("Stop requested");
+
+// Or stop gracefully (waits for current operations to complete)
+await torrent.StopAsync();
+Console.WriteLine("Torrent stopped gracefully");
+```
 
 ### Performance Considerations
 
