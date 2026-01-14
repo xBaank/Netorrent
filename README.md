@@ -52,7 +52,7 @@ await torrent.Completion;
 Console.WriteLine("Download complete!");
 ```
 
-### Advanced Configuration with Monitoring
+### Advanced Configuration
 
 ```csharp
 using Microsoft.Extensions.Logging;
@@ -69,6 +69,21 @@ await using var client = new TorrentClient(options => options with
 
 await using var torrent = await client.LoadTorrentAsync("file.torrent", "output");
 
+await torrent.CheckAsync();
+await torrent.StartAsync();
+await torrent.Completion;
+```
+
+### Statistics Monitoring
+
+```csharp
+using Netorrent.TorrentFile;
+
+await using var client = new TorrentClient();
+await using var torrent = await client.LoadTorrentAsync("file.torrent", "output");
+
+await torrent.StartAsync();
+
 // Monitor progress
 var progressTask = Task.Run(async () =>
 {
@@ -81,8 +96,6 @@ var progressTask = Task.Run(async () =>
     }
 });
 
-await torrent.CheckAsync();
-await torrent.StartAsync();
 await torrent.Completion;
 await progressTask;
 ```
