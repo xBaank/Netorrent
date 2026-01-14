@@ -156,7 +156,7 @@ jobs:
         ls -la ./artifacts/ || echo "No artifacts found"
     
     - name: Upload artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       if: steps.setup.outputs.should-publish == 'true'
       with:
         name: nuget-packages-${{ steps.setup.outputs.version }}
