@@ -37,3 +37,13 @@ jobs:
     
     - name: Test
       run: dotnet test --no-build --configuration Release --verbosity normal
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-output-${{ github.run_number }}
+        path: |
+          Netorrent/bin/Release/
+          Netorrent.Tests/bin/Release/
+          **/*.csproj
+        retention-days: 1

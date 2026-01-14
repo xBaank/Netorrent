@@ -1,8 +1,12 @@
 name: NuGet Publish
 
 on:
-  push:
+  workflow_run:
+    workflows: [".NET CI"]
+    types:
+      - completed
     branches: [ master, develop ]
+  push:
     tags: [ '*' ]
   workflow_dispatch:
     inputs:
@@ -34,8 +38,9 @@ env:
   NUGET_SOURCE: https://api.nuget.org/v3/index.json
 
 jobs:
-  build:
+  package:
     runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
     outputs:
       version: ${{ steps.setup.outputs.version }}
       is-nightly: ${{ steps.setup.outputs.is-nightly }}
@@ -54,19 +59,11 @@ jobs:
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
     
-    - name: Cache NuGet packages
-      uses: actions/cache@v4
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
       with:
-        path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-        restore-keys: |
-          ${{ runner.os }}-nuget-
-    
-    - name: Restore dependencies
-      run: dotnet restore
-    
-    - name: Build
-      run: dotnet build --no-restore --configuration Release
+        name: build-output-${{ github.event.workflow_run.id }}
+        path: ./build-output
     
     - name: Setup version and publishing strategy
       id: setup
@@ -75,9 +72,14 @@ jobs:
         script: |
           
           // Get current context
-          const ref = context.ref;
+          let ref = context.ref;
           const eventName = context.eventName;
           const inputs = context.payload.inputs || {};
+          
+          // For workflow_run events, use the original workflow context
+          if (eventName === 'workflow_run') {
+            ref = context.payload.workflow_run.head_branch;
+          }
           
           // Initialize variables
           let version = '';
@@ -97,15 +99,15 @@ jobs:
             createRelease = inputs.create_release === true && isRelease;
           } else {
             // Automatic version detection
-            if (ref === 'refs/heads/develop') {
+            if (ref === 'develop' || ref === 'refs/heads/develop') {
               // Nightly builds for develop branch
               const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-              const commitSha = context.sha.substring(0, 7);
+              const commitSha = context.payload.workflow_run?.head_sha?.substring(0, 7) || context.sha.substring(0, 7);
               version = `1.0.0-nightly-${timestamp}-${commitSha}`;
               isNightly = true;
               shouldPublish = true;
               environment = 'nightly';
-            } else if (ref.startsWith('refs/tags/')) {
+            } else if (ref && ref.startsWith('refs/tags/')) {
               // Release from git tag
               version = ref.replace('refs/tags/v', '');
               version = ref.replace('refs/tags/', '');
@@ -120,7 +122,7 @@ jobs:
               isRelease = true;
               shouldPublish = true;
               environment = 'production';
-            } else if (ref === 'refs/heads/master') {
+            } else if (ref === 'master' || ref === 'refs/heads/master') {
               // master branch builds (preview versions)
               version = `1.0.0-preview-${context.runNumber}`;
               environment = 'staging';
@@ -145,7 +147,7 @@ jobs:
           core.setOutput('is-release', isRelease);
           core.setOutput('should-publish', shouldPublish);
           core.setOutput('environment', environment);
-          core.setOutput('create-release', createRelease && ref.startsWith('refs/tags/'));
+          core.setOutput('create-release', createRelease);
           
           // Log information
           console.log(`Version: ${version}`);
@@ -181,16 +183,16 @@ jobs:
         retention-days: ${{ steps.setup.outputs.is-nightly == 'true' && '30' || '90' }}
 
   publish:
-    needs: build
+    needs: package
     runs-on: ubuntu-latest
-    if: needs.build.outputs.should-publish == 'true'
-    environment: ${{ needs.build.outputs.environment }}
+    if: needs.package.outputs.should-publish == 'true'
+    environment: ${{ needs.package.outputs.environment }}
     
     steps:
     - name: Download artifacts
       uses: actions/download-artifact@v4
       with:
-        name: nuget-packages-${{ needs.build.outputs.version }}
+        name: nuget-packages-${{ needs.package.outputs.version }}
         path: ./artifacts
     
     - name: Setup .NET
