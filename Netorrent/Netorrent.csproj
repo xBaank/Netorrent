@@ -12,7 +12,7 @@
     <RepositoryUrl>https://github.com/xBaank/Netorrent</RepositoryUrl>
     <PackageProjectUrl>https://github.com/xBaank/Netorrent</PackageProjectUrl>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
-    <PackageReadmeFile>../README.md</PackageReadmeFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
     <PackageTags>torrent;dotnet;networking;p2p;filesharing;bittorrent</PackageTags>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
@@ -37,5 +37,8 @@
     <InternalsVisibleTo Include="Netorrent.Tests" />
     <InternalsVisibleTo Include="Netorrent.Tests.Integration" />
     <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>
