@@ -113,7 +113,26 @@ var torrent = await client.CreateTorrentAsync(
 );
 ```
 
-### Error Handling and Cancellation
+### Stopping and Canceling Torrents
+
+```csharp
+using Netorrent.TorrentFile;
+
+await using var client = new TorrentClient();
+await using var torrent = await client.LoadTorrentAsync("file.torrent", "output");
+
+await torrent.StartAsync();
+
+// Request a stop (doesn't wait for ongoing operations to finish)
+torrent.Stop();
+Console.WriteLine("Stop requested");
+
+// Or stop gracefully (waits for current operations to complete)
+await torrent.StopAsync();
+Console.WriteLine("Torrent stopped gracefully");
+```
+
+### Cancellation with CancellationToken
 
 ```csharp
 using Netorrent.TorrentFile;
@@ -128,6 +147,9 @@ try
         "output",
         cancellationToken: cts.Token
     );
+
+    // Register cancellation callback
+    cts.Token.Register(() => torrent.Stop());
 
     // Cancel download after 30 seconds
     cts.CancelAfter(TimeSpan.FromSeconds(30));
@@ -144,6 +166,8 @@ catch (Exception ex)
     Console.WriteLine($"Error: {ex.Message}");
 }
 ```
+
+
 
 ### Statistics Monitoring
 
