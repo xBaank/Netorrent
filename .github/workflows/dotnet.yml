@@ -35,13 +35,5 @@ jobs:
     - name: Build
       run: dotnet build --no-restore --configuration Release
     
-    - name: Test with Code Coverage
-      run: dotnet test --no-build --configuration Release --coverage --coverage-output ./coverage/
-    
-    - name: Upload coverage reports
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: coverage-reports-${{ github.run_number }}
-        path: ./coverage/**/coverage.cobertura.xml
-        retention-days: 30
+    - name: Test
+      run: dotnet test --no-build --configuration Release --verbosity normal
