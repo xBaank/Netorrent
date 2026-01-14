@@ -1,5 +1,6 @@
 ﻿[assembly: System.Reflection.AssemblyMetadata("IsAotCompatible", "True")]
 [assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/xBaank/Netorrent")]
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("DynamicProxyGenAssembly2")]
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Netorrent.Tests")]
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Netorrent.Tests.Integration")]
