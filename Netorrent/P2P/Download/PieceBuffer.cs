@@ -13,21 +13,26 @@ internal class PieceBuffer : IDisposable
     private readonly bool[] _blockReceivedFlags; //TODO use bitarray or bitmask (long)?
     private readonly int _blocksCount;
     private readonly int _index;
-    private readonly FileManager _fileManager;
+    private readonly IPieceStorage _pieceWriter;
+    private readonly int _blockSize;
 
-    public PieceBuffer(int index, FileManager fileManager)
+    public int Size { get; }
+
+    public PieceBuffer(int index, IPieceStorage pieceWriter, IPiecePicker piecePicker)
     {
         _index = index;
-        _fileManager = fileManager;
-        _blocksCount = fileManager.GetBlockCountByPieceIndex(index);
-        var pieceSize = fileManager.GetPieceSize(index);
+        _pieceWriter = pieceWriter;
+        _blockSize = piecePicker.BlockSize;
+        _blocksCount = piecePicker.GetBlockCountByPieceIndex(index);
+        var pieceSize = piecePicker.GetPieceSize(index);
         _buffer = new RentedArray<byte>(ArrayPool<byte>.Shared.Rent(pieceSize), pieceSize);
         _blockReceivedFlags = new bool[_blocksCount];
+        Size = pieceSize;
     }
 
     public void AddBlock(Block block)
     {
-        var blockIndex = block.BlockIndex;
+        var blockIndex = block.Begin / _blockSize;
         if (_blockReceivedFlags[blockIndex])
         {
             block.Dispose();
@@ -41,19 +46,12 @@ internal class PieceBuffer : IDisposable
 
     public async ValueTask<bool> WritePieceAsync(CancellationToken cancellationToken)
     {
-        if (!IsComplete)
-        {
-            return false;
-        }
-
-        var isOK = await _fileManager
-            .VerifyPieceAsync(_index, _buffer.Memory, cancellationToken)
-            .ConfigureAwait(false);
+        var isOK = _pieceWriter.VerifyPiece(_index, _buffer.Memory);
 
         if (isOK)
         {
-            await _fileManager
-                .WritePieceAsync(_index, 0, _buffer.Memory, cancellationToken)
+            await _pieceWriter
+                .WriteAsync(_index, 0, _buffer.Memory, cancellationToken)
                 .ConfigureAwait(false);
         }
 

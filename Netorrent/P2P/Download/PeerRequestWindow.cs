@@ -1,36 +1,49 @@
-﻿namespace Netorrent.P2P.Download;
+﻿using System.Reflection.PortableExecutable;
+using Netorrent.P2P.Measurement;
+
+namespace Netorrent.P2P.Download;
 
 internal class PeerRequestWindow(int blockSize)
 {
-    private const int MinRequests = 4;
-    private const int MaxRequests = 64;
-    private const double SafetyFactor = 1.2;
+    private const double SafetyFactor = 1.5;
+    private const ulong MinRequests = 4;
 
-    public int BlockSize { get; } = blockSize;
-    private double _smoothedRttSeconds = 0.2;
-    private readonly Lock _windowLock = new();
+    private ulong _maxInFlightRequests = MinRequests;
+    private double _lastbytesPerSecond = 0;
+    private bool _slowStart = true;
 
-    private int _maxInFlightRequests = MinRequests;
+    public ulong MaxInFlightRequests => _maxInFlightRequests;
 
-    public int MaxInFlightRequests => Volatile.Read(ref _maxInFlightRequests);
-
-    public void CalculateWindow(long bytesPerSecond, TimeSpan rtt)
+    private void CalculateWindow(double bytesPerSecond)
     {
-        lock (_windowLock)
+        if (_slowStart)
         {
-            _smoothedRttSeconds = 0.875 * _smoothedRttSeconds + 0.125 * rtt.TotalSeconds;
-
-            if (bytesPerSecond <= 0 || _smoothedRttSeconds <= 0)
-                _maxInFlightRequests = MinRequests;
-
-            double bdp = bytesPerSecond * _smoothedRttSeconds;
-            double neededBlocks = bdp / BlockSize;
-
-            neededBlocks *= SafetyFactor;
-
-            int window = (int)Math.Ceiling(neededBlocks);
-
-            _maxInFlightRequests = Math.Clamp(window, MinRequests, MaxRequests);
+            return;
         }
+
+        var neededBlocks = bytesPerSecond / blockSize;
+        _maxInFlightRequests = (ulong)(Math.Max(neededBlocks, MinRequests) * SafetyFactor);
+    }
+
+    public void ReceivedBlock(double bytesPerSecond)
+    {
+        if (!_slowStart)
+        {
+            return;
+        }
+
+        if (bytesPerSecond < _lastbytesPerSecond)
+        {
+            _slowStart = false;
+            return;
+        }
+
+        _lastbytesPerSecond = bytesPerSecond;
+        _maxInFlightRequests += 1;
+    }
+
+    public Timer StartSampling(TimeSpan period, SpeedTracker speedTracker)
+    {
+        return new Timer(_ => CalculateWindow(speedTracker.Speed.Bps), null, TimeSpan.Zero, period);
     }
 }

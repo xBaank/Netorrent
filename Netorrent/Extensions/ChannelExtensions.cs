@@ -22,5 +22,16 @@ internal static class ChannelExtensions
                 throw;
             }
         }
+
+        public bool TryWriteOrDispose(T item)
+        {
+            if (source.TryWrite(item))
+            {
+                return true;
+            }
+
+            item.Dispose();
+            return false;
+        }
     }
 }

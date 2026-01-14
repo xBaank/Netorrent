@@ -1,12 +1,12 @@
 ﻿using System.Buffers;
 using System.Buffers.Binary;
+using Netorrent.Extensions;
 using Netorrent.Other;
 
 namespace Netorrent.P2P.Messages;
 
 /// <summary>
-/// Represents a generic BitTorrent protocol message.
-/// Each message = [length prefix][message ID][payload]
+/// Represents a BitTorrent protocol message.
 /// </summary>
 internal readonly record struct Message(byte Id, RentedArray<byte>? Payload) : IDisposable
 {
@@ -79,13 +79,10 @@ internal readonly record struct Message(byte Id, RentedArray<byte>? Payload) : I
     /// </summary>
     public static Message From(byte[] array, int length, byte id)
     {
-        if (array.Length < 4)
-            throw new ArgumentException("Message too short");
-
         if (array.Length < length)
             throw new ArgumentException("Incomplete message");
 
-        if (length == 1)
+        if (length == 0)
             return new Message(id, null);
 
         return new Message(id, new RentedArray<byte>(array, length));

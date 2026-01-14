@@ -1,6 +1,6 @@
 ﻿namespace Netorrent.Tracker;
 
-public static class Events
+internal static class Events
 {
     public const string Started = "started";
     public const string Stopped = "stopped";
