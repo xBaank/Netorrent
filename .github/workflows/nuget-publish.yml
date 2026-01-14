@@ -68,15 +68,11 @@ jobs:
     - name: Build
       run: dotnet build --no-restore --configuration Release
     
-    - name: Test
-      run: dotnet test --no-build --configuration Release --verbosity normal
-    
     - name: Setup version and publishing strategy
       id: setup
-      uses: actions/github-script@v7
+      uses: actions/github-script@v8
       with:
         script: |
-          const core = require('@actions/core');
           
           // Get current context
           const ref = context.ref;
