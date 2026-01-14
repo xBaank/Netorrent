@@ -1,28 +1,50 @@
-# This workflow will build a .NET project
+# This workflow will build and test a .NET project
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-net
 
-name: .NET
+name: .NET CI
 
 on:
   push:
-    branches: [ "*" ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ "*" ]
+    branches: [ main, develop ]
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
+    
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 10.0.x
+    
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+    
     - name: Restore dependencies
       run: dotnet restore
+    
     - name: Build
-      run: dotnet build --no-restore
+      run: dotnet build --no-restore --configuration Release
+    
     - name: Test
-      run: dotnet test --no-build --verbosity normal
+      run: dotnet test --no-build --configuration Release --verbosity normal
+    
+    - name: Code Coverage
+      run: dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage" --results-directory ./TestResults
+    
+    - name: Upload coverage reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: coverage-reports
+        path: ./TestResults/**/coverage.cobertura.xml
+        retention-days: 30

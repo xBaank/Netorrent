@@ -1,0 +1,212 @@
+name: Manual NuGet Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 1.0.0, 1.0.0-preview, 1.0.0-nightly-20250114-1430)'
+        required: true
+        type: string
+      environment:
+        description: 'Publish environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+      create_release:
+        description: 'Create GitHub release (production only)'
+        required: false
+        type: boolean
+        default: false
+      release_notes:
+        description: 'Release notes (if creating release)'
+        required: false
+        type: string
+
+env:
+  DOTNET_VERSION: 10.0.x
+  NUGET_SOURCE: https://api.nuget.org/v3/index.json
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Validate version format
+      run: |
+        VERSION="${{ github.event.inputs.version }}"
+        
+        # Check version format (basic SemVer validation)
+        if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\.]+)?$ ]]; then
+          echo "❌ Invalid version format: $VERSION"
+          echo "Expected format: X.Y.Z or X.Y.Z-suffix"
+          exit 1
+        fi
+        
+        echo "✅ Version format is valid: $VERSION"
+        
+        # Check if version looks like nightly
+        if [[ "$VERSION" == *"nightly"* ]]; then
+          echo "📛 Detected nightly version"
+          echo "is_nightly=true" >> $GITHUB_ENV
+        else
+          echo "🏷️ Detected release/preview version"
+          echo "is_nightly=false" >> $GITHUB_ENV
+        fi
+      shell: bash
+    
+    - name: Validate environment
+      run: |
+        ENVIRONMENT="${{ github.event.inputs.environment }}"
+        IS_NIGHTLY="${{ env.is_nightly }}"
+        
+        if [[ "$IS_NIGHTLY" == "true" && "$ENVIRONMENT" == "production" ]]; then
+          echo "⚠️ Warning: Publishing nightly version to production environment"
+        elif [[ "$IS_NIGHTLY" == "false" && "$ENVIRONMENT" == "staging" ]]; then
+          echo "ℹ️ Info: Publishing release/preview version to staging environment"
+        fi
+        
+        echo "✅ Environment validation passed"
+      shell: bash
+
+  build-and-publish:
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+    
+    - name: Restore dependencies
+      run: dotnet restore
+    
+    - name: Build
+      run: dotnet build --no-restore --configuration Release
+    
+    - name: Test
+      run: dotnet test --no-build --configuration Release --verbosity normal
+    
+    - name: Pack
+      run: |
+        VERSION="${{ github.event.inputs.version }}"
+        ENVIRONMENT="${{ github.event.inputs.environment }}"
+        
+        # Determine if we should include symbols
+        INCLUDE_SYMBOLS="false"
+        if [[ "$ENVIRONMENT" == "production" && "$VERSION" != *"nightly"* && "$VERSION" != *"preview"* ]]; then
+          INCLUDE_SYMBOLS="true"
+        fi
+        
+        dotnet pack Netorrent/Netorrent.csproj \
+          --configuration Release \
+          --output ./artifacts \
+          -p:PackageVersion=$VERSION \
+          -p:ContinuousIntegrationBuild=true \
+          -p:IncludeSymbols=$INCLUDE_SYMBOLS
+    
+    - name: List packages
+      run: |
+        echo "Generated packages:"
+        ls -la ./artifacts/
+      shell: bash
+    
+    - name: Publish to NuGet
+      run: |
+        dotnet nuget push ./artifacts/*.nupkg \
+          --source ${{ env.NUGET_SOURCE }} \
+          --api-key ${{ secrets.NUGET_API_KEY }} \
+          --skip-duplicate
+      env:
+        NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+    
+    - name: Publish symbols (production releases only)
+      if: github.event.inputs.environment == 'production' && github.event.inputs.version != 'nightly' && github.event.inputs.version != 'preview'
+      run: |
+        dotnet nuget push ./artifacts/*.snupkg \
+          --source ${{ env.NUGET_SOURCE }} \
+          --api-key ${{ secrets.NUGET_API_KEY }} \
+          --skip-duplicate
+      env:
+        NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+    
+    - name: Create GitHub Release
+      if: github.event.inputs.create_release == 'true' && github.event.inputs.environment == 'production'
+      run: |
+        VERSION="${{ github.event.inputs.version }}"
+        RELEASE_NOTES="${{ github.event.inputs.release_notes }}"
+        
+        # Create release
+        if [[ -n "$RELEASE_NOTES" ]]; then
+          gh release create $VERSION \
+            --title "Release $VERSION" \
+            --notes "$RELEASE_NOTES" \
+            --verify-tag
+        else
+          gh release create $VERSION \
+            --title "Release $VERSION" \
+            --generate-notes \
+            --verify-tag
+        fi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Upload release artifacts
+      if: github.event.inputs.create_release == 'true' && github.event.inputs.environment == 'production'
+      run: |
+        VERSION="${{ github.event.inputs.version }}"
+        
+        # Upload NuGet packages to release
+        for file in ./artifacts/*.nupkg; do
+          gh release upload $VERSION "$file" --clobber
+        done
+        
+        # Upload symbol packages if they exist
+        for file in ./artifacts/*.snupkg; do
+          gh release upload $VERSION "$file" --clobber
+        done
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  summary:
+    needs: [validate, build-and-publish]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Publish Summary
+      run: |
+        echo "## Manual NuGet Publishing Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Version**: ${{ github.event.inputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Environment**: ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Validation Status**: ${{ needs.validate.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Publish Status**: ${{ needs.build-and-publish.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **GitHub Release**: ${{ github.event.inputs.create_release == 'true' && 'Created' || 'Not created' }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [[ "${{ needs.build-and-publish.result }}" == "success" ]]; then
+          echo "### Package Information" >> $GITHUB_STEP_SUMMARY
+          echo "- **NuGet Package**: [Netorrent.${{ github.event.inputs.version }}](https://www.nuget.org/packages/Netorrent/${{ github.event.inputs.version }})" >> $GITHUB_STEP_SUMMARY
+          echo "- **Installation**: \`dotnet add package Netorrent --version ${{ github.event.inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ github.event.inputs.create_release }}" == "true" ]]; then
+            echo "- **GitHub Release**: [View Release](https://github.com/${{ github.repository }}/releases/tag/${{ github.event.inputs.version }})" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi

@@ -1,0 +1,203 @@
+name: NuGet Publish
+
+on:
+  push:
+    branches: [ main, develop ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ published ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Override version (optional)'
+        required: false
+        type: string
+      publish_nightly:
+        description: 'Publish as nightly build'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  DOTNET_VERSION: 10.0.x
+  NUGET_SOURCE: https://api.nuget.org/v3/index.json
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is-nightly: ${{ steps.version.outputs.is-nightly }}
+      is-release: ${{ steps.version.outputs.is-release }}
+      should-publish: ${{ steps.version.outputs.should-publish }}
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+    
+    - name: Restore dependencies
+      run: dotnet restore
+    
+    - name: Build
+      run: dotnet build --no-restore --configuration Release
+    
+    - name: Test
+      run: dotnet test --no-build --configuration Release --verbosity normal --collect:"XPlat Code Coverage"
+    
+    - name: Determine version and publishing strategy
+      id: version
+      run: |
+        # Initialize variables
+        VERSION=""
+        IS_NIGHTLY="false"
+        IS_RELEASE="false"
+        SHOULD_PUBLISH="false"
+        
+        # Check for manual override
+        if [[ -n "${{ github.event.inputs.version }}" ]]; then
+          VERSION="${{ github.event.inputs.version }}"
+          if [[ "${{ github.event.inputs.publish_nightly }}" == "true" ]]; then
+            IS_NIGHTLY="true"
+          else
+            IS_RELEASE="true"
+          fi
+          SHOULD_PUBLISH="true"
+        else
+          # Automatic version detection based on trigger
+          if [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            # Per-commit nightly builds for develop branch
+            TIMESTAMP=$(date +'%Y%m%d-%H%M')
+            COMMIT_SHA=$(git rev-parse --short HEAD)
+            VERSION="1.0.0-nightly-${TIMESTAMP}-${COMMIT_SHA}"
+            IS_NIGHTLY="true"
+            SHOULD_PUBLISH="true"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            # Release from git tag
+            VERSION="${{ github.ref_name }}"
+            IS_RELEASE="true"
+            SHOULD_PUBLISH="true"
+          elif [[ "${{ github.event_name }}" == "release" ]]; then
+            # Release from GitHub release
+            VERSION="${{ github.event.release.tag_name }}"
+            IS_RELEASE="true"
+            SHOULD_PUBLISH="true"
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            # Main branch builds (preview versions)
+            VERSION="1.0.0-preview-${{ github.run_number }}"
+            SHOULD_PUBLISH="false"  # Don't auto-publish from main
+          fi
+        fi
+        
+        # Output variables
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "is-nightly=$IS_NIGHTLY" >> $GITHUB_OUTPUT
+        echo "is-release=$IS_RELEASE" >> $GITHUB_OUTPUT
+        echo "should-publish=$SHOULD_PUBLISH" >> $GITHUB_OUTPUT
+        
+        # Log information
+        echo "Version: $VERSION"
+        echo "Is Nightly: $IS_NIGHTLY"
+        echo "Is Release: $IS_RELEASE"
+        echo "Should Publish: $SHOULD_PUBLISH"
+      shell: bash
+    
+    - name: Pack with version
+      run: |
+        dotnet pack Netorrent/Netorrent.csproj \
+          --configuration Release \
+          --output ./artifacts \
+          -p:PackageVersion=${{ steps.version.outputs.version }} \
+          -p:ContinuousIntegrationBuild=true \
+          -p:IncludeSymbols=${{ steps.version.outputs.is-release == 'true' }}
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: nuget-packages-${{ steps.version.outputs.version }}
+        path: ./artifacts/*.nupkg
+        retention-days: ${{ steps.version.outputs.is-nightly == 'true' && '30' || '90' }}
+
+  publish:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: needs.build-and-test.outputs.should-publish == 'true'
+    environment: ${{ needs.build-and-test.outputs.is-release == 'true' && 'production' || 'nightly' }}
+    
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: nuget-packages-${{ needs.build-and-test.outputs.version }}
+        path: ./artifacts
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    
+    - name: Publish to NuGet
+      run: |
+        dotnet nuget push ./artifacts/*.nupkg \
+          --source ${{ env.NUGET_SOURCE }} \
+          --api-key ${{ secrets.NUGET_API_KEY }} \
+          --skip-duplicate
+      env:
+        NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+    
+    - name: Publish symbols (release only)
+      if: needs.build-and-test.outputs.is-release == 'true'
+      run: |
+        dotnet nuget push ./artifacts/*.snupkg \
+          --source ${{ env.NUGET_SOURCE }} \
+          --api-key ${{ secrets.NUGET_API_KEY }} \
+          --skip-duplicate
+      env:
+        NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+    
+    - name: Create GitHub Release (release only)
+      if: needs.build-and-test.outputs.is-release == 'true' && github.event_name != 'release'
+      run: |
+        gh release create ${{ needs.build-and-test.outputs.version }} \
+          --title "Release ${{ needs.build-and-test.outputs.version }}" \
+          --generate-notes \
+          --verify-tag
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  summary:
+    needs: [build-and-test, publish]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Publish Summary
+      run: |
+        echo "## NuGet Publishing Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Version**: ${{ needs.build-and-test.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Build Status**: ${{ needs.build-and-test.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Publish Status**: ${{ needs.publish.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Package Type**: ${{ needs.build-and-test.outputs.is-nightly == 'true' && 'Nightly' || needs.build-and-test.outputs.is-release == 'true' && 'Release' || 'Preview' }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [[ "${{ needs.build-and-test.outputs.should-publish }}" == "true" ]]; then
+          echo "### Package Information" >> $GITHUB_STEP_SUMMARY
+          echo "- **NuGet Package**: [Netorrent.${{ needs.build-and-test.outputs.version }}](https://www.nuget.org/packages/Netorrent/${{ needs.build-and-test.outputs.version }})" >> $GITHUB_STEP_SUMMARY
+          echo "- **Installation**: \`dotnet add package Netorrent --version ${{ needs.build-and-test.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+        fi
