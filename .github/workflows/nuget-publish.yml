@@ -175,7 +175,9 @@ jobs:
       if: steps.setup.outputs.should-publish == 'true'
       with:
         name: nuget-packages-${{ steps.setup.outputs.version }}
-        path: ./artifacts/*.nupkg
+        path: |
+          ./artifacts/*.nupkg
+          ./artifacts/*.snupkg
         retention-days: ${{ steps.setup.outputs.is-nightly == 'true' && '30' || '90' }}
 
   publish:
