@@ -163,7 +163,7 @@ The library is designed with async-first architecture for optimal performance:
 ### 🚀 Preview Releases
 - **Purpose**: Pre-release testing of upcoming features
 - **Versioning**: Pre-release suffix (e.g., `1.0.0-preview-123`)
-- **Updates**: Periodic builds from main branch
+- **Updates**: Periodic builds from master branch
 - **Installation**: `dotnet add package Netorrent --prerelease`
 
 ### Version Selection Strategies
