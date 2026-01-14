@@ -1,21 +1,221 @@
 # Netorrent
-Implementation of [BiTorrent Protocol](https://bittorrent.org/beps/bep_0003.html)
 
-## Supported
-- [x] Torrent files
-- [x] Http Trackers
-- [X] Peer Wire Protocol (TCP)
-- [X] [Udp trackers](https://www.bittorrent.org/beps/bep_0015.html)
-- [ ] [μTP](https://www.bittorrent.org/beps/bep_0029.html)
-- [ ] [DHT](https://www.bittorrent.org/beps/bep_0005.html)
-- [ ] [Message encryption](https://bittorrent.org/beps/bep_0008.html)
-- [ ] Upnp & pmp (Allows incoming TCP connections when the peer is behind a nat)
-- [ ] Magnet Links
-- [ ] Endgame (High priority)
+A high-performance, async-first .NET 10.0 BitTorrent client library for downloading and seeding torrents.
 
-## TODO
-- [ ] Improve chocking/unchoking
-- [ ] Improve memory handling and cpu usage with MemoryRented
-- [ ] Properly handle peers that lost connection to connect to other peers 
+## Installation
+
+```bash
+dotnet add package Netorrent
+```
+
+**Requirements:**
+- .NET 10.0 or higher
+- Dependencies automatically included:
+  - Microsoft.Extensions.Logging.Abstractions
+  - R3 (Reactive Extensions)
+  - ZLinq (High-performance LINQ)
+
+## Quick Start
+
+```csharp
+using Netorrent.TorrentFile;
+
+await using var client = new TorrentClient();
+await using var torrent = await client.LoadTorrentAsync(
+    "path/to/file.torrent", 
+    "output/directory"
+);
+
+await torrent.CheckAsync();  // Verify existing data
+await torrent.StartAsync();  // Start downloading
+
+await torrent.Completion;    // Wait for completion
+```
 
 
+
+## Usage Examples
+
+### Basic Downloading
+
+```csharp
+using Netorrent.TorrentFile;
+
+await using var client = new TorrentClient();
+await using var torrent = await client.LoadTorrentAsync(
+    "example.torrent", 
+    "downloads"
+);
+
+await torrent.StartAsync();
+await torrent.Completion;
+Console.WriteLine("Download complete!");
+```
+
+### Advanced Configuration with Monitoring
+
+```csharp
+using Microsoft.Extensions.Logging;
+using Netorrent.TorrentFile;
+
+var logger = LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<Netorrent.TorrentFile.TorrentClient>();
+
+await using var client = new TorrentClient(options => options with
+{
+    Logger = logger,
+    UsedAdressProtocol = UsedAddressProtocol.Ipv4,
+    UsedTrackers = UsedTrackers.Http | UsedTrackers.Udp
+});
+
+await using var torrent = await client.LoadTorrentAsync("file.torrent", "output");
+
+// Monitor progress
+var progressTask = Task.Run(async () =>
+{
+    while (!torrent.Completion.IsCompleted)
+    {
+        var stats = torrent.Statistics;
+        Console.WriteLine($"Downloaded: {stats.Data.Verified.Bytes} / {stats.Data.Total.Bytes}");
+        Console.WriteLine($"Peers: {stats.Peers.ConnectedCount}");
+        await Task.Delay(1000);
+    }
+});
+
+await torrent.CheckAsync();
+await torrent.StartAsync();
+await torrent.Completion;
+await progressTask;
+```
+
+### Torrent Creation
+
+```csharp
+using Netorrent.TorrentFile;
+
+await using var client = new TorrentClient();
+
+// Create torrent from single file
+var torrent = await client.CreateTorrentAsync(
+    "path/to/file.txt",
+    "http://tracker.example.com/announce"
+);
+
+// Create torrent from directory with multiple trackers
+var torrent = await client.CreateTorrentAsync(
+    "path/to/directory",
+    "http://primary.tracker.com/announce",
+    announceUrls: new List<string>
+    {
+        "http://backup1.tracker.com/announce",
+        "http://backup2.tracker.com/announce"
+    },
+    pieceLength: 512 * 1024  // 512KB pieces
+);
+```
+
+### Error Handling and Cancellation
+
+```csharp
+using Netorrent.TorrentFile;
+
+await using var cts = new CancellationTokenSource();
+await using var client = new TorrentClient();
+
+try
+{
+    await using var torrent = await client.LoadTorrentAsync(
+        "file.torrent", 
+        "output",
+        cancellationToken: cts.Token
+    );
+
+    // Cancel download after 30 seconds
+    cts.CancelAfter(TimeSpan.FromSeconds(30));
+
+    await torrent.StartAsync();
+    await torrent.Completion;
+}
+catch (OperationCanceledException)
+{
+    Console.WriteLine("Download cancelled");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"Error: {ex.Message}");
+}
+```
+
+### Statistics Monitoring
+
+```csharp
+using Netorrent.TorrentFile;
+
+await using var client = new TorrentClient();
+await using var torrent = await client.LoadTorrentAsync("file.torrent", "output");
+
+await torrent.StartAsync();
+
+// Monitor detailed statistics
+while (!torrent.Completion.IsCompleted)
+{
+    var data = torrent.Statistics.Data;
+    var peers = torrent.Statistics.Peers;
+    var check = torrent.Statistics.Check;
+    
+    Console.WriteLine($"Progress: {(double)data.Verified.Bytes / data.Total.Bytes:P1}");
+    Console.WriteLine($"Download speed: {data.DownloadSpeed.BytesPerSecond} B/s");
+    Console.WriteLine($"Upload speed: {data.UploadSpeed.BytesPerSecond} B/s");
+    Console.WriteLine($"Connected peers: {peers.ConnectedCount}");
+    Console.WriteLine($"Pieces checked: {check.CheckedPiecesCount} / {check.TotalPiecesCount}");
+    
+    await Task.Delay(1000);
+}
+```
+
+## Configuration
+
+### Client Options
+
+```csharp
+await using var client = new TorrentClient(options => options with
+{
+    Logger = myLogger,
+    UsedAdressProtocol = UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6,
+    UsedTrackers = UsedTrackers.Http | UsedTrackers.Udp,
+    ForcedIp = IPAddress.Parse("192.168.1.100")  // Optional: Force specific IP
+});
+```
+
+### Protocol Selection
+
+- **IPv4/IPv6**: Choose which IP protocols to use
+- **HTTP/UDP Trackers**: Select tracker communication protocols
+- **Logging**: Integrate with any Microsoft.Extensions.Logging provider
+
+### Performance Considerations
+
+The library is designed with async-first architecture for optimal performance:
+- Channel-based communication between components
+- Memory pooling for efficient buffer management
+- Concurrent collections for thread-safe operations
+- Minimal allocations in hot paths
+
+## Features
+
+- [x] **Torrent files** - Complete .torrent file support
+- [x] **HTTP Trackers** - Full HTTP tracker protocol implementation
+- [x] **Peer Wire Protocol** - TCP peer communication
+- [x] **UDP Trackers** - High-performance UDP tracker support
+- [x] **Piece Verification** - SHA-1 hash verification of downloaded pieces
+- [x] **Multi-tracker Support** - Primary and backup tracker support
+- [x] **Resume Downloads** - Support for partially downloaded torrents
+- [x] **Real-time Statistics** - Comprehensive download/upload monitoring
+- [x] **Async/Await Support** - Modern async-first API design
+- [x] **Cancellation Support** - Full CancellationToken integration
+- [x] **Torrent Creation** - Create torrents from files and directories
+- [ ] **μTP Protocol** - Micro Transport Protocol (BEP 0029)
+- [ ] **DHT Support** - Distributed Hash Table (BEP 0005)
+- [ ] **Message Encryption** - Protocol encryption (BEP 0008)
+- [ ] **UPnP/PMP** - NAT traversal for incoming connections
+- [ ] **Magnet Links** - URI-based torrent identification
+- [ ] **Endgame Mode** - Optimized piece downloading for completion
