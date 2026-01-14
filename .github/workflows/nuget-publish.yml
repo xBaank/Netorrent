@@ -79,6 +79,26 @@ jobs:
           const eventName = context.eventName;
           const inputs = context.payload.inputs || {};
           
+          // Get latest version from git tags (fallback to 0.0.1)
+          let baseVersion = '0.0.1';
+          try {
+            const { execSync } = require('child_process');
+            // Get the highest semantic version tag
+            const gitTags = execSync('git tag --sort=-version:refname', { encoding: 'utf8' })
+              .split('\n')
+              .filter(tag => tag.match(/^v?\d+\.\d+\.\d+$/));
+            
+            if (gitTags.length > 0) {
+              // Extract version number from tag (remove 'v' prefix if present)
+              baseVersion = gitTags[0].replace(/^v/, '');
+              console.log(`Found latest version tag: ${gitTags[0]} -> ${baseVersion}`);
+            } else {
+              console.log('No version tags found, using fallback: 0.0.1');
+            }
+          } catch (error) {
+            console.log('Could not get version from git tags, using fallback: 0.0.1');
+          }
+          
           // Initialize variables
           let version = '';
           let isNightly = false;
@@ -101,7 +121,7 @@ jobs:
               // Nightly builds for develop branch
               const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
               const commitSha = context.sha.substring(0, 7);
-              version = `1.0.0-nightly-${timestamp}-${commitSha}`;
+              version = `${baseVersion}-nightly-${timestamp}-${commitSha}`;
               isNightly = true;
               shouldPublish = true;
               environment = 'nightly';
@@ -114,15 +134,9 @@ jobs:
               environment = 'production';
               // Create GitHub release for all tags
               createRelease = true;
-            } else if (eventName === 'release') {
-              // Release from GitHub release
-              version = context.payload.release.tag_name;
-              isRelease = true;
-              shouldPublish = true;
-              environment = 'production';
             } else if (ref === 'refs/heads/master') {
               // master branch builds (preview versions)
-              version = `1.0.0-preview-${context.runNumber}`;
+              version = `${baseVersion}-preview-${context.runNumber}`;
               environment = 'staging';
               shouldPublish = false; // Don't auto-publish from master
             }
