@@ -2,32 +2,8 @@ name: NuGet Publish
 
 on:
   push:
-    branches: [ master, develop ]
+    branches: [ develop ]
     tags: [ '*' ]
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Override version (optional)'
-        required: false
-        type: string
-      environment:
-        description: 'Publish environment'
-        required: false
-        default: 'auto'
-        type: choice
-        options:
-        - auto
-        - staging
-        - production
-      create_release:
-        description: 'Create GitHub release (production only)'
-        required: false
-        type: boolean
-        default: false
-      release_notes:
-        description: 'Release notes'
-        required: false
-        type: string
 
 env:
   DOTNET_VERSION: 10.0.x
@@ -134,11 +110,6 @@ jobs:
               environment = 'production';
               // Create GitHub release for all tags
               createRelease = true;
-            } else if (ref === 'refs/heads/master') {
-              // master branch builds (preview versions)
-              version = `${baseVersion}-preview-${context.runNumber}`;
-              environment = 'staging';
-              shouldPublish = false; // Don't auto-publish from master
             }
           }
           

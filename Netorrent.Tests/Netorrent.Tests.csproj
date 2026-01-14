@@ -11,12 +11,12 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="CSharpier.MsBuild" Version="1.2.1">
+    <PackageReference Include="CSharpier.MsBuild" Version="1.2.5">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Shouldly" Version="4.3.0" />
-    <PackageReference Include="TUnit" Version="1.11.18" />
+    <PackageReference Include="TUnit" Version="1.11.28" />
     <PackageReference Include="PublicApiGenerator" Version="11.5.4" />
   </ItemGroup>
   <ItemGroup>
