@@ -1,11 +1,25 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
+<Project Sdk="Microsoft.NET.Sdk">
+<PropertyGroup>
     <OutputType>Library</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsAotCompatible>true</IsAotCompatible>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <Nullable>enable</Nullable>
+    <!-- NuGet Package Metadata -->
+    <PackageId>Netorrent</PackageId>
+    <Authors>Your Name</Authors>
+    <Description>A .NET library for torrent operations with support for peer-to-peer networking</Description>
+    <RepositoryUrl>https://github.com/yourusername/Netorrent</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/yourusername/Netorrent</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageTags>torrent;dotnet;networking;p2p;filesharing;bittorrent</PackageTags>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <RepositoryType>git</RepositoryType>
+    <Copyright>Copyright © 2025</Copyright>
   </PropertyGroup>
   <PropertyGroup>
     <WarningsAsErrors>CS8600;CS8602;CS8603;CS8604;CS8618;CS8625</WarningsAsErrors>
