@@ -219,6 +219,13 @@ jobs:
           --api-key ${{ secrets.NUGET_API_KEY }} \
           --skip-duplicate
     
+    - name: Publish symbols
+      run: |
+        dotnet nuget push ./artifacts/*.snupkg \
+          --source ${{ env.NUGET_SOURCE }} \
+          --api-key ${{ secrets.NUGET_API_KEY }} \
+          --skip-duplicate
+    
     - name: Create GitHub Release
       if: needs.build.outputs.create-release == 'true'
       uses: actions/create-release@v1
