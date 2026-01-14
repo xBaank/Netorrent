@@ -2,7 +2,7 @@ name: NuGet Publish
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ master, develop ]
     tags: [ '*' ]
   workflow_dispatch:
     inputs:
@@ -225,25 +225,25 @@ jobs:
     
     - name: Create GitHub Release
       if: needs.build.outputs.create-release == 'true'
-      uses: actions/github-script@v7
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        script: |
-          const { version } = require('./package.json'); // Just to satisfy linter
-          const version = '${{ needs.build.outputs.version }}';
-          const inputs = context.payload.inputs || {};
+        tag_name: ${{ needs.build.outputs.version }}
+        release_name: Release ${{ needs.build.outputs.version }}
+        body: |
+          ## 📦 Package Information
+          - **Version**: `${{ needs.build.outputs.version }}`
+          - **NuGet**: [Netorrent.${{ needs.build.outputs.version }}](https://www.nuget.org/packages/Netorrent/${{ needs.build.outputs.version }})
+          - **Installation**: `dotnet add package Netorrent --version ${{ needs.build.outputs.version }}`
           
-          const releaseNotes = inputs.release_notes || undefined;
+          ${{ github.event.inputs.release_notes || '' }}
           
-          await github.rest.repos.createRelease({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            tag_name: version,
-            name: `Release ${version}`,
-            body: releaseNotes || `Release ${version}`,
-            generate_release_notes: !releaseNotes,
-            draft: false,
-            prerelease: version.includes('nightly') || version.includes('preview') || version.includes('rc')
-          });
+          ---
+          
+          🤖 *This release was automatically generated. Check [Actions](https://github.com/${{ github.repository }}/actions) for build details.*
+        draft: false
+        prerelease: ${{ contains(needs.build.outputs.version, 'nightly') || contains(needs.build.outputs.version, 'preview') || contains(needs.build.outputs.version, 'rc') }}
     
     - name: Upload release assets
       if: needs.build.outputs.create-release == 'true'
