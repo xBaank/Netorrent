@@ -27,7 +27,7 @@ internal class PeersClient(
     private readonly Subject<PeerEndpoint> _peerConnected = new();
     private readonly Channel<PeerConnection> _peerConnections =
         Channel.CreateBounded<PeerConnection>(
-            new BoundedChannelOptions(100) { SingleReader = true, SingleWriter = false }
+            new BoundedChannelOptions(128) { SingleReader = true, SingleWriter = false }
         );
 
     public PeerId PeerId => peerId;

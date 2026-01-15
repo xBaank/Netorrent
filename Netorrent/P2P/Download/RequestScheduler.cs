@@ -22,7 +22,7 @@ internal class RequestScheduler(
 
     private readonly Channel<DownloadMessage> _downloadMessageChannel =
         Channel.CreateBounded<DownloadMessage>(
-            new BoundedChannelOptions(512) { SingleWriter = false, SingleReader = true }
+            new BoundedChannelOptions(128) { SingleWriter = false, SingleReader = true }
         );
 
     private static readonly DownloadMessage.CheckTimeoutMessage _timeoutMessage = new();

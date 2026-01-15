@@ -23,7 +23,7 @@ internal class UploadScheduler(
 
     private readonly Channel<UploadMessage> _uploadMessagesChannel =
         Channel.CreateBounded<UploadMessage>(
-            new BoundedChannelOptions(256) { SingleWriter = false, SingleReader = true }
+            new BoundedChannelOptions(128) { SingleWriter = false, SingleReader = true }
         );
 
     private static readonly UploadMessage.CheckRoundMessage _checkRoundMessage = new();

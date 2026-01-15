@@ -54,7 +54,7 @@ public sealed class Torrent : IAsyncDisposable
         var files = metaInfo.Info.NormalizedFiles;
         var totalSize = files.Sum(i => i.Length);
         var trackersChannel = Channel.CreateBounded<IPEndPoint>(
-            new BoundedChannelOptions(100) { SingleWriter = false, SingleReader = true }
+            new BoundedChannelOptions(128) { SingleWriter = false, SingleReader = true }
         );
 
         MetaInfo = metaInfo;
