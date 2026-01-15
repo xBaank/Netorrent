@@ -1,6 +1,6 @@
 # Netorrent
 
-A high-performance, async-first .NET 10.0 BitTorrent client library for downloading and seeding torrents.
+A async-first .NET 10.0 BitTorrent client library for downloading and seeding torrents.
 
 ## Installation
 
@@ -56,9 +56,10 @@ await using var client = new TorrentClient();
 await using var torrent = await client.LoadTorrentAsync("file.torrent", "output");
 
 await torrent.StartAsync();
+var completionTask = torrent.Completion.AsTask();
 
 // Monitor detailed statistics
-while (!torrent.Completion.IsCompleted)
+while (!completionTask.IsCompleted)
 {
     var data = torrent.Statistics.Data;
     var peers = torrent.Statistics.Peers;
@@ -72,6 +73,8 @@ while (!torrent.Completion.IsCompleted)
     
     await Task.Delay(1000);
 }
+
+await completionTask;
 ```
 
 ### Advanced Configuration
@@ -159,40 +162,6 @@ The library is designed with async-first architecture for optimal performance:
 - **Updates**: Per-commit builds for immediate testing
 - **Installation**: `dotnet add package Netorrent --version 1.0.0-nightly-*`
 - **Warning**: May contain breaking changes or bugs
-
-### 🚀 Preview Releases
-- **Purpose**: Pre-release testing of upcoming features
-- **Versioning**: Pre-release suffix (e.g., `1.0.0-preview-123`)
-- **Updates**: Periodic builds from master branch
-- **Installation**: `dotnet add package Netorrent --prerelease`
-
-### Version Selection Strategies
-
-**For Production Applications:**
-```xml
-<PackageReference Include="Netorrent" Version="[1.0.0,2.0.0)" />
-```
-
-**For Testing Latest Features:**
-```xml
-<PackageReference Include="Netorrent" Version="1.0.0-nightly-*" />
-```
-
-**For Early Adopters:**
-```xml
-<PackageReference Include="Netorrent" Version="1.0.0-*" />
-```
-
-## CI/CD Integration
-
-The project uses GitHub Actions for automated publishing:
-
-- **Per-commit nightly builds** from `develop` branch
-- **Release builds** from git tags
-- **Manual publishing** for custom versions
-- **Comprehensive testing** before all publications
-
-See [`.github/workflows/`](.github/workflows/) for complete workflow configurations.
 
 ## Features
 

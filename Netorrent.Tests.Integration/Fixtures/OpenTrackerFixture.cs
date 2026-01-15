@@ -14,8 +14,7 @@ public class OpenTrackerFixture : IAsyncInitializer, IAsyncDisposable
 
     public async Task InitializeAsync()
     {
-        _container = new ContainerBuilder()
-            .WithImage("xbank/opentracker-docker")
+        _container = new ContainerBuilder("xbank/opentracker-docker")
             .WithName("opentracker-test")
             .WithPortBinding("6969/tcp", true)
             .WithPortBinding("6969/udp", true)
