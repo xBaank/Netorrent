@@ -18,8 +18,7 @@ internal class HttpTracker(
     InfoHash infoHash,
     string announceUrl,
     ILogger logger,
-    ChannelWriter<IPEndPoint> channelWriter,
-    IPAddress? forcedIp
+    ChannelWriter<IPEndPoint> channelWriter
 ) : ITracker
 {
     public async ValueTask StartAsync(CancellationToken cancellationToken)
@@ -79,7 +78,6 @@ internal class HttpTracker(
                 true,
                 false,
                 @event,
-                forcedIp?.ToString(),
                 50
             );
 

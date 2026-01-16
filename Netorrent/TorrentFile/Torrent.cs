@@ -119,8 +119,7 @@ public sealed class Torrent : IAsyncDisposable
             trackersChannel.Writer,
             [metaInfo.Announce, .. metaInfo.AnnounceList ?? []],
             metaInfo.Info.InfoHash,
-            torrentClientOptions.Logger,
-            torrentClientOptions.ForcedIp
+            torrentClientOptions.Logger
         );
         _peerConnector = new TcpPeersConnector(
             _peersClient,

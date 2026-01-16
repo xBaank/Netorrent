@@ -19,8 +19,7 @@ internal class UdpTracker(
     InfoHash infoHash,
     string announceUrl,
     IPEndPoint iPEndPoint,
-    ILogger logger,
-    IPAddress? forcedIp
+    ILogger logger
 ) : ITracker
 {
     private UdpTrackerResponse? _lastResponse;
@@ -124,8 +123,7 @@ internal class UdpTracker(
                 (ushort)port,
                 ConnectionId: connectionId.Value,
                 TransactionId: udpTrackerHandler.MakeTransactionId(),
-                NumWant: 50,
-                IpAddress: forcedIp
+                NumWant: 50
             );
 
             return await udpTrackerHandler
@@ -135,7 +133,9 @@ internal class UdpTracker(
         catch (Exception ex)
         {
             if (logger.IsEnabled(LogLevel.Debug))
+            {
                 logger.LogDebug(ex, "Couldn't announce to {trackerUrl}", announceUrl);
+            }
 
             return null;
         }

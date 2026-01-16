@@ -15,7 +15,6 @@ internal class HttpTrackerRequest(
     bool Compact,
     bool NoPeerId,
     string? Event = null,
-    string? IpAddress = null,
     int? NumWant = null,
     string? Key = null,
     string? TrackerId = null
@@ -47,9 +46,6 @@ internal class HttpTrackerRequest(
 
         if (!string.IsNullOrEmpty(Event))
             uriBuilder.Append($"&event={WebUtility.UrlEncode(Event)}");
-
-        if (!string.IsNullOrEmpty(IpAddress))
-            uriBuilder.Append($"&ip={WebUtility.UrlEncode(IpAddress)}");
 
         if (NumWant.HasValue)
             uriBuilder.Append($"&numwant={NumWant.Value}");

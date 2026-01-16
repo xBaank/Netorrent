@@ -72,8 +72,7 @@ public class TrackerTests
             new byte[20],
             "null",
             new(IPAddress.Loopback, 1),
-            ctx.Logger,
-            null
+            ctx.Logger
         );
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -111,8 +110,7 @@ public class TrackerTests
             new byte[20],
             "null",
             ctx.Logger,
-            ctx.Channel,
-            null
+            ctx.Channel
         );
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -150,8 +148,7 @@ public class TrackerTests
             new byte[20],
             "null",
             ctx.Logger,
-            ctx.Channel,
-            null
+            ctx.Channel
         );
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -189,8 +186,7 @@ public class TrackerTests
             new byte[20],
             "null",
             new(IPAddress.Loopback, 1),
-            ctx.Logger,
-            null
+            ctx.Logger
         );
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -236,8 +232,7 @@ public class TrackerTests
                 "aaaa://localhost:4",
             ],
             new byte[20],
-            ctx.Logger,
-            null
+            ctx.Logger
         );
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

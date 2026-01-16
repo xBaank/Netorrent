@@ -175,7 +175,8 @@ The library is designed with async-first architecture for optimal performance:
 
 Netorrent implements the following BitTorrent Enhancement Proposals (BEPs):
 
-- **[BEP 3: The BitTorrent Protocol Specification](https://www.bittorrent.org/beps/bep_0003.html)**
-- **[BEP 7: IPv6 Tracker Extension](https://www.bittorrent.org/beps/bep_0007.html)**
-- **[BEP 15: UDP Tracker Protocol](https://www.bittorrent.org/beps/bep_0015.html)**
-- **[BEP 23: Tracker Returns Compact Peer Lists](https://www.bittorrent.org/beps/bep_0023.html)**
+- **[BEP 3: The BitTorrent Protocol Specification](https://www.bittorrent.org/beps/bep_0003.html)** - Core BitTorrent protocol specification including metainfo files, tracker communication, and peer wire protocol
+- **[BEP 7: IPv6 Tracker Extension](https://www.bittorrent.org/beps/bep_0007.html)** - IPv6 support for tracker communication and compact peer list handling
+- **[BEP 12: Multitracker Metadata Extension](https://www.bittorrent.org/beps/bep_0012.html)** - Support for multiple tracker tiers and backup tracker fallback
+- **[BEP 15: UDP Tracker Protocol](https://www.bittorrent.org/beps/bep_0015.html)** - UDP-based tracker protocol for reduced overhead and improved performance
+- **[BEP 23: Tracker Returns Compact Peer Lists](https://www.bittorrent.org/beps/bep_0023.html)** - Compact peer list format to reduce tracker response size and improve efficiency

@@ -25,8 +25,7 @@ internal class TrackerClient(
     ChannelWriter<IPEndPoint> trackersChannel,
     string[] announceList,
     InfoHash infoHash,
-    ILogger logger,
-    IPAddress? forcedIp
+    ILogger logger
 ) : IAsyncDisposable
 {
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -114,8 +113,7 @@ internal class TrackerClient(
                 infoHash,
                 uri.OriginalString,
                 logger,
-                trackersChannel,
-                forcedIp
+                trackersChannel
             );
             httpsTrackers.Add(trackerv4);
         }
@@ -131,8 +129,7 @@ internal class TrackerClient(
                 infoHash,
                 uri.OriginalString,
                 logger,
-                trackersChannel,
-                forcedIp
+                trackersChannel
             );
             httpsTrackers.Add(trackerv6);
         }
@@ -165,8 +162,7 @@ internal class TrackerClient(
                 infoHash,
                 uri.OriginalString,
                 ipEndpoint,
-                logger,
-                forcedIp
+                logger
             );
             udpTrackers.Add(trackerv4);
         }
@@ -187,8 +183,7 @@ internal class TrackerClient(
                 infoHash,
                 uri.OriginalString,
                 ipEndpoint,
-                logger,
-                forcedIp
+                logger
             );
             udpTrackers.Add(trackerv6);
         }

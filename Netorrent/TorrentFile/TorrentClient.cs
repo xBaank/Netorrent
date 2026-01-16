@@ -29,8 +29,7 @@ public sealed class TorrentClient : IAsyncDisposable
         var options = new TorrentClientOptions(
             NullLogger.Instance,
             UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6,
-            UsedTrackers.Http | UsedTrackers.Udp,
-            null
+            UsedTrackers.Http | UsedTrackers.Udp
         );
         _options = action?.Invoke(options) ?? options;
         _peersListener = new(
