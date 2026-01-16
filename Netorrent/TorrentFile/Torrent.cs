@@ -30,7 +30,7 @@ public sealed class Torrent : IAsyncDisposable
     public Bitfield Bitfield => _myBitfield;
 
     private readonly TcpPeersConnector _peerConnector;
-    private readonly TcpPeersListener _peersListener;
+    private readonly TcpPeersListeners _peersListener;
     private readonly PeersClient _peersClient;
     private readonly TrackerClient _trackerClient;
     private readonly DiskStorage _pieceStorage;
@@ -44,7 +44,7 @@ public sealed class Torrent : IAsyncDisposable
         MetaInfo metaInfo,
         IHttpTrackerHandler httpTrackerHandler,
         IUdpTrackerHandler udpTrackerHandler,
-        TcpPeersListener peersListener,
+        TcpPeersListeners peersListener,
         PeerId peerId,
         string outputDirectory,
         TorrentClientOptions torrentClientOptions,

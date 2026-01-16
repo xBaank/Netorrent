@@ -1,23 +1,8 @@
 ﻿using System.Net;
-using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 
 namespace Netorrent.TorrentFile;
-
-[Flags]
-public enum UsedAddressProtocol
-{
-    /// <summary>
-    /// Create sockets with Ipv4
-    /// </summary>
-    Ipv4 = 1,
-
-    /// <summary>
-    /// Create sockets with Ipv6
-    /// </summary>
-    Ipv6 = 2,
-}
 
 [Flags]
 public enum UsedTrackers
@@ -40,7 +25,9 @@ public enum UsedTrackers
 /// <param name="Logger">Logger used to debug</param>
 public record TorrentClientOptions(
     ILogger Logger,
-    UsedAddressProtocol UsedAdressProtocol,
+    int ListenPort,
+    IPAddress[] ListenAddresses,
+    IPAddress[] AnnounceAddresses,
     UsedTrackers UsedTrackers
 )
 {
@@ -50,7 +37,4 @@ public record TorrentClientOptions(
     internal Func<IPAddress, IPAddress>? PeerIpProxy { get; set; }
 
     internal TimeSpan WarmupTime { get; set; } = 8.Seconds;
-
-    internal IReadOnlySet<AddressFamily> SupportedAddressFamilies =
-        UsedAdressProtocol.SupportedAddressFamilies();
 };

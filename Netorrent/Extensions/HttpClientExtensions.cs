@@ -7,7 +7,7 @@ internal static class HttpClientExtensions
 {
     extension(HttpClient)
     {
-        public static HttpClient CreateHttpClient(AddressFamily addressFamily) =>
+        public static HttpClient CreateHttpClient(IPAddress iPAddress) =>
             new(
                 new SocketsHttpHandler()
                 {
@@ -15,7 +15,7 @@ internal static class HttpClientExtensions
                     {
                         var entry = await Dns.GetHostEntryAsync(
                             context.DnsEndPoint.Host,
-                            addressFamily,
+                            iPAddress.AddressFamily,
                             cancellationToken
                         );
 
@@ -23,6 +23,8 @@ internal static class HttpClientExtensions
                         {
                             NoDelay = true,
                         };
+
+                        socket.Bind(new IPEndPoint(iPAddress, 0));
 
                         try
                         {

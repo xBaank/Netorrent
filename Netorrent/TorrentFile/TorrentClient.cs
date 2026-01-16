@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -20,7 +21,7 @@ public sealed class TorrentClient : IAsyncDisposable
     private readonly PeerId _peerId = new();
     private readonly TorrentClientOptions _options;
     private readonly Dictionary<InfoHash, Torrent> _torrents = [];
-    private readonly TcpPeersListener _peersListener;
+    private readonly TcpPeersListeners _peersListener;
     private readonly UdpTrackerHandler _udpTrackerHandler;
     private readonly HttpTrackerHandler _httpTrackerHandler;
 
@@ -28,13 +29,15 @@ public sealed class TorrentClient : IAsyncDisposable
     {
         var options = new TorrentClientOptions(
             NullLogger.Instance,
-            UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6,
+            0,
+            [IPAddress.Any, IPAddress.IPv6Any],
+            [IPAddress.Any, IPAddress.IPv6Any],
             UsedTrackers.Http | UsedTrackers.Udp
         );
         _options = action?.Invoke(options) ?? options;
         _peersListener = new(
             _peerId,
-            TcpListener.GetFreeTcpListener(_options.UsedAdressProtocol),
+            TcpListener.GetFreeTcpListeners(_options.ListenAddresses, _options.ListenPort),
             _options.Logger
         );
         _udpTrackerHandler = new(
