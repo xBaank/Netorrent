@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
@@ -94,29 +94,30 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
         try
         {
-            foreach (var seederTorrent in seedersTorrents)
+            var seederStartTasks = seedersTorrents.Select(seederTorrent =>
             {
                 cancellationToken.Register(seederTorrent.Stop);
-                await seederTorrent.StartAsync();
-            }
+                return seederTorrent.StartAsync().AsTask();
+            });
+            await Task.WhenAll(seederStartTasks);
 
             await Task.Delay(5000, cancellationToken);
 
-            foreach (var leecherTorrent in leechersTorrents)
+            var leecherStartTasks = leechersTorrents.Select(leecherTorrent =>
             {
                 cancellationToken.Register(leecherTorrent.Stop);
-                await leecherTorrent.StartAsync();
-            }
+                return leecherTorrent.StartAsync().AsTask();
+            });
+            await Task.WhenAll(leecherStartTasks);
 
-            foreach (var seederTorrent in seedersTorrents)
-            {
-                await seederTorrent.StopAsync();
-            }
+            var seederStopTasks = seedersTorrents.Select(seederTorrent =>
+                seederTorrent.StopAsync().AsTask()
+            );
+            var leecherStopTasks = leechersTorrents.Select(leecherTorrent =>
+                leecherTorrent.StopAsync().AsTask()
+            );
 
-            foreach (var leecherTorrent in leechersTorrents)
-            {
-                await leecherTorrent.StopAsync();
-            }
+            await Task.WhenAll([.. seederStopTasks, .. leecherStopTasks]);
 
             foreach (var seederTorrent in seedersTorrents)
             {
@@ -167,43 +168,40 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
         try
         {
-            foreach (var seederTorrent in seedersTorrents)
+            var seederStartTasks = seedersTorrents.Select(seederTorrent =>
             {
                 cancellationToken.Register(seederTorrent.Stop);
-                await seederTorrent.StartAsync();
-            }
+                return seederTorrent.StartAsync().AsTask();
+            });
+            await Task.WhenAll(seederStartTasks);
 
             await Task.Delay(5000, cancellationToken);
 
-            foreach (var leecherTorrent in leechersTorrents)
+            var leecherStartTasks = leechersTorrents.Select(leecherTorrent =>
             {
                 cancellationToken.Register(leecherTorrent.Stop);
-                await leecherTorrent.StartAsync();
-            }
+                return leecherTorrent.StartAsync().AsTask();
+            });
+            await Task.WhenAll(leecherStartTasks);
 
             await Task.Delay(5000, cancellationToken);
 
-            foreach (var seederTorrent in seedersTorrents)
-            {
-                await seederTorrent.StopAsync();
-            }
+            var seederStopAsyncTasks = seedersTorrents.Select(i => i.StopAsync().AsTask());
+            var leechersStopAsyncTasks = leechersTorrents.Select(i => i.StopAsync().AsTask());
 
-            foreach (var leecherTorrent in leechersTorrents)
-            {
-                await leecherTorrent.StopAsync();
-            }
+            await Task.WhenAll([.. seederStopAsyncTasks, .. leechersStopAsyncTasks]);
 
-            foreach (var seederTorrent in seedersTorrents)
-            {
-                await seederTorrent.StartAsync();
-            }
+            var seederRestartTasks = seedersTorrents.Select(seederTorrent =>
+                seederTorrent.StartAsync().AsTask()
+            );
+            await Task.WhenAll(seederRestartTasks);
 
             await Task.Delay(5000, cancellationToken);
 
-            foreach (var leecherTorrent in leechersTorrents)
-            {
-                await leecherTorrent.StartAsync();
-            }
+            var leecherRestartTasks = leechersTorrents.Select(leecherTorrent =>
+                leecherTorrent.StartAsync().AsTask()
+            );
+            await Task.WhenAll(leecherRestartTasks);
 
             foreach (var leecherTorrent in leechersTorrents)
             {
@@ -249,34 +247,35 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
         try
         {
-            foreach (var seederTorrent in seedersTorrents)
+            var seederStartTasks = seedersTorrents.Select(seederTorrent =>
             {
                 cancellationToken.Register(seederTorrent.Stop);
-                await seederTorrent.StartAsync();
-            }
+                return seederTorrent.StartAsync().AsTask();
+            });
+            await Task.WhenAll(seederStartTasks);
 
             await Task.Delay(5000, cancellationToken);
 
-            foreach (var leecherTorrent in leechersTorrents)
+            var leecherStartTasks = leechersTorrents.Select(leecherTorrent =>
             {
                 cancellationToken.Register(leecherTorrent.Stop);
-                await leecherTorrent.StartAsync();
-            }
+                return leecherTorrent.StartAsync().AsTask();
+            });
+            await Task.WhenAll(leecherStartTasks);
 
             foreach (var leecherTorrent in leechersTorrents)
             {
                 leecherTorrent.Completion.TrySetException(new InvalidOperationException());
             }
 
-            foreach (var seederTorrent in seedersTorrents)
-            {
-                await seederTorrent.StopAsync();
-            }
+            var seederStopTasks = seedersTorrents.Select(seederTorrent =>
+                seederTorrent.StopAsync().AsTask()
+            );
+            var leecherStopTasks = leechersTorrents.Select(leecherTorrent =>
+                leecherTorrent.StopAsync().AsTask()
+            );
 
-            foreach (var leecherTorrent in leechersTorrents)
-            {
-                await leecherTorrent.StopAsync();
-            }
+            await Task.WhenAll([.. seederStopTasks, .. leecherStopTasks]);
 
             foreach (var seederTorrent in seedersTorrents)
             {
@@ -381,35 +380,36 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
         try
         {
-            foreach (var seederTorrent in seedersTorrents)
+            var seederStartTasks = seedersTorrents.Select(seederTorrent =>
             {
                 cancellationToken.Register(seederTorrent.Stop);
-                await seederTorrent.StartAsync();
-            }
+                return seederTorrent.StartAsync().AsTask();
+            });
+            await Task.WhenAll(seederStartTasks);
 
             //This is needed because if seeder and leecher announce at the same time they don't see each other
             await Task.Delay(5000, cancellationToken);
 
-            foreach (var leecherTorrent in leechersTorrents)
+            var leecherStartTasks = leechersTorrents.Select(leecherTorrent =>
             {
                 cancellationToken.Register(leecherTorrent.Stop);
-                await leecherTorrent.StartAsync();
-            }
+                return leecherTorrent.StartAsync().AsTask();
+            });
+            await Task.WhenAll(leecherStartTasks);
 
             foreach (var leecherTorrent in leechersTorrents)
             {
                 await leecherTorrent.Completion.AsTask().ShouldNotThrowAsync();
             }
 
-            foreach (var seederTorrent in seedersTorrents)
-            {
-                await seederTorrent.StopAsync();
-            }
+            var seederStopTasks = seedersTorrents.Select(seederTorrent =>
+                seederTorrent.StopAsync().AsTask()
+            );
+            var leecherStopTasks = leechersTorrents.Select(leecherTorrent =>
+                leecherTorrent.StopAsync().AsTask()
+            );
 
-            foreach (var leecherTorrent in leechersTorrents)
-            {
-                await leecherTorrent.StopAsync();
-            }
+            await Task.WhenAll([.. seederStopTasks, .. leecherStopTasks]);
 
             foreach (var leecherTorrent in leechersTorrents)
             {

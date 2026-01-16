@@ -63,8 +63,14 @@ internal class DiskStorage : IPieceStorage
     public bool VerifyPiece(int pieceIndex, ReadOnlyMemory<byte> pieceData)
     {
         var expectedHash = _pieceHashes[pieceIndex];
-        var actualHash = SHA1.HashData(pieceData.Span);
-        return expectedHash.SequenceEqual(actualHash);
+        Span<byte> actualHash = stackalloc byte[20];
+
+        if (SHA1.TryHashData(pieceData.Span, actualHash, out _))
+        {
+            return expectedHash.SequenceEqual(actualHash);
+        }
+
+        return false;
     }
 
     private async ValueTask WriteAsync(

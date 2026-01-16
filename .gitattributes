@@ -3,6 +3,35 @@
 ###############################################################################
 * text=auto
 
+# Explicitly declare text files to always use LF line endings (cross-platform standard)
+*.cs text eol=lf
+*.csproj text eol=lf
+*.sln text eol=lf
+*.csx text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.xml text eol=lf
+*.config text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.gitattributes text eol=lf
+*.gitignore text eol=lf
+
+# Binary files that should never be modified
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.rar binary
+*.7z binary
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary
+
 ###############################################################################
 # Set default behavior for command prompt diff.
 #
