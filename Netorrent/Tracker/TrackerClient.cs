@@ -69,7 +69,9 @@ internal class TrackerClient(
             var uri = Uri.CreateOrNull(url);
 
             if (uri is null)
+            {
                 continue;
+            }
 
             var trackers = uri.Scheme switch
             {
@@ -86,7 +88,9 @@ internal class TrackerClient(
             foreach (var tracker in trackers)
             {
                 if (tracker is null)
+                {
                     continue;
+                }
 
                 yield return tracker;
             }
@@ -194,7 +198,9 @@ internal class TrackerClient(
     private ITracker[] LogUnknownTracker(string scheme)
     {
         if (logger.IsEnabled(LogLevel.Debug))
+        {
             logger.LogDebug("Unknown {scheme} tracker", scheme);
+        }
 
         return [];
     }

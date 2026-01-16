@@ -74,7 +74,9 @@ public sealed class TorrentClient : IAsyncDisposable
         var decoder = new BDecoder(torrentFileData);
         var decoded = decoder.Decode();
         if (decoded is not BDictionary bDictionary)
+        {
             throw new InvalidDataException("Torrent file is not a valid bencoded dictionary.");
+        }
 
         var metaInfo = ParseMetaInfo(bDictionary);
 
@@ -165,20 +167,37 @@ public sealed class TorrentClient : IAsyncDisposable
         static bool IsValidUrl(string? url, bool allowHttp = true)
         {
             if (string.IsNullOrWhiteSpace(url))
+            {
                 return false;
+            }
+
             if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            {
                 return false;
+            }
+
             if (uri.Scheme == Uri.UriSchemeHttp && allowHttp)
+            {
                 return true;
+            }
+
             if (uri.Scheme == Uri.UriSchemeHttps)
+            {
                 return true;
+            }
+
             if (uri.Scheme == "udp" || uri.Scheme == "udp4" || uri.Scheme == "udp6")
+            {
                 return true; // Trackers can be UDP
+            }
+
             return false;
         }
 
         if (!IsValidUrl(announceUrl))
+        {
             throw new ArgumentException($"Invalid announce URL: '{announceUrl}'");
+        }
 
         string[] allUrls = [.. announceUrls ?? [], .. webUrls ?? []];
         foreach (string url in allUrls)
@@ -194,7 +213,9 @@ public sealed class TorrentClient : IAsyncDisposable
         bool isDirectory = Directory.Exists(path);
         bool isFile = File.Exists(path);
         if (!isDirectory && !isFile)
+        {
             throw new FileNotFoundException("File or directory not found.", path);
+        }
 
         var files = new List<(string FullPath, string RelativePath, long Length)>();
 
@@ -230,9 +251,11 @@ public sealed class TorrentClient : IAsyncDisposable
             }
 
             if (files.Count == 0)
+            {
                 throw new InvalidOperationException(
                     "Directory contains no files to create a torrent."
                 );
+            }
         }
 
         var piecesBytes = new List<byte>();
@@ -262,7 +285,9 @@ public sealed class TorrentClient : IAsyncDisposable
                     )
                     .ConfigureAwait(false);
                 if (bytesRead <= 0)
+                {
                     break;
+                }
 
                 bufferPos += bytesRead;
 

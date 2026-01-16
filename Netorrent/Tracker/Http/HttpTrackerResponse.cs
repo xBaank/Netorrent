@@ -27,27 +27,41 @@ internal class HttpTrackerResponse
         var root = decoder.Decode();
 
         if (root is not BDictionary dict)
+        {
             throw new InvalidDataException("Tracker response is not a dictionary.");
+        }
 
         var trackerResponse = new HttpTrackerResponse();
 
         if (dict.Elements.TryGetValue("failure reason", out var failureReason))
+        {
             throw new Exception(failureReason.As<BString>()?.Data);
+        }
 
         // Try to extract basic fields
         if (dict.Elements.TryGetValue("interval", out var interval))
+        {
             trackerResponse.Interval = (int)((BInt)interval).Data;
+        }
         else
+        {
             trackerResponse.Interval = 900;
+        }
 
         if (dict.Elements.TryGetValue("min interval", out var minInt))
+        {
             trackerResponse.MinInterval = (int)((BInt)minInt).Data;
+        }
 
         if (dict.Elements.TryGetValue("complete", out var comp))
+        {
             trackerResponse.Complete = (int)((BInt)comp).Data;
+        }
 
         if (dict.Elements.TryGetValue("incomplete", out var incomp))
+        {
             trackerResponse.Incomplete = (int)((BInt)incomp).Data;
+        }
 
         if (dict.Elements.TryGetValue(new BString("peers"), out var peersVal))
         {
@@ -86,11 +100,19 @@ internal class HttpTrackerResponse
     private static List<IPEndPoint> ParseCompactPeers6(byte[] bytes)
     {
         if (bytes == null)
+        {
             throw new ArgumentNullException(nameof(bytes));
+        }
+
         if (bytes.Length == 0)
+        {
             return new List<IPEndPoint>();
+        }
+
         if (bytes.Length % 18 != 0)
+        {
             throw new InvalidDataException("Invalid compact IPv6 peer list length.");
+        }
 
         var peers = new List<IPEndPoint>(bytes.Length / 18);
         for (int i = 0; i < bytes.Length; i += 18)
@@ -108,7 +130,9 @@ internal class HttpTrackerResponse
     private static List<IPEndPoint> ParseCompactPeers(byte[] bytes)
     {
         if (bytes.Length % 6 != 0 && bytes.Length != 0)
+        {
             throw new InvalidDataException("Invalid compact peer list length.");
+        }
 
         var peers = new List<IPEndPoint>();
         for (int i = 0; i < bytes.Length; i += 6)

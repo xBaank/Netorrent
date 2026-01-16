@@ -280,7 +280,9 @@ internal class RequestScheduler(
             try
             {
                 if (_runningTask is not null)
+                {
                     await _runningTask.ConfigureAwait(false);
+                }
             }
             catch { }
 

@@ -96,7 +96,9 @@ internal static class UdpTrackerExtensions
                     };
 
                     if (ipBytes.Length != 4)
+                    {
                         throw new InvalidOperationException("IPv4 address bytes length must be 4");
+                    }
 
                     // Write ip (4 bytes)
                     span.Slice(offset, 4).CopyTo(ipBytes); // <-- wrong direction (we'll fix below)
@@ -113,7 +115,9 @@ internal static class UdpTrackerExtensions
                     };
 
                     if (ipBytes.Length != 16)
+                    {
                         throw new InvalidOperationException("IPv6 address bytes length must be 16");
+                    }
                 }
 
                 // Correct copy: source -> destination
@@ -126,7 +130,9 @@ internal static class UdpTrackerExtensions
             }
 
             if (offset != buffer.Length)
+            {
                 throw new InvalidOperationException("Serialized length mismatch");
+            }
 
             return buffer;
         }

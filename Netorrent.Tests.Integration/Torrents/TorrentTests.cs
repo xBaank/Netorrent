@@ -38,7 +38,9 @@ public class TorrentTests(OpenTrackerFixture fixture)
             int read = await stream.ReadAsync(buffer.AsMemory(totalRead), cancellationToken);
 
             if (read == 0)
+            {
                 break;
+            }
 
             totalRead += read;
         }
@@ -51,7 +53,10 @@ public class TorrentTests(OpenTrackerFixture fixture)
         var guid = Guid.NewGuid().ToString();
         var path = Path.Combine(folder, $"Test_{guid}");
         if (!Directory.Exists(folder))
+        {
             Directory.CreateDirectory(folder);
+        }
+
         await using var stream = new FileStream(
             path,
             FileMode.Create,

@@ -25,7 +25,10 @@ internal class HttpTrackerRequest(
         // Percent-encode bytes per BitTorrent spec
         var sb = new StringBuilder(bytes.Length * 3);
         foreach (var b in bytes)
+        {
             sb.Append('%').Append(b.ToString("X2"));
+        }
+
         return sb.ToString();
     }
 
@@ -45,16 +48,24 @@ internal class HttpTrackerRequest(
         uriBuilder.Append($"&no_peer_id={(NoPeerId ? 1 : 0)}");
 
         if (!string.IsNullOrEmpty(Event))
+        {
             uriBuilder.Append($"&event={WebUtility.UrlEncode(Event)}");
+        }
 
         if (NumWant.HasValue)
+        {
             uriBuilder.Append($"&numwant={NumWant.Value}");
+        }
 
         if (!string.IsNullOrEmpty(Key))
+        {
             uriBuilder.Append($"&key={WebUtility.UrlEncode(Key)}");
+        }
 
         if (!string.IsNullOrEmpty(TrackerId))
+        {
             uriBuilder.Append($"&trackerid={WebUtility.UrlEncode(TrackerId)}");
+        }
 
         return new HttpRequestMessage(HttpMethod.Get, uriBuilder.ToString());
     }

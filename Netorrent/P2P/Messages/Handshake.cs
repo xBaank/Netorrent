@@ -29,12 +29,17 @@ internal readonly record struct Handshake(
     public static Handshake Create(byte[] infoHash, byte[] peerId)
     {
         if (infoHash.Length != InfoHashLength)
+        {
             throw new ArgumentException(
                 $"InfoHash must be {InfoHashLength} bytes",
                 nameof(infoHash)
             );
+        }
+
         if (peerId.Length != PeerIdLength)
+        {
             throw new ArgumentException($"PeerId must be {PeerIdLength} bytes", nameof(peerId));
+        }
 
         return new Handshake(
             Pstrlen: (byte)DefaultProtocol.Length,
@@ -78,7 +83,9 @@ internal readonly record struct Handshake(
     public static Handshake FromBytes(ReadOnlySpan<byte> data)
     {
         if (data.Length < TotalLength)
+        {
             throw new ArgumentException("Invalid handshake length");
+        }
 
         byte pstrlen = data[0];
         string pstr = Encoding.ASCII.GetString(data.Slice(1, pstrlen));

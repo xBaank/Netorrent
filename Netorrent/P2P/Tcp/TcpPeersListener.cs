@@ -106,7 +106,9 @@ internal class TcpPeersListener(PeerId peerId, TcpListener tcpListener, ILogger 
             try
             {
                 if (_runTask is not null)
+                {
                     await _runTask.ConfigureAwait(false);
+                }
             }
             catch { }
             tcpListener.Dispose();

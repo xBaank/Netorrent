@@ -80,7 +80,9 @@ public class Bitfield
         {
             // If the peer has the piece and I don't, I'm interested
             if (other.HasPiece(i) && !HasPiece((i)))
+            {
                 return true;
+            }
         }
 
         return false;
@@ -114,7 +116,9 @@ public class Bitfield
         for (int i = 0; i < _bits.Length; i++)
         {
             if (_bits[i])
+            {
                 dest[i / 8] |= (byte)(1 << 7 - i % 8);
+            }
         }
     }
 }

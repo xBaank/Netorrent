@@ -27,7 +27,9 @@ internal class HttpTracker(
             .ConfigureAwait(false);
 
         if (response is null)
+        {
             return;
+        }
 
         foreach (var iPEndPoint in response.Peers)
         {
@@ -39,7 +41,9 @@ internal class HttpTracker(
             var interval = response.Interval.Seconds;
 
             if (logger.IsEnabled(LogLevel.Information))
+            {
                 logger.LogInformation("Waiting {seconds} seconds", interval.TotalSeconds);
+            }
 
             await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
 
@@ -47,7 +51,9 @@ internal class HttpTracker(
                 .ConfigureAwait(false);
 
             if (newResponse is null)
+            {
                 continue;
+            }
 
             response = newResponse;
 
@@ -64,7 +70,9 @@ internal class HttpTracker(
     )
     {
         if (logger.IsEnabled(LogLevel.Information))
+        {
             logger.LogInformation("Announcing to {url}", announceUrl);
+        }
 
         try
         {
@@ -88,7 +96,10 @@ internal class HttpTracker(
         catch (Exception ex)
         {
             if (logger.IsEnabled(LogLevel.Debug))
+            {
                 logger.LogDebug(ex, "Couldn't announce to {trackerUrl}", announceUrl);
+            }
+
             return null;
         }
     }

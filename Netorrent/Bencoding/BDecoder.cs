@@ -49,7 +49,9 @@ internal class BDecoder(byte[] data)
             return new BString(result.ToArray());
         }
         else
+        {
             throw new InvalidDataException();
+        }
     }
 
     public BInt DecodeInt()

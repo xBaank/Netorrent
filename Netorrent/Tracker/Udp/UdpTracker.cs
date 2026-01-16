@@ -28,7 +28,9 @@ internal class UdpTracker(
     public async ValueTask StartAsync(CancellationToken cancellationToken)
     {
         if (await TryConnectAsync(iPEndPoint, cancellationToken).ConfigureAwait(false) is null)
+        {
             return;
+        }
 
         _lastResponse = await TryAnnounceAsync(
                 iPEndPoint,
@@ -38,7 +40,9 @@ internal class UdpTracker(
             .ConfigureAwait(false);
 
         if (_lastResponse is null)
+        {
             return;
+        }
 
         foreach (var peer in _lastResponse.Peers)
         {
@@ -53,13 +57,17 @@ internal class UdpTracker(
             var interval = _lastResponse.Interval.Seconds;
 
             if (logger.IsEnabled(LogLevel.Information))
+            {
                 logger.LogInformation("Waiting {seconds} seconds", interval.TotalSeconds);
+            }
 
             var newResponse = await TryAnnounceAsync(iPEndPoint, null, cancellationToken)
                 .ConfigureAwait(false);
 
             if (newResponse is null)
+            {
                 continue;
+            }
 
             _lastResponse = newResponse;
 
@@ -84,7 +92,9 @@ internal class UdpTracker(
         catch (Exception ex)
         {
             if (logger.IsEnabled(LogLevel.Debug))
+            {
                 logger.LogDebug(ex, "Couldn't connect to {trackerUrl}", announceUrl);
+            }
 
             return null;
         }
@@ -99,7 +109,9 @@ internal class UdpTracker(
         try
         {
             if (logger.IsEnabled(LogLevel.Information))
+            {
                 logger.LogInformation("Announcing to {url}", announceUrl);
+            }
 
             var connectionId = udpTrackerHandler.GetConnectionIdOrNull(_trackerId);
 

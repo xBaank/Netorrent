@@ -20,7 +20,9 @@ internal record UdpTrackerResponse(
     public static UdpTrackerResponse From(ReadOnlySpan<byte> data, AddressFamily addressFamily)
     {
         if (data.Length < 20)
+        {
             throw new ArgumentException("Invalid announce response length", nameof(data));
+        }
 
         int transactionId = BinaryPrimitives.ReadInt32BigEndian(data.Slice(4, 4));
         int interval = BinaryPrimitives.ReadInt32BigEndian(data.Slice(8, 4));

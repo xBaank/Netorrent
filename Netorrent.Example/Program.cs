@@ -75,7 +75,9 @@ static async ValueTask<string> BrowseForOutputDir(CancellationToken cancellation
             {
                 var name = Path.GetFileName(d);
                 if (string.IsNullOrEmpty(name)) // root drive (e.g. "C:\")
+                {
                     name = d;
+                }
                 return $"(dir) {name}";
             }),
             "(select) Use this directory",
@@ -126,9 +128,15 @@ static async ValueTask<string> BrowseForOutputDir(CancellationToken cancellation
                 new TextPrompt<string>("Enter new directory name:").Validate(n =>
                 {
                     if (string.IsNullOrWhiteSpace(n))
+                    {
                         return ValidationResult.Error("[red]Name cannot be empty[/]");
+                    }
+
                     if (n.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+                    {
                         return ValidationResult.Error("[red]Name contains invalid characters[/]");
+                    }
+
                     return ValidationResult.Success();
                 }),
                 cancellationToken
@@ -192,7 +200,10 @@ static async ValueTask<string> BrowseForTorrent(CancellationToken cancellationTo
         {
             var parent = Directory.GetParent(current);
             if (parent == null)
+            {
                 continue;
+            }
+
             current = parent.FullName;
             continue;
         }

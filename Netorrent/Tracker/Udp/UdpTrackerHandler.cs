@@ -47,7 +47,9 @@ internal class UdpTrackerHandler(
         catch (TaskCanceledException ex)
         {
             if (logger.IsEnabled(LogLevel.Debug))
+            {
                 logger.LogDebug(ex, "Gracefully stopped transaction manager");
+            }
         }
     }
 
@@ -121,7 +123,9 @@ internal class UdpTrackerHandler(
             catch (Exception ex)
             {
                 if (logger.IsEnabled(LogLevel.Debug))
+                {
                     logger.LogInformation(ex, "Error receiving data");
+                }
             }
         }
     }
@@ -274,7 +278,9 @@ internal class UdpTrackerHandler(
     public long? GetConnectionIdOrNull(Guid trackerId)
     {
         if (_connectionIdByTracker.TryGetValue(trackerId, out var id))
+        {
             return id;
+        }
 
         return null;
     }

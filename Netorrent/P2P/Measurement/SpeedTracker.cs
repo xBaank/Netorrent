@@ -27,7 +27,10 @@ public sealed class SpeedTracker(double alpha = 0.3)
     internal void AddBytes(int count)
     {
         if (count <= 0)
+        {
             return;
+        }
+
         Interlocked.Add(ref _bytesSinceLast, count);
         Interlocked.Add(ref _totalBytes, count);
     }
@@ -42,7 +45,9 @@ public sealed class SpeedTracker(double alpha = 0.3)
 
         double elapsedSec = (double)(now - prev) / Stopwatch.Frequency;
         if (elapsedSec <= 0)
+        {
             return;
+        }
 
         double instant = bytes / elapsedSec;
         _currentBps = (long)(_alpha * instant + (1 - _alpha) * _currentBps);

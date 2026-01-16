@@ -28,11 +28,20 @@ public readonly record struct DownloadSpeed(double Bps)
     public override string ToString()
     {
         if (Bps >= 1_000_000_000)
+        {
             return $"{Gbps:F2}/Gbps";
+        }
+
         if (Bps >= 1_000_000)
+        {
             return $"{Mbps:F2}/Mbps";
+        }
+
         if (Bps >= 1_000)
+        {
             return $"{Kbps:F2}/Kbps";
+        }
+
         return $"{Bps:F2}/bps";
     }
 }
