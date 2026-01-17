@@ -9,6 +9,8 @@ using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 using Netorrent.P2P.Tcp;
 using Netorrent.TorrentFile.FileStructure;
+using Netorrent.TorrentFile.Options;
+using Netorrent.Tracker;
 using Netorrent.Tracker.Http;
 using Netorrent.Tracker.Udp;
 using Netorrent.Tracker.Udp.Client;
@@ -22,38 +24,88 @@ public sealed class TorrentClient : IAsyncDisposable
     private readonly TorrentClientOptions _options;
     private readonly Dictionary<InfoHash, Torrent> _torrents = [];
     private readonly TcpPeersListeners _peersListener;
-    private readonly UdpTrackerHandler _udpTrackerHandler;
-    private readonly HttpTrackerHandler _httpTrackerHandler;
+    private readonly TrackerHandlers _trackerHandlers;
 
     public TorrentClient(Func<TorrentClientOptions, TorrentClientOptions>? action = null)
     {
         var options = new TorrentClientOptions(
             NullLogger.Instance,
             0,
-            [IPAddress.Any, IPAddress.IPv6Any],
-            [IPAddress.Any, IPAddress.IPv6Any],
+            IPAddress.Any,
+            IPAddress.IPv6Any,
             UsedTrackers.Http | UsedTrackers.Udp
         );
         _options = action?.Invoke(options) ?? options;
+
+        if (
+            _options.ListenIpv4Address is not null
+            && _options.ListenIpv4Address.AddressFamily != AddressFamily.InterNetwork
+        )
+        {
+            throw new ArgumentException("ListenIpv4Address must be ipv4");
+        }
+
+        if (
+            _options.ListenIpv6Address is not null
+            && _options.ListenIpv6Address.AddressFamily != AddressFamily.InterNetworkV6
+        )
+        {
+            throw new ArgumentException("ListenIpv4Address must be ipv6");
+        }
+
+        if (_options.ListenIpv4Address is null && _options.ListenIpv6Address is null)
+        {
+            throw new ArgumentException("One Listen address must be initialized");
+        }
+
+        IPAddress?[] addresses = [_options.ListenIpv4Address, _options.ListenIpv6Address];
+
         _peersListener = new(
             _peerId,
-            TcpListener.GetFreeTcpListeners(_options.ListenAddresses, _options.ListenPort),
+            TcpListener.GetFreeTcpListeners(
+                addresses.AsValueEnumerable().Where(i => i is not null).ToArray()!,
+                _options.ListenPort
+            ),
             _options.Logger
         );
-        _udpTrackerHandler = new(
-            new UdpClientWrapper(UdpClient.GetFreeUdpClient(_options.UsedAdressProtocol)),
-            _options.Logger,
-            15.Seconds,
-            1.Seconds,
-            1.Minutes,
-            8
-        );
-        _httpTrackerHandler = new(
-            HttpClient.CreateHttpClient(AddressFamily.InterNetwork),
-            HttpClient.CreateHttpClient(AddressFamily.InterNetworkV6)
+
+        UdpTrackerHandler? udpTrackerHandlerIpv4 = null;
+        HttpTrackerHandler? httpTrackerHandlerIpv4 = null;
+        UdpTrackerHandler? udpTrackerHandlerIpv6 = null;
+        HttpTrackerHandler? httpTrackerHandlerIpv6 = null;
+
+        if (_options.ListenIpv4Address is not null)
+        {
+            udpTrackerHandlerIpv4 = new(
+                new UdpClientWrapper(UdpClient.GetFreeUdpClient(_options.ListenIpv4Address)),
+                _options.Logger,
+                15.Seconds,
+                1.Seconds,
+                1.Minutes,
+                8
+            );
+            httpTrackerHandlerIpv4 = new(HttpClient.CreateHttpClient(_options.ListenIpv4Address));
+        }
+        if (_options.ListenIpv6Address is not null)
+        {
+            udpTrackerHandlerIpv6 = new(
+                new UdpClientWrapper(UdpClient.GetFreeUdpClient(_options.ListenIpv6Address)),
+                _options.Logger,
+                15.Seconds,
+                1.Seconds,
+                1.Minutes,
+                8
+            );
+            httpTrackerHandlerIpv6 = new(HttpClient.CreateHttpClient(_options.ListenIpv6Address));
+        }
+
+        _trackerHandlers = new(
+            httpTrackerHandlerIpv4,
+            udpTrackerHandlerIpv4,
+            httpTrackerHandlerIpv6,
+            udpTrackerHandlerIpv6
         );
         _peersListener.Start();
-        _udpTrackerHandler.Start();
     }
 
     /// <summary>
@@ -100,8 +152,7 @@ public sealed class TorrentClient : IAsyncDisposable
     {
         var torrent = new Torrent(
             metaInfo,
-            _httpTrackerHandler,
-            _udpTrackerHandler,
+            _trackerHandlers,
             _peersListener,
             _peerId,
             Path.GetFullPath(outputDirectory),
@@ -146,8 +197,7 @@ public sealed class TorrentClient : IAsyncDisposable
             .ConfigureAwait(false);
         var torrent = new Torrent(
             metainfo,
-            _httpTrackerHandler,
-            _udpTrackerHandler,
+            _trackerHandlers,
             _peersListener,
             _peerId,
             Directory.Exists(path) ? Path.GetFullPath(path) : Path.GetDirectoryName(path) ?? "/",
@@ -486,7 +536,7 @@ public sealed class TorrentClient : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await _peersListener.DisposeAsync().ConfigureAwait(false);
-        await _udpTrackerHandler.DisposeAsync().ConfigureAwait(false);
+        await _trackerHandlers.DisposeAsync().ConfigureAwait(false);
         var torrentsDisposeTasks = _torrents.Values.Select(i => i.DisposeAsync().AsTask());
         await Task.WhenAll(torrentsDisposeTasks).ConfigureAwait(false);
     }

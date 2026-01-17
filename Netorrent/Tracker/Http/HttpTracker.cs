@@ -13,7 +13,6 @@ internal class HttpTracker(
     int port,
     DataStatistics transfer,
     IHttpTrackerHandler httpTrackerHandler,
-    AddressFamily addressFamily,
     PeerId peerId,
     InfoHash infoHash,
     string announceUrl,
@@ -90,7 +89,7 @@ internal class HttpTracker(
             );
 
             return await httpTrackerHandler
-                .SendAsync(announceUrl, addressFamily, request, cancellationToken)
+                .SendAsync(announceUrl, request, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (Exception ex)

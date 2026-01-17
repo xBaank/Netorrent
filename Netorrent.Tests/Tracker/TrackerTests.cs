@@ -6,8 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Netorrent.Extensions;
 using Netorrent.Tests.Extensions;
 using Netorrent.Tests.Fakes;
-using Netorrent.TorrentFile;
-using Netorrent.TorrentFile.FileStructure;
+using Netorrent.TorrentFile.Options;
 using Netorrent.Tracker;
 using Netorrent.Tracker.Http;
 using Netorrent.Tracker.Udp;
@@ -92,12 +91,7 @@ public class TrackerTests
     }
 
     [Test]
-    [Arguments(AddressFamily.InterNetwork)]
-    [Arguments(AddressFamily.InterNetworkV6)]
-    public async Task Should_get_peers_from_http_tracker(
-        AddressFamily addressFamily,
-        CancellationToken cancellationToken
-    )
+    public async Task Should_get_peers_from_http_tracker(CancellationToken cancellationToken)
     {
         var ctx = CreateDefaultContext();
 
@@ -105,7 +99,6 @@ public class TrackerTests
             1,
             new Statistics.DataStatistics(3),
             new FakeHttpTrackerHandler(ctx.Ips, ctx.Interval),
-            addressFamily,
             new(),
             new byte[20],
             "null",
@@ -130,12 +123,7 @@ public class TrackerTests
     }
 
     [Test]
-    [Arguments(AddressFamily.InterNetwork)]
-    [Arguments(AddressFamily.InterNetworkV6)]
-    public async Task Should_not_get_peers_from_http_tracker(
-        AddressFamily addressFamily,
-        CancellationToken cancellationToken
-    )
+    public async Task Should_not_get_peers_from_http_tracker(CancellationToken cancellationToken)
     {
         var ctx = CreateDefaultContext();
 
@@ -143,7 +131,6 @@ public class TrackerTests
             1,
             new Statistics.DataStatistics(3),
             new FakeHttpTrackerHandler(ctx.Ips, ctx.Interval, new Exception()),
-            addressFamily,
             new(),
             new byte[20],
             "null",
@@ -216,10 +203,15 @@ public class TrackerTests
 
         var httpTrackerHandler = new FakeHttpTrackerHandler(ctx.Ips, ctx.Interval);
 
-        await using var trackerClient = new TrackerClient(
+        var trackerHandlers = new TrackerHandlers(
             httpTrackerHandler,
             udptrackerManager,
-            (UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6).SupportedAddressFamilies(),
+            httpTrackerHandler,
+            udptrackerManager
+        );
+
+        await using var trackerClient = new TrackerClient(
+            trackerHandlers,
             UsedTrackers.Http | UsedTrackers.Udp,
             1,
             new(3),

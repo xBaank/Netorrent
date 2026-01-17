@@ -2,21 +2,7 @@
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 
-namespace Netorrent.TorrentFile;
-
-[Flags]
-public enum UsedTrackers
-{
-    /// <summary>
-    /// Enables Http trackers
-    /// </summary>
-    Http = 1,
-
-    /// <summary>
-    /// Enables Udp Trackers
-    /// </summary>
-    Udp = 2,
-}
+namespace Netorrent.TorrentFile.Options;
 
 /// <summary>
 /// Options for torrent client
@@ -26,8 +12,8 @@ public enum UsedTrackers
 public record TorrentClientOptions(
     ILogger Logger,
     int ListenPort,
-    IPAddress[] ListenAddresses,
-    IPAddress[] AnnounceAddresses,
+    IPAddress? ListenIpv4Address,
+    IPAddress? ListenIpv6Address,
     UsedTrackers UsedTrackers
 )
 {

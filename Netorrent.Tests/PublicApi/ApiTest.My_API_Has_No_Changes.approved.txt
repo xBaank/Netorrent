@@ -220,6 +220,24 @@ namespace Netorrent.TorrentFile.FileStructure
         public Netorrent.Bencoding.Structs.BDictionary ToBDictionary() { }
     }
 }
+namespace Netorrent.TorrentFile.Options
+{
+    public class TorrentClientOptions : System.IEquatable<Netorrent.TorrentFile.Options.TorrentClientOptions>
+    {
+        public TorrentClientOptions(Microsoft.Extensions.Logging.ILogger Logger, int ListenPort, System.Net.IPAddress? ListenIpv4Address, System.Net.IPAddress? ListenIpv6Address, Netorrent.TorrentFile.Options.UsedTrackers UsedTrackers) { }
+        public System.Net.IPAddress? ListenIpv4Address { get; init; }
+        public System.Net.IPAddress? ListenIpv6Address { get; init; }
+        public int ListenPort { get; init; }
+        public Microsoft.Extensions.Logging.ILogger Logger { get; init; }
+        public Netorrent.TorrentFile.Options.UsedTrackers UsedTrackers { get; init; }
+    }
+    [System.Flags]
+    public enum UsedTrackers
+    {
+        Http = 1,
+        Udp = 2,
+    }
+}
 namespace Netorrent.TorrentFile
 {
     public enum State
@@ -246,30 +264,10 @@ namespace Netorrent.TorrentFile
     }
     public sealed class TorrentClient : System.IAsyncDisposable
     {
-        public TorrentClient(System.Func<Netorrent.TorrentFile.TorrentClientOptions, Netorrent.TorrentFile.TorrentClientOptions>? action = null) { }
+        public TorrentClient(System.Func<Netorrent.TorrentFile.Options.TorrentClientOptions, Netorrent.TorrentFile.Options.TorrentClientOptions>? action = null) { }
         public System.Threading.Tasks.ValueTask<Netorrent.TorrentFile.Torrent> CreateTorrentAsync(string path, string announceUrl, System.Collections.Generic.List<string>? announceUrls = null, System.Collections.Generic.List<string>? webUrls = null, int pieceLength = 262144, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask DisposeAsync() { }
         public Netorrent.TorrentFile.Torrent LoadTorrent(Netorrent.TorrentFile.FileStructure.MetaInfo metaInfo, string outputDirectory, int[]? downloadedPieces = null) { }
         public System.Threading.Tasks.ValueTask<Netorrent.TorrentFile.Torrent> LoadTorrentAsync(string path, string outputDirectory, int[]? downloadedPieces = null, System.Threading.CancellationToken cancellationToken = default) { }
-    }
-    public class TorrentClientOptions : System.IEquatable<Netorrent.TorrentFile.TorrentClientOptions>
-    {
-        public TorrentClientOptions(Microsoft.Extensions.Logging.ILogger Logger, Netorrent.TorrentFile.UsedAddressProtocol UsedAdressProtocol, Netorrent.TorrentFile.UsedTrackers UsedTrackers, System.Net.IPAddress? ForcedIp) { }
-        public System.Net.IPAddress? ForcedIp { get; init; }
-        public Microsoft.Extensions.Logging.ILogger Logger { get; init; }
-        public Netorrent.TorrentFile.UsedAddressProtocol UsedAdressProtocol { get; init; }
-        public Netorrent.TorrentFile.UsedTrackers UsedTrackers { get; init; }
-    }
-    [System.Flags]
-    public enum UsedAddressProtocol
-    {
-        Ipv4 = 1,
-        Ipv6 = 2,
-    }
-    [System.Flags]
-    public enum UsedTrackers
-    {
-        Http = 1,
-        Udp = 2,
     }
 }
