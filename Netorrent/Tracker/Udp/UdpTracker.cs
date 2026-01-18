@@ -19,8 +19,7 @@ internal class UdpTracker(
     InfoHash infoHash,
     string announceUrl,
     IPEndPoint iPEndPoint,
-    ILogger logger,
-    IPAddress? forcedIp
+    ILogger logger
 ) : ITracker
 {
     private UdpTrackerResponse? _lastResponse;
@@ -29,7 +28,9 @@ internal class UdpTracker(
     public async ValueTask StartAsync(CancellationToken cancellationToken)
     {
         if (await TryConnectAsync(iPEndPoint, cancellationToken).ConfigureAwait(false) is null)
+        {
             return;
+        }
 
         _lastResponse = await TryAnnounceAsync(
                 iPEndPoint,
@@ -39,7 +40,9 @@ internal class UdpTracker(
             .ConfigureAwait(false);
 
         if (_lastResponse is null)
+        {
             return;
+        }
 
         foreach (var peer in _lastResponse.Peers)
         {
@@ -54,13 +57,17 @@ internal class UdpTracker(
             var interval = _lastResponse.Interval.Seconds;
 
             if (logger.IsEnabled(LogLevel.Information))
+            {
                 logger.LogInformation("Waiting {seconds} seconds", interval.TotalSeconds);
+            }
 
             var newResponse = await TryAnnounceAsync(iPEndPoint, null, cancellationToken)
                 .ConfigureAwait(false);
 
             if (newResponse is null)
+            {
                 continue;
+            }
 
             _lastResponse = newResponse;
 
@@ -85,7 +92,9 @@ internal class UdpTracker(
         catch (Exception ex)
         {
             if (logger.IsEnabled(LogLevel.Debug))
+            {
                 logger.LogDebug(ex, "Couldn't connect to {trackerUrl}", announceUrl);
+            }
 
             return null;
         }
@@ -100,7 +109,9 @@ internal class UdpTracker(
         try
         {
             if (logger.IsEnabled(LogLevel.Information))
+            {
                 logger.LogInformation("Announcing to {url}", announceUrl);
+            }
 
             var connectionId = udpTrackerHandler.GetConnectionIdOrNull(_trackerId);
 
@@ -124,8 +135,7 @@ internal class UdpTracker(
                 (ushort)port,
                 ConnectionId: connectionId.Value,
                 TransactionId: udpTrackerHandler.MakeTransactionId(),
-                NumWant: 50,
-                IpAddress: forcedIp
+                NumWant: 50
             );
 
             return await udpTrackerHandler
@@ -135,7 +145,9 @@ internal class UdpTracker(
         catch (Exception ex)
         {
             if (logger.IsEnabled(LogLevel.Debug))
+            {
                 logger.LogDebug(ex, "Couldn't announce to {trackerUrl}", announceUrl);
+            }
 
             return null;
         }

@@ -75,13 +75,17 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
                 requestBlock.State == RequestBlockState.Pending
                 && bitfield.HasPiece(requestBlock.Index)
             )
+            {
                 return requestBlock;
+            }
         }
 
         var piece = GetPiece(bitfield, excludedIndices);
 
         if (piece is null)
+        {
             return null;
+        }
 
         var blockCount = GetBlockCountByPieceIndex(piece.Value);
 
@@ -138,7 +142,9 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         }
 
         if (posiblePieces.Count == 0)
+        {
             return null;
+        }
 
         (int index, int rarity)[] posiblePiecesWithRarity = posiblePieces
             .AsValueEnumerable()
@@ -172,7 +178,9 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
 
         var pieceCount = (totalSize + pieceLenght - 1) / pieceLenght;
         if (pieceIndex >= pieceCount)
+        {
             throw new ArgumentOutOfRangeException(nameof(pieceIndex));
+        }
 
         var pieceLength =
             (pieceIndex == pieceCount - 1)
@@ -188,7 +196,10 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         ArgumentOutOfRangeException.ThrowIfNegative(blockIndex);
         var pieceCount = (totalSize + pieceLenght - 1) / pieceLenght;
         if (pieceIndex >= pieceCount)
+        {
             throw new ArgumentOutOfRangeException(nameof(pieceIndex));
+        }
+
         var pieceLength =
             (pieceIndex == pieceCount - 1)
                 ? totalSize - (long)pieceIndex * pieceLenght

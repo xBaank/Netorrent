@@ -63,7 +63,9 @@ internal readonly record struct Message(byte Id, RentedArray<byte>? Payload) : I
 
             // payload (if any)
             if (payloadLength > 0)
+            {
                 Payload!.Memory.CopyTo(buffer.AsMemory(5, payloadLength));
+            }
 
             return new RentedArray<byte>(buffer, length);
         }
@@ -80,10 +82,14 @@ internal readonly record struct Message(byte Id, RentedArray<byte>? Payload) : I
     public static Message From(byte[] array, int length, byte id)
     {
         if (array.Length < length)
+        {
             throw new ArgumentException("Incomplete message");
+        }
 
         if (length == 0)
+        {
             return new Message(id, null);
+        }
 
         return new Message(id, new RentedArray<byte>(array, length));
     }

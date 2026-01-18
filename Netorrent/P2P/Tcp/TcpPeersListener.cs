@@ -1,19 +1,27 @@
 ﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
+using ZLinq;
 
 namespace Netorrent.P2P.Tcp;
 
-internal class TcpPeersListener(PeerId peerId, TcpListener tcpListener, ILogger logger)
-    : IAsyncDisposable
+internal class TcpPeersListeners(
+    PeerId peerId,
+    IReadOnlyList<TcpListener> tcpListeners,
+    ILogger logger
+) : IAsyncDisposable
 {
     private readonly ConcurrentDictionary<InfoHash, PeersClient> _peersClientByInfoHash = new();
+    private readonly Channel<TcpClient> _incomingConnections = Channel.CreateBounded<TcpClient>(
+        128
+    );
 
-    public IPEndPoint EndPoint => (IPEndPoint)tcpListener.LocalEndpoint;
+    public int Port => ((IPEndPoint)tcpListeners[0].LocalEndpoint).Port;
 
     private CancellationTokenSource? _cancellationTokenSource;
     private Task? _runTask;
@@ -22,20 +30,27 @@ internal class TcpPeersListener(PeerId peerId, TcpListener tcpListener, ILogger 
     public void Start()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _runTask = StartAsync();
+        _cancellationTokenSource = new();
+        _runTask = _cancellationTokenSource.CancelOnFirstCompletionAndAwaitAllAsync([
+            ListenAllAsync(_cancellationTokenSource.Token),
+            ProcessIncomingConnectionsAsync(_cancellationTokenSource.Token),
+        ]);
     }
 
-    private async Task StartAsync()
+    private async Task ListenAllAsync(CancellationToken cancellationToken)
     {
-        tcpListener.Start();
-        _cancellationTokenSource = new();
+        var listenerTasks = tcpListeners.Select(i => ListenAsync(i, cancellationToken));
+        await Task.WhenAny(listenerTasks).ConfigureAwait(false);
+    }
 
-        while (!_cancellationTokenSource.Token.IsCancellationRequested)
+    private async Task ProcessIncomingConnectionsAsync(CancellationToken cancellationToken)
+    {
+        await foreach (
+            var tcpClient in _incomingConnections
+                .Reader.ReadAllAsync(cancellationToken)
+                .ConfigureAwait(false)
+        )
         {
-            var tcpClient = await tcpListener
-                .AcceptTcpClientAsync(_cancellationTokenSource.Token)
-                .ConfigureAwait(false);
-
             var remoteEndPoint = (IPEndPoint)tcpClient.Client.RemoteEndPoint!;
 
             try
@@ -45,7 +60,7 @@ internal class TcpPeersListener(PeerId peerId, TcpListener tcpListener, ILogger 
                         tcpClient.GetStream(),
                         _peersClientByInfoHash.Keys,
                         peerId,
-                        _cancellationTokenSource.Token
+                        cancellationToken
                     )
                     .ConfigureAwait(false);
 
@@ -68,7 +83,7 @@ internal class TcpPeersListener(PeerId peerId, TcpListener tcpListener, ILogger 
                             peerId,
                             handShake.InfoHash
                         ),
-                        _cancellationTokenSource.Token
+                        cancellationToken
                     )
                     .ConfigureAwait(false);
             }
@@ -84,6 +99,23 @@ internal class TcpPeersListener(PeerId peerId, TcpListener tcpListener, ILogger 
                 }
                 tcpClient.Dispose();
             }
+        }
+    }
+
+    private async Task ListenAsync(TcpListener tcpListener, CancellationToken cancellationToken)
+    {
+        tcpListener.Start();
+        _cancellationTokenSource = new();
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var tcpClient = await tcpListener
+                .AcceptTcpClientAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            await _incomingConnections
+                .Writer.WriteOrDisposeAsync(tcpClient, cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 
@@ -106,10 +138,16 @@ internal class TcpPeersListener(PeerId peerId, TcpListener tcpListener, ILogger 
             try
             {
                 if (_runTask is not null)
+                {
                     await _runTask.ConfigureAwait(false);
+                }
             }
             catch { }
-            tcpListener.Dispose();
+
+            foreach (var tcpListener in tcpListeners)
+            {
+                tcpListener.Dispose();
+            }
         }
     }
 }

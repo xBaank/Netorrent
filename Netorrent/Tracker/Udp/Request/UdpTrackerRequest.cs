@@ -46,14 +46,18 @@ internal record UdpTrackerRequest(
         offset += 4;
 
         if (InfoHash.Data.Length != 20)
+        {
             throw new ArgumentException("InfoHash must be 20 bytes", nameof(InfoHash));
+        }
 
         InfoHash.Data.Span.CopyTo(span[offset..]);
         offset += 20;
 
         var peerBytes = PeerId.ToBytes();
         if (peerBytes.Length != 20)
+        {
             throw new ArgumentException("PeerId must be 20 bytes", nameof(PeerId));
+        }
 
         peerBytes.CopyTo(span[offset..]);
         offset += 20;

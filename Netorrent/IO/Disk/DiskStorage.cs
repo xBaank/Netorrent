@@ -34,7 +34,9 @@ internal class DiskStorage : IPieceStorage
             var folder = Path.GetDirectoryName(fullPath);
 
             if (folder is not null)
+            {
                 Directory.CreateDirectory(folder);
+            }
 
             var handle = File.OpenHandle(
                 fullPath,
@@ -85,7 +87,9 @@ internal class DiskStorage : IPieceStorage
         foreach (var file in _files)
         {
             if (globalOffset >= file.EndOffset)
+            {
                 continue;
+            }
 
             long fileOffset = Math.Max(0, globalOffset - file.StartOffset);
             long writable = Math.Min(remaining, file.Length - fileOffset);
@@ -105,7 +109,9 @@ internal class DiskStorage : IPieceStorage
             remaining -= writable;
 
             if (remaining <= 0)
+            {
                 break;
+            }
         }
     }
 
@@ -134,7 +140,9 @@ internal class DiskStorage : IPieceStorage
         foreach (var file in _files)
         {
             if (globalOffset >= file.EndOffset)
+            {
                 continue;
+            }
 
             long fileOffset = Math.Max(0, globalOffset - file.StartOffset);
             long readable = Math.Min(length - totalRead, file.Length - fileOffset);
@@ -147,11 +155,15 @@ internal class DiskStorage : IPieceStorage
             globalOffset += bytesRead;
 
             if (totalRead >= length || bytesRead == 0)
+            {
                 break;
+            }
         }
 
         if (totalRead < length)
+        {
             length = totalRead;
+        }
 
         return new RentedArray<byte>(array, length);
     }

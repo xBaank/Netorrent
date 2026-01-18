@@ -32,7 +32,9 @@ public class OpenTrackerFixture : IAsyncInitializer, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         if (_container is null)
+        {
             return;
+        }
 
         await _container.StopAsync();
         await _container.DisposeAsync();

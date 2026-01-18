@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -8,6 +9,8 @@ using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 using Netorrent.P2P.Tcp;
 using Netorrent.TorrentFile.FileStructure;
+using Netorrent.TorrentFile.Options;
+using Netorrent.Tracker;
 using Netorrent.Tracker.Http;
 using Netorrent.Tracker.Udp;
 using Netorrent.Tracker.Udp.Client;
@@ -20,38 +23,89 @@ public sealed class TorrentClient : IAsyncDisposable
     private readonly PeerId _peerId = new();
     private readonly TorrentClientOptions _options;
     private readonly Dictionary<InfoHash, Torrent> _torrents = [];
-    private readonly TcpPeersListener _peersListener;
-    private readonly UdpTrackerHandler _udpTrackerHandler;
-    private readonly HttpTrackerHandler _httpTrackerHandler;
+    private readonly TcpPeersListeners _peersListener;
+    private readonly TrackerHandlers _trackerHandlers;
 
     public TorrentClient(Func<TorrentClientOptions, TorrentClientOptions>? action = null)
     {
         var options = new TorrentClientOptions(
             NullLogger.Instance,
-            UsedAddressProtocol.Ipv4 | UsedAddressProtocol.Ipv6,
-            UsedTrackers.Http | UsedTrackers.Udp,
-            null
+            0,
+            IPAddress.Any,
+            IPAddress.IPv6Any,
+            UsedTrackers.Http | UsedTrackers.Udp
         );
         _options = action?.Invoke(options) ?? options;
+
+        if (
+            _options.ListenIpv4Address is not null
+            && _options.ListenIpv4Address.AddressFamily != AddressFamily.InterNetwork
+        )
+        {
+            throw new ArgumentException("ListenIpv4Address must be ipv4");
+        }
+
+        if (
+            _options.ListenIpv6Address is not null
+            && _options.ListenIpv6Address.AddressFamily != AddressFamily.InterNetworkV6
+        )
+        {
+            throw new ArgumentException("ListenIpv4Address must be ipv6");
+        }
+
+        if (_options.ListenIpv4Address is null && _options.ListenIpv6Address is null)
+        {
+            throw new ArgumentException("One Listen address must be initialized");
+        }
+
+        IPAddress?[] addresses = [_options.ListenIpv4Address, _options.ListenIpv6Address];
+
         _peersListener = new(
             _peerId,
-            TcpListener.GetFreeTcpListener(_options.UsedAdressProtocol),
+            TcpListener.GetFreeTcpListeners(
+                addresses.AsValueEnumerable().Where(i => i is not null).ToArray()!,
+                _options.ListenPort
+            ),
             _options.Logger
         );
-        _udpTrackerHandler = new(
-            new UdpClientWrapper(UdpClient.GetFreeUdpClient(_options.UsedAdressProtocol)),
-            _options.Logger,
-            15.Seconds,
-            1.Seconds,
-            1.Minutes,
-            8
-        );
-        _httpTrackerHandler = new(
-            HttpClient.CreateHttpClient(AddressFamily.InterNetwork),
-            HttpClient.CreateHttpClient(AddressFamily.InterNetworkV6)
+
+        UdpTrackerHandler? udpTrackerHandlerIpv4 = null;
+        HttpTrackerHandler? httpTrackerHandlerIpv4 = null;
+        UdpTrackerHandler? udpTrackerHandlerIpv6 = null;
+        HttpTrackerHandler? httpTrackerHandlerIpv6 = null;
+
+        if (_options.ListenIpv4Address is not null)
+        {
+            udpTrackerHandlerIpv4 = new(
+                new UdpClientWrapper(UdpClient.GetFreeUdpClient(_options.ListenIpv4Address)),
+                _options.Logger,
+                15.Seconds,
+                1.Seconds,
+                1.Minutes,
+                8
+            );
+            httpTrackerHandlerIpv4 = new(HttpClient.CreateHttpClient(_options.ListenIpv4Address));
+        }
+        if (_options.ListenIpv6Address is not null)
+        {
+            udpTrackerHandlerIpv6 = new(
+                new UdpClientWrapper(UdpClient.GetFreeUdpClient(_options.ListenIpv6Address)),
+                _options.Logger,
+                15.Seconds,
+                1.Seconds,
+                1.Minutes,
+                8
+            );
+            httpTrackerHandlerIpv6 = new(HttpClient.CreateHttpClient(_options.ListenIpv6Address));
+        }
+
+        _trackerHandlers = new(
+            httpTrackerHandlerIpv4,
+            udpTrackerHandlerIpv4,
+            httpTrackerHandlerIpv6,
+            udpTrackerHandlerIpv6
         );
         _peersListener.Start();
-        _udpTrackerHandler.Start();
     }
 
     /// <summary>
@@ -75,7 +129,9 @@ public sealed class TorrentClient : IAsyncDisposable
         var decoder = new BDecoder(torrentFileData);
         var decoded = decoder.Decode();
         if (decoded is not BDictionary bDictionary)
+        {
             throw new InvalidDataException("Torrent file is not a valid bencoded dictionary.");
+        }
 
         var metaInfo = ParseMetaInfo(bDictionary);
 
@@ -96,8 +152,7 @@ public sealed class TorrentClient : IAsyncDisposable
     {
         var torrent = new Torrent(
             metaInfo,
-            _httpTrackerHandler,
-            _udpTrackerHandler,
+            _trackerHandlers,
             _peersListener,
             _peerId,
             Path.GetFullPath(outputDirectory),
@@ -142,8 +197,7 @@ public sealed class TorrentClient : IAsyncDisposable
             .ConfigureAwait(false);
         var torrent = new Torrent(
             metainfo,
-            _httpTrackerHandler,
-            _udpTrackerHandler,
+            _trackerHandlers,
             _peersListener,
             _peerId,
             Directory.Exists(path) ? Path.GetFullPath(path) : Path.GetDirectoryName(path) ?? "/",
@@ -166,20 +220,37 @@ public sealed class TorrentClient : IAsyncDisposable
         static bool IsValidUrl(string? url, bool allowHttp = true)
         {
             if (string.IsNullOrWhiteSpace(url))
+            {
                 return false;
+            }
+
             if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            {
                 return false;
+            }
+
             if (uri.Scheme == Uri.UriSchemeHttp && allowHttp)
+            {
                 return true;
+            }
+
             if (uri.Scheme == Uri.UriSchemeHttps)
+            {
                 return true;
+            }
+
             if (uri.Scheme == "udp" || uri.Scheme == "udp4" || uri.Scheme == "udp6")
+            {
                 return true; // Trackers can be UDP
+            }
+
             return false;
         }
 
         if (!IsValidUrl(announceUrl))
+        {
             throw new ArgumentException($"Invalid announce URL: '{announceUrl}'");
+        }
 
         string[] allUrls = [.. announceUrls ?? [], .. webUrls ?? []];
         foreach (string url in allUrls)
@@ -195,7 +266,9 @@ public sealed class TorrentClient : IAsyncDisposable
         bool isDirectory = Directory.Exists(path);
         bool isFile = File.Exists(path);
         if (!isDirectory && !isFile)
+        {
             throw new FileNotFoundException("File or directory not found.", path);
+        }
 
         var files = new List<(string FullPath, string RelativePath, long Length)>();
 
@@ -231,9 +304,11 @@ public sealed class TorrentClient : IAsyncDisposable
             }
 
             if (files.Count == 0)
+            {
                 throw new InvalidOperationException(
                     "Directory contains no files to create a torrent."
                 );
+            }
         }
 
         var piecesBytes = new List<byte>();
@@ -263,7 +338,9 @@ public sealed class TorrentClient : IAsyncDisposable
                     )
                     .ConfigureAwait(false);
                 if (bytesRead <= 0)
+                {
                     break;
+                }
 
                 bufferPos += bytesRead;
 
@@ -459,7 +536,7 @@ public sealed class TorrentClient : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await _peersListener.DisposeAsync().ConfigureAwait(false);
-        await _udpTrackerHandler.DisposeAsync().ConfigureAwait(false);
+        await _trackerHandlers.DisposeAsync().ConfigureAwait(false);
         var torrentsDisposeTasks = _torrents.Values.Select(i => i.DisposeAsync().AsTask());
         await Task.WhenAll(torrentsDisposeTasks).ConfigureAwait(false);
     }

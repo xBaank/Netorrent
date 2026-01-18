@@ -11,7 +11,6 @@ namespace Netorrent.P2P.Tcp;
 internal class TcpPeersConnector(
     PeersClient peersClient,
     InfoHash infoHash,
-    IReadOnlySet<AddressFamily> supportedAddressFamilies,
     PeerId peerId,
     ChannelReader<IPEndPoint> peersEndpoints,
     Func<IPAddress, IPAddress>? peerIpProxy,
@@ -33,15 +32,6 @@ internal class TcpPeersConnector(
                     peerIpProxy?.Invoke(iPEndPoint.Address) ?? iPEndPoint.Address,
                     iPEndPoint.Port
                 );
-
-                if (!supportedAddressFamilies.Contains(targetEndPoint.AddressFamily))
-                {
-                    if (logger.IsEnabled(LogLevel.Information))
-                    {
-                        logger.LogInformation("Unsupported {endpoint}", targetEndPoint);
-                    }
-                    continue;
-                }
 
                 try
                 {

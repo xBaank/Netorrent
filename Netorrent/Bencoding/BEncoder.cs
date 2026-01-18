@@ -86,18 +86,28 @@ internal sealed class BEncoder : IAsyncDisposable, IDisposable
     private static int BytewiseCompare(byte[]? a, byte[]? b)
     {
         if (ReferenceEquals(a, b))
+        {
             return 0;
+        }
+
         if (a is null)
+        {
             return -1;
+        }
+
         if (b is null)
+        {
             return 1;
+        }
 
         int len = Math.Min(a.Length, b.Length);
         for (int i = 0; i < len; i++)
         {
             int diff = a[i].CompareTo(b[i]);
             if (diff != 0)
+            {
                 return diff;
+            }
         }
         return a.Length.CompareTo(b.Length);
     }

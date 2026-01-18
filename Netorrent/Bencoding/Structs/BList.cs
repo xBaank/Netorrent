@@ -15,12 +15,16 @@ public readonly struct BList(List<IBencodingNode> elements) : IBencodingNode
     public override bool Equals(object? obj)
     {
         if (obj is not BList other || other.Elements.Count != Elements.Count)
+        {
             return false;
+        }
 
         for (int i = 0; i < Elements.Count; i++)
         {
             if (!Elements[i].Equals(other.Elements[i]))
+            {
                 return false;
+            }
         }
 
         return true;
@@ -30,7 +34,10 @@ public readonly struct BList(List<IBencodingNode> elements) : IBencodingNode
     {
         int hash = 17;
         foreach (var item in Elements)
+        {
             hash = hash * 31 + item.GetHashCode();
+        }
+
         return hash;
     }
 }
