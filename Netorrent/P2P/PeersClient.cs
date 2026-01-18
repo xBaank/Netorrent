@@ -23,7 +23,6 @@ internal class PeersClient(
     const int MAX_ACTIVE_PEER_COUNT = 100;
 
     private readonly ConcurrentQueue<PeerEndpoint> _knownPeers = [];
-    private readonly List<Task> _peerTasks = [];
     private readonly Subject<PeerEndpoint> _peerConnected = new();
     private readonly Channel<PeerConnection> _peerConnections =
         Channel.CreateBounded<PeerConnection>(
@@ -49,15 +48,8 @@ internal class PeersClient(
         }
         catch
         {
-            try
-            {
-                await Task.WhenAll(_peerTasks).ConfigureAwait(false);
-            }
-            catch { }
-
-            _peerTasks.Clear();
-            var peersDisposeTasks = activePeers.Values.Select(i => i.DisposeAsync().AsTask());
-            await Task.WhenAll(peersDisposeTasks).ConfigureAwait(false);
+            var disposeTasks = activePeers.Values.Select(i => i.DisposeAsync().AsTask());
+            await Task.WhenAll(disposeTasks);
             activePeers.Clear();
             throw;
         }
@@ -73,7 +65,7 @@ internal class PeersClient(
         {
             if (await CanConnectAsync(peerConnection).ConfigureAwait(false))
             {
-                _peerTasks.Add(HandlePeerAsync(peerConnection, cancellationToken));
+                _ = HandlePeerAsync(peerConnection, cancellationToken);
             }
         }
     }
@@ -90,10 +82,17 @@ internal class PeersClient(
             new PeerRequestWindow(piecePicker.BlockSize),
             piecePicker
         );
-
-        await _peerConnections
-            .Writer.WriteAsync(peerConnection, cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            await _peerConnections
+                .Writer.WriteAsync(peerConnection, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            await peerConnection.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
     }
 
     private async Task HandlePeerAsync(

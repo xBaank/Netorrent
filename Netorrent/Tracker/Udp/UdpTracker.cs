@@ -51,14 +51,12 @@ internal class UdpTracker(
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            await Task.Delay(_lastResponse.Interval.Seconds, cancellationToken)
-                .ConfigureAwait(false);
-
             var interval = _lastResponse.Interval.Seconds;
+            await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
 
             if (logger.IsEnabled(LogLevel.Information))
             {
-                logger.LogInformation("Waiting {seconds} seconds", interval.TotalSeconds);
+                logger.LogInformation("Waiting {seconds} seconds", interval);
             }
 
             var newResponse = await TryAnnounceAsync(iPEndPoint, null, cancellationToken)
@@ -153,12 +151,12 @@ internal class UdpTracker(
         }
     }
 
-    public async ValueTask DisposeAsync()
+    public async ValueTask StopAsync(CancellationToken cancellationToken)
     {
         if (iPEndPoint is not null && _lastResponse is not null)
         {
-            using var cts = new CancellationTokenSource(5.Seconds);
-            await TryAnnounceAsync(iPEndPoint, Events.Stopped, cts.Token).ConfigureAwait(false);
+            //Udp tracker don't respond to stop so there is no point in awaiting as it will never complete
+            _ = TryAnnounceAsync(iPEndPoint, Events.Stopped, cancellationToken);
         }
     }
 }

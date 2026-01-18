@@ -1,5 +1,4 @@
 ﻿using System.Net;
-using System.Net.Sockets;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
@@ -44,7 +43,7 @@ internal class TcpPeersConnector(
                             .AsTask()
                     );
 
-                    if (tasks.Count >= 1000)
+                    if (tasks.Count >= 500)
                     {
                         try
                         {

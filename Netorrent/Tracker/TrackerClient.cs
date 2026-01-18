@@ -36,13 +36,16 @@ internal class TrackerClient(
 
         List<Task> trackerTasks = [];
         List<ITracker> trackers = [];
-        var trackersEnumerable = CreateTrackers(urls, cancellationToken).ConfigureAwait(false);
 
         //The trackers should not fail by them self
         //They finish successfully because of dns problems, udp timeouts, etc.
         try
         {
-            await foreach (var tracker in trackersEnumerable)
+            await foreach (
+                var tracker in CreateTrackers(urls, cancellationToken)
+                    .WithCancellation(cancellationToken)
+                    .ConfigureAwait(false)
+            )
             {
                 trackers.Add(tracker);
                 trackerTasks.Add(tracker.StartAsync(cancellationToken).AsTask());
@@ -52,7 +55,8 @@ internal class TrackerClient(
         }
         finally
         {
-            var trackerDisposeTasks = trackers.Select(i => i.DisposeAsync().AsTask());
+            using var cts = new CancellationTokenSource(5.Seconds);
+            var trackerDisposeTasks = trackers.Select(i => i.StopAsync(cts.Token).AsTask());
             await Task.WhenAll(trackerDisposeTasks).ConfigureAwait(false);
         }
     }
@@ -104,7 +108,7 @@ internal class TrackerClient(
         var (ipv4, ipv6) = await Dns.GetHostAdressesOrEmptyAsync(uri, cancellationToken)
             .ConfigureAwait(false);
 
-        if (trackerHandlers.HttpTrackerHandlerIpv4 is not null)
+        if (trackerHandlers.HttpTrackerHandlerIpv4 is not null && ipv4 is not null)
         {
             var trackerv4 = new HttpTracker(
                 port,
@@ -119,7 +123,7 @@ internal class TrackerClient(
             httpsTrackers.Add(trackerv4);
         }
 
-        if (trackerHandlers.HttpTrackerHandlerIpv6 is not null)
+        if (trackerHandlers.HttpTrackerHandlerIpv6 is not null && ipv6 is not null)
         {
             var trackerv6 = new HttpTracker(
                 port,

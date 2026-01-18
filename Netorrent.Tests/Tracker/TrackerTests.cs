@@ -62,7 +62,7 @@ public class TrackerTests
             ctx.Interval
         );
 
-        await using var udptracker = new UdpTracker(
+        var udptracker = new UdpTracker(
             udptrackerManager,
             1,
             new(3),
@@ -164,7 +164,7 @@ public class TrackerTests
             new Exception()
         );
 
-        await using var udptracker = new UdpTracker(
+        var udptracker = new UdpTracker(
             udptrackerManager,
             1,
             new(3),
