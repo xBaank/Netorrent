@@ -7,9 +7,10 @@ namespace Netorrent.Tests.Fakes;
 internal class FakeHttpTrackerHandler(IPEndPoint[] ips, TimeSpan interval, Exception? error = null)
     : IHttpTrackerHandler
 {
+    public void Dispose() { }
+
     public ValueTask<HttpTrackerResponse> SendAsync(
         string url,
-        AddressFamily addressFamily,
         HttpTrackerRequest httpTrackerRequest,
         CancellationToken cancellationToken
     ) =>

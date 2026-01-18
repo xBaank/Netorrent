@@ -1,5 +1,6 @@
 ﻿using System.Buffers.Binary;
 using System.Net;
+using System.Net.Sockets;
 using Microsoft.Extensions.Logging.Abstractions;
 using Netorrent.Extensions;
 using Netorrent.Tests.Extensions;
@@ -18,14 +19,14 @@ namespace Netorrent.Tests.Tracker;
 public class UdpTrackerHandlerTests
 {
     [Test]
-    [Arguments(UsedAddressProtocol.Ipv4)]
-    [Arguments(UsedAddressProtocol.Ipv6)]
+    [Arguments(AddressFamily.InterNetwork)]
+    [Arguments(AddressFamily.InterNetworkV6)]
     public async Task Should_get_udp_response(
-        UsedAddressProtocol usedAddressProtocol,
+        AddressFamily addressFamily,
         CancellationToken cancellationToken
     )
     {
-        var bindAddress = usedAddressProtocol.BindIpAddress();
+        var bindAddress = addressFamily.BindIp();
         IPEndPoint[] ips =
         [
             new IPEndPoint(IPAddress.Parse("127.0.0.1"), 6881),
@@ -44,7 +45,6 @@ public class UdpTrackerHandlerTests
             1.Minutes,
             8
         );
-        manager.Start();
 
         var endpoint = new IPEndPoint(bindAddress, 6969);
         var trackerId = Guid.CreateVersion7();
@@ -111,7 +111,6 @@ public class UdpTrackerHandlerTests
             1.Minutes,
             8
         );
-        manager.Start();
 
         var endpoint = new IPEndPoint(IPAddress.IPv6Loopback, 6969);
         var trackerId = Guid.CreateVersion7();
@@ -169,7 +168,6 @@ public class UdpTrackerHandlerTests
             1.Minutes,
             8
         );
-        manager.Start();
 
         var endpoint = new IPEndPoint(IPAddress.IPv6Loopback, 6969);
         var trackerId = Guid.CreateVersion7();
@@ -208,14 +206,14 @@ public class UdpTrackerHandlerTests
     }
 
     [Test]
-    [Arguments(UsedAddressProtocol.Ipv4)]
-    [Arguments(UsedAddressProtocol.Ipv6)]
+    [Arguments(AddressFamily.InterNetwork)]
+    [Arguments(AddressFamily.InterNetworkV6)]
     public async Task Should_reconnect_and_receive_udp_response(
-        UsedAddressProtocol usedAddressProtocol,
+        AddressFamily addressFamily,
         CancellationToken cancellationToken
     )
     {
-        var bindAddress = usedAddressProtocol.BindIpAddress();
+        var bindAddress = addressFamily.BindIp();
         IPEndPoint[] ips =
         [
             new IPEndPoint(IPAddress.Parse("127.0.0.1"), 6881),
@@ -234,7 +232,6 @@ public class UdpTrackerHandlerTests
             1.Minutes,
             8
         );
-        manager.Start();
 
         var endpoint = new IPEndPoint(bindAddress, 6969);
         var trackerId = Guid.CreateVersion7();

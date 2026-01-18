@@ -19,8 +19,13 @@ public static class Hooks
     private static void CleanDirectories()
     {
         if (Directory.Exists("Output"))
+        {
             Directory.Delete("Output", true);
+        }
+
         if (Directory.Exists("Input"))
+        {
             Directory.Delete("Input", true);
+        }
     }
 }

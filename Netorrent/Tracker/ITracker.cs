@@ -1,6 +1,7 @@
 ﻿namespace Netorrent.Tracker;
 
-internal interface ITracker : IAsyncDisposable
+internal interface ITracker
 {
     public ValueTask StartAsync(CancellationToken cancellationToken);
+    public ValueTask StopAsync(CancellationToken cancellationToken);
 }

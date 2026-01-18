@@ -13,13 +13,11 @@ internal class HttpTracker(
     int port,
     DataStatistics transfer,
     IHttpTrackerHandler httpTrackerHandler,
-    AddressFamily addressFamily,
     PeerId peerId,
     InfoHash infoHash,
     string announceUrl,
     ILogger logger,
-    ChannelWriter<IPEndPoint> channelWriter,
-    IPAddress? forcedIp
+    ChannelWriter<IPEndPoint> channelWriter
 ) : ITracker
 {
     public async ValueTask StartAsync(CancellationToken cancellationToken)
@@ -28,7 +26,9 @@ internal class HttpTracker(
             .ConfigureAwait(false);
 
         if (response is null)
+        {
             return;
+        }
 
         foreach (var iPEndPoint in response.Peers)
         {
@@ -40,7 +40,9 @@ internal class HttpTracker(
             var interval = response.Interval.Seconds;
 
             if (logger.IsEnabled(LogLevel.Information))
+            {
                 logger.LogInformation("Waiting {seconds} seconds", interval.TotalSeconds);
+            }
 
             await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
 
@@ -48,7 +50,9 @@ internal class HttpTracker(
                 .ConfigureAwait(false);
 
             if (newResponse is null)
+            {
                 continue;
+            }
 
             response = newResponse;
 
@@ -65,7 +69,9 @@ internal class HttpTracker(
     )
     {
         if (logger.IsEnabled(LogLevel.Information))
+        {
             logger.LogInformation("Announcing to {url}", announceUrl);
+        }
 
         try
         {
@@ -79,25 +85,26 @@ internal class HttpTracker(
                 true,
                 false,
                 @event,
-                forcedIp?.ToString(),
                 50
             );
 
             return await httpTrackerHandler
-                .SendAsync(announceUrl, addressFamily, request, cancellationToken)
+                .SendAsync(announceUrl, request, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             if (logger.IsEnabled(LogLevel.Debug))
+            {
                 logger.LogDebug(ex, "Couldn't announce to {trackerUrl}", announceUrl);
+            }
+
             return null;
         }
     }
 
-    public async ValueTask DisposeAsync()
+    public async ValueTask StopAsync(CancellationToken cancellationToken)
     {
-        using var cts = new CancellationTokenSource(5.Seconds);
-        await TryAnnounceAsync(Events.Stopped, cts.Token).ConfigureAwait(false);
+        await TryAnnounceAsync(Events.Stopped, cancellationToken).ConfigureAwait(false);
     }
 }

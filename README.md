@@ -14,11 +14,6 @@ dotnet add package Netorrent
 dotnet add package Netorrent --version 1.0.0-nightly-*
 ```
 
-### Preview Releases
-```bash
-dotnet add package Netorrent --prerelease
-```
-
 **Requirements:**
 - .NET 10.0 or higher
 - Dependencies automatically included:
@@ -146,7 +141,6 @@ The library is designed with async-first architecture for optimal performance:
 - Channel-based communication between components
 - Memory pooling for efficient buffer management
 - Concurrent collections for thread-safe operations
-- Minimal allocations in hot paths
 
 ## Package Versions
 
@@ -165,20 +159,24 @@ The library is designed with async-first architecture for optimal performance:
 
 ## Features
 
-- [x] **Torrent files** - Complete .torrent file support
-- [x] **HTTP Trackers** - Full HTTP tracker protocol implementation
-- [x] **Peer Wire Protocol** - TCP peer communication
-- [x] **UDP Trackers** - High-performance UDP tracker support
-- [x] **Piece Verification** - SHA-1 hash verification of downloaded pieces
-- [x] **Multi-tracker Support** - Primary and backup tracker support
-- [x] **Resume Downloads** - Support for partially downloaded torrents
-- [x] **Real-time Statistics** - Comprehensive download/upload monitoring
-- [x] **Async/Await Support** - Modern async-first API design
-- [x] **Cancellation Support** - Full CancellationToken integration
-- [x] **Torrent Creation** - Create torrents from files and directories
-- [ ] **μTP Protocol** - Micro Transport Protocol (BEP 0029)
-- [ ] **DHT Support** - Distributed Hash Table (BEP 0005)
-- [ ] **Message Encryption** - Protocol encryption (BEP 0008)
-- [ ] **UPnP/PMP** - NAT traversal for incoming connections
-- [ ] **Magnet Links** - URI-based torrent identification
-- [ ] **Endgame Mode** - Optimized piece downloading for completion
+- **Torrent files** - Complete .torrent file support
+- **HTTP Trackers** - Full HTTP tracker protocol implementation
+- **Peer Wire Protocol** - TCP peer communication
+- **UDP Trackers** - High-performance UDP tracker support
+- **Piece Verification** - SHA-1 hash verification of downloaded pieces
+- **Multi-tracker Support** - Primary and backup tracker support
+- **Resume Downloads** - Support for partially downloaded torrents
+- **Real-time Statistics** - Comprehensive download/upload monitoring
+- **Async/Await Support** - Modern async-first API design
+- **Cancellation Support** - Full CancellationToken integration
+- **Torrent Creation** - Create torrents from files and directories
+
+## BEP Implementation
+
+Netorrent implements the following BitTorrent Enhancement Proposals (BEPs):
+
+- **[BEP 3: The BitTorrent Protocol Specification](https://www.bittorrent.org/beps/bep_0003.html)** - Core BitTorrent protocol specification including metainfo files, tracker communication, and peer wire protocol
+- **[BEP 7: IPv6 Tracker Extension](https://www.bittorrent.org/beps/bep_0007.html)** - IPv6 support for tracker communication and compact peer list handling
+- **[BEP 12: Multitracker Metadata Extension](https://www.bittorrent.org/beps/bep_0012.html)** - Support for multiple tracker tiers and backup tracker fallback
+- **[BEP 15: UDP Tracker Protocol](https://www.bittorrent.org/beps/bep_0015.html)** - UDP-based tracker protocol for reduced overhead and improved performance
+- **[BEP 23: Tracker Returns Compact Peer Lists](https://www.bittorrent.org/beps/bep_0023.html)** - Compact peer list format to reduce tracker response size and improve efficiency

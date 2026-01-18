@@ -1,5 +1,5 @@
-﻿using System.Net.Sockets;
-using Netorrent.TorrentFile;
+﻿using System.Net;
+using System.Net.Sockets;
 
 namespace Netorrent.Extensions;
 
@@ -7,23 +7,23 @@ internal static class TcpListenerExtensions
 {
     extension(TcpListener)
     {
-        public static TcpListener GetFreeTcpListener(
-            UsedAddressProtocol usedAdressProtocol,
-            int port = 0
+        public static List<TcpListener> GetFreeTcpListeners(
+            IPAddress[] ipAddresses,
+            int? port = null
         )
         {
-            var ipAddress = usedAdressProtocol.BindIpAddress();
-            var listener = new TcpListener(ipAddress, port);
+            List<TcpListener> tcpListeners = new(ipAddresses.Length);
 
-            if (
-                usedAdressProtocol.HasFlag(UsedAddressProtocol.Ipv4)
-                && usedAdressProtocol.HasFlag(UsedAddressProtocol.Ipv6)
-            )
+            foreach (var ipAddress in ipAddresses)
             {
-                listener.Server.DualMode = true;
+                var address = ipAddress;
+                var usedPort = port ?? 0;
+                var listener = new TcpListener(address, usedPort);
+                listener.Start();
+                port ??= ((IPEndPoint)listener.LocalEndpoint).Port;
+                tcpListeners.Add(listener);
             }
-
-            return listener;
+            return tcpListeners;
         }
     }
 }

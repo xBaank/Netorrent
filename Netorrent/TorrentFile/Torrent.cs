@@ -13,6 +13,7 @@ using Netorrent.P2P.Tcp;
 using Netorrent.P2P.Upload;
 using Netorrent.Statistics;
 using Netorrent.TorrentFile.FileStructure;
+using Netorrent.TorrentFile.Options;
 using Netorrent.Tracker;
 using Netorrent.Tracker.Http;
 using Netorrent.Tracker.Udp;
@@ -30,21 +31,20 @@ public sealed class Torrent : IAsyncDisposable
     public Bitfield Bitfield => _myBitfield;
 
     private readonly TcpPeersConnector _peerConnector;
-    private readonly TcpPeersListener _peersListener;
+    private readonly TcpPeersListeners _peersListener;
     private readonly PeersClient _peersClient;
     private readonly TrackerClient _trackerClient;
     private readonly DiskStorage _pieceStorage;
     private readonly Bitfield _myBitfield;
-    private readonly IPiecePicker _piecePicker;
+    private readonly PiecePicker _piecePicker;
     private Task? _runTask;
     private CancellationTokenSource? _cancellationTokenSource;
     private bool _disposed;
 
     internal Torrent(
         MetaInfo metaInfo,
-        IHttpTrackerHandler httpTrackerHandler,
-        IUdpTrackerHandler udpTrackerHandler,
-        TcpPeersListener peersListener,
+        TrackerHandlers trackerHandlers,
+        TcpPeersListeners peersListener,
         PeerId peerId,
         string outputDirectory,
         TorrentClientOptions torrentClientOptions,
@@ -109,23 +109,19 @@ public sealed class Torrent : IAsyncDisposable
             torrentClientOptions.Logger
         );
         _trackerClient = new TrackerClient(
-            httpTrackerHandler,
-            udpTrackerHandler,
-            torrentClientOptions.SupportedAddressFamilies,
+            trackerHandlers,
             torrentClientOptions.UsedTrackers,
-            peersListener.EndPoint.Port,
+            peersListener.Port,
             dataStatistics,
             peerId,
             trackersChannel.Writer,
             [metaInfo.Announce, .. metaInfo.AnnounceList ?? []],
             metaInfo.Info.InfoHash,
-            torrentClientOptions.Logger,
-            torrentClientOptions.ForcedIp
+            torrentClientOptions.Logger
         );
         _peerConnector = new TcpPeersConnector(
             _peersClient,
             metaInfo.Info.InfoHash,
-            torrentClientOptions.SupportedAddressFamilies,
             peerId,
             trackersChannel,
             torrentClientOptions.PeerIpProxy,

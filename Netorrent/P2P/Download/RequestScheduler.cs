@@ -146,12 +146,12 @@ internal class RequestScheduler(
 
     private void CheckTimeout()
     {
+        var currentPeers = peers.Values.AsValueEnumerable();
         foreach (var requestBlock in piecePicker.GetTimeoutRequestBlocks())
         {
             piecePicker.SetBlockToPending(requestBlock); //TODO set ALL request blocks by lastRequestedFrom requester to pending as they are all more likely to be timed out
 
-            var freePeer = peers
-                .Values.AsValueEnumerable()
+            var freePeer = currentPeers
                 .Where(i => !i.PeerChoking.CurrentValue)
                 .Where(i => i.AmInterested.CurrentValue)
                 .Where(i => !requestBlock.RequestedFrom.Contains(i))
@@ -280,7 +280,9 @@ internal class RequestScheduler(
             try
             {
                 if (_runningTask is not null)
+                {
                     await _runningTask.ConfigureAwait(false);
+                }
             }
             catch { }
 

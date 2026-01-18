@@ -2,11 +2,10 @@
 
 namespace Netorrent.Tracker.Http;
 
-internal interface IHttpTrackerHandler
+internal interface IHttpTrackerHandler : IDisposable
 {
     ValueTask<HttpTrackerResponse> SendAsync(
         string url,
-        AddressFamily addressFamily,
         HttpTrackerRequest httpTrackerRequest,
         CancellationToken cancellationToken
     );

@@ -27,7 +27,9 @@ public struct BString : IBencodingNode
     public static bool operator ==(BString? left, BString? right)
     {
         if (left is null || right is null)
+        {
             return false;
+        }
 
         return left.Equals(right);
     }

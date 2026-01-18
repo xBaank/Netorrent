@@ -1,5 +1,4 @@
 ﻿using System.Net;
-using System.Net.Sockets;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
@@ -11,7 +10,6 @@ namespace Netorrent.P2P.Tcp;
 internal class TcpPeersConnector(
     PeersClient peersClient,
     InfoHash infoHash,
-    IReadOnlySet<AddressFamily> supportedAddressFamilies,
     PeerId peerId,
     ChannelReader<IPEndPoint> peersEndpoints,
     Func<IPAddress, IPAddress>? peerIpProxy,
@@ -34,15 +32,6 @@ internal class TcpPeersConnector(
                     iPEndPoint.Port
                 );
 
-                if (!supportedAddressFamilies.Contains(targetEndPoint.AddressFamily))
-                {
-                    if (logger.IsEnabled(LogLevel.Information))
-                    {
-                        logger.LogInformation("Unsupported {endpoint}", targetEndPoint);
-                    }
-                    continue;
-                }
-
                 try
                 {
                     tasks.Add(
@@ -54,7 +43,7 @@ internal class TcpPeersConnector(
                             .AsTask()
                     );
 
-                    if (tasks.Count >= 1000)
+                    if (tasks.Count >= 500)
                     {
                         try
                         {
