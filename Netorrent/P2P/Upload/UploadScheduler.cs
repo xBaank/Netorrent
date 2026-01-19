@@ -25,7 +25,8 @@ internal class UploadScheduler(
         Channel.CreateBounded<UploadMessage>(
             new BoundedChannelOptions(128) { SingleWriter = false, SingleReader = true }
         );
-
+    private readonly Lock _cancelLock = new();
+    private readonly HashSet<RequestBlock> _requests = [];
     private static readonly UploadMessage.CheckRoundMessage _checkRoundMessage = new();
     private readonly TimeSpan _interval = 10.Seconds;
 
@@ -105,15 +106,21 @@ internal class UploadScheduler(
         CancellationToken cancellationToken
     )
     {
-        if (
-            requestBlock.State == RequestBlockState.Cancelled
-            || requestBlock.RequestedFrom.Count == 0
-        )
+        var peer = requestBlock.RequestedFrom[0];
+
+        lock (_cancelLock)
         {
-            return;
+            if (
+                _requests.TryGetValue(requestBlock, out var actualValue)
+                && actualValue.State == RequestBlockState.Cancelled
+            )
+            {
+                _requests.Remove(actualValue);
+                peer.DecrementUploadRequested();
+                return;
+            }
         }
 
-        var peer = requestBlock.RequestedFrom[0];
         var pieceData = await pieceStorage
             .ReadAsync(
                 requestBlock.Index,
@@ -148,6 +155,7 @@ internal class UploadScheduler(
         }
         finally
         {
+            _requests.Remove(requestBlock);
             peer.DecrementUploadRequested();
         }
     }
@@ -283,25 +291,35 @@ internal class UploadScheduler(
             return;
         }
 
-        from.IncrementUploadRequested();
-        await _uploadMessagesChannel
-            .Writer.WriteAsync(new UploadMessage.RequestBlockMessage(request), cancellationToken)
-            .ConfigureAwait(false);
+        if (_requests.Add(request))
+        {
+            from.IncrementUploadRequested();
+
+            await _uploadMessagesChannel
+                .Writer.WriteAsync(
+                    new UploadMessage.RequestBlockMessage(request),
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
+        }
     }
 
-    //TODO properly implement cancellation
-    public void CancelRequest(RequestBlock request)
+    public void CancelRequest(RequestBlock cancelled)
     {
-        var from = request.RequestedFrom[0];
-
-        request.State = RequestBlockState.Cancelled;
-        from.DecrementUploadRequested();
+        lock (_cancelLock)
+        {
+            if (_requests.TryGetValue(cancelled, out var requestBlock))
+            {
+                cancelled.State = RequestBlockState.Cancelled;
+            }
+        }
     }
 
     private async ValueTask DrainChannelsAsync()
     {
         await foreach (var _ in _uploadMessagesChannel.Reader.ReadAllAsync().ConfigureAwait(false))
         { }
+        _requests.Clear();
     }
 
     public async ValueTask DisposeAsync()

@@ -383,7 +383,7 @@ internal class PeerConnection(
         var begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
         var length = BinaryPrimitives.ReadInt32BigEndian(span[8..12]);
 
-        var request = new RequestBlock(index, begin, length);
+        var request = new RequestBlock(index, begin, length) { RequestedFrom = [this] };
         uploadScheduler.CancelRequest(request);
     }
 
