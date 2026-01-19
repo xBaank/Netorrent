@@ -36,7 +36,7 @@ public class Bitfield
         }
     }
 
-    public bool HasPiece(int index) => index < _bits.Length && _bits[index];
+    public bool HasPiece(int index) => _bits[index];
 
     internal void SetPiece(int index)
     {

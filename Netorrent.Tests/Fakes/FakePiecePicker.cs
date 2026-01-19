@@ -9,6 +9,8 @@ internal class FakePiecePicker : IPiecePicker
 {
     public int BlockSize => 16 * 1024;
 
+    public bool IsEndGame => throw new NotImplementedException();
+
     public void CompletePiece(int index)
     {
         throw new NotImplementedException();
@@ -61,6 +63,14 @@ internal class FakePiecePicker : IPiecePicker
     }
 
     public void SetBlockToRequested(RequestBlock requestBlock, IPeerConnection peerConnection)
+    {
+        throw new NotImplementedException();
+    }
+
+    public bool TryGetRequestBlock(
+        Bitfield bitfield,
+        [NotNullWhen(true)] out RequestBlock? requestBlock
+    )
     {
         throw new NotImplementedException();
     }

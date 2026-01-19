@@ -12,7 +12,9 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
 
     private readonly int[] _pieceRarity = new int[myBitfield.Length];
     private readonly Dictionary<int, RequestBlock[]> _requestBlocks = [];
+    private bool _isEndGame = false;
     public int BlockSize => blockSize;
+    public bool IsEndGame => _isEndGame;
 
     public void IncreaseRarity(int index)
     {
@@ -63,20 +65,31 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         return false;
     }
 
-    public RequestBlock? GetBlock(Bitfield bitfield)
+    public bool TryGetRequestBlock(
+        Bitfield bitfield,
+        [NotNullWhen(true)] out RequestBlock? requestBlock
+    )
     {
+        var missing = 0;
+        for (int i = 0; i < myBitfield.Length; i++)
+        {
+            if (!myBitfield.HasPiece(i))
+            {
+                missing++;
+            }
+        }
+        _isEndGame = missing <= 5;
+
         HashSet<int> excludedIndices = [];
 
-        foreach (var requestBlock in _requestBlocks.Values.AsValueEnumerable().SelectMany(i => i))
+        foreach (var item in _requestBlocks.Values.AsValueEnumerable().SelectMany(i => i))
         {
-            excludedIndices.Add(requestBlock.Index);
+            excludedIndices.Add(item.Index);
 
-            if (
-                requestBlock.State == RequestBlockState.Pending
-                && bitfield.HasPiece(requestBlock.Index)
-            )
+            if (item.State == RequestBlockState.Pending && bitfield.HasPiece(item.Index))
             {
-                return requestBlock;
+                requestBlock = item;
+                return true;
             }
         }
 
@@ -84,7 +97,8 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
 
         if (piece is null)
         {
-            return null;
+            requestBlock = null;
+            return false;
         }
 
         var blockCount = GetBlockCountByPieceIndex(piece.Value);
@@ -100,7 +114,8 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
             }
         }
 
-        return requestBlocks[0];
+        requestBlock = requestBlocks[0];
+        return true;
     }
 
     public IEnumerable<RequestBlock> GetTimeoutRequestBlocks()
@@ -171,6 +186,8 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         int blockCount = (pieceSize + BlockSize - 1) / BlockSize;
         return blockCount;
     }
+
+    //TODO Move this to bitfield class?
 
     public int GetPieceSize(int pieceIndex)
     {

@@ -198,9 +198,7 @@ internal class RequestScheduler(
             < peerConnection.PeerRequestWindow.MaxInFlightRequests
         )
         {
-            var requestBlock = piecePicker.GetBlock(peerConnection.PeerBitField);
-
-            if (requestBlock is null)
+            if (!piecePicker.TryGetRequestBlock(peerConnection.PeerBitField, out var requestBlock))
             {
                 return;
             }
