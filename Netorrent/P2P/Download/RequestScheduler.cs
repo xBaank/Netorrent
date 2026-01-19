@@ -46,7 +46,9 @@ internal class RequestScheduler(
     {
         while (true)
         {
-            _downloadMessageChannel.Writer.TryWrite(_timeoutMessage);
+            await _downloadMessageChannel
+                .Writer.WriteAsync(_timeoutMessage, cancellationToken)
+                .ConfigureAwait(false);
             await Task.Delay(10.Seconds, cancellationToken).ConfigureAwait(false);
         }
     }
