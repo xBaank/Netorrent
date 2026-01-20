@@ -1,4 +1,4 @@
-﻿using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics.CodeAnalysis;
 using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 using ZLinq;
@@ -8,8 +8,6 @@ namespace Netorrent.P2P.Download;
 internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, long totalSize)
     : IPiecePicker
 {
-    public const int TimeoutSeconds = 10;
-
     private readonly int[] _pieceRarity = new int[myBitfield.Length];
     private readonly Dictionary<int, RequestBlock[]> _requestBlocks = [];
     private readonly HashSet<int> _requestedIndexes = [];
@@ -131,15 +129,14 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
 
     public IEnumerable<RequestBlock> GetTimeoutRequestBlocks()
     {
-        var timeout = TimeoutSeconds.Seconds;
         var now = DateTime.UtcNow;
 
         return _requestBlocks
             .Values.SelectMany(i => i)
             .Where(i =>
                 i is { State: RequestBlockState.EndgameRequested or RequestBlockState.Requested }
-                && i.RequestedAt is not null
-                && (now - i.RequestedAt.Value) > timeout
+                && i.TimeoutAt is not null
+                && now > i.TimeoutAt.Value
             );
     }
 
