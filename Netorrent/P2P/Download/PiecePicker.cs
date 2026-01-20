@@ -12,7 +12,9 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
 
     private readonly int[] _pieceRarity = new int[myBitfield.Length];
     private readonly Dictionary<int, RequestBlock[]> _requestBlocks = [];
+    private readonly HashSet<int> _requestedIndexes = [];
     private bool _isEndGame = false;
+    private readonly double _endGameThreshold = myBitfield.Length * 0.05;
     public int BlockSize => blockSize;
     public bool IsEndGame => _isEndGame;
 
@@ -26,16 +28,21 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         Interlocked.Decrement(ref _pieceRarity[index]);
     }
 
-    public void CompleteRequestBlock(RequestBlock requestBlock)
-    {
-        requestBlock.State = RequestBlockState.Completed;
-        requestBlock.RequestedAt = null;
-        requestBlock.RequestedFrom.Clear();
-    }
-
     public void CompletePiece(int index)
     {
+        _requestedIndexes.Remove(index);
         _requestBlocks.Remove(index);
+
+        var toRequest = 0;
+        for (int i = 0; i < myBitfield.Length; i++)
+        {
+            if (!myBitfield.HasPiece(i) && !_requestedIndexes.Contains(i))
+            {
+                toRequest++;
+            }
+        }
+
+        _isEndGame = toRequest == 0;
     }
 
     public bool TryGetRequestedBlock(
@@ -66,34 +73,32 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
     }
 
     public bool TryGetRequestBlock(
-        Bitfield bitfield,
+        IPeerConnection peerConnection,
         [NotNullWhen(true)] out RequestBlock? requestBlock
     )
     {
-        var missing = 0;
-        for (int i = 0; i < myBitfield.Length; i++)
+        if (peerConnection.PeerBitField is null)
         {
-            if (!myBitfield.HasPiece(i))
-            {
-                missing++;
-            }
+            requestBlock = null;
+            return false;
         }
-        _isEndGame = missing <= 5;
-
-        HashSet<int> excludedIndices = [];
 
         foreach (var item in _requestBlocks.Values.AsValueEnumerable().SelectMany(i => i))
         {
-            excludedIndices.Add(item.Index);
+            _requestedIndexes.Add(item.Index);
 
-            if (item.State == RequestBlockState.Pending && bitfield.HasPiece(item.Index))
+            if (
+                item.State == RequestBlockState.Pending
+                && peerConnection.PeerBitField.HasPiece(item.Index)
+                && !item.RequestedFrom.Contains(peerConnection)
+            )
             {
                 requestBlock = item;
                 return true;
             }
         }
 
-        var piece = GetPiece(bitfield, excludedIndices);
+        var piece = GetPiece(peerConnection.PeerBitField, _requestedIndexes);
 
         if (piece is null)
         {
@@ -130,19 +135,6 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
                 && i.RequestedAt is not null
                 && (now - i.RequestedAt.Value) > timeout
             );
-    }
-
-    public void SetBlockToPending(RequestBlock requestBlock)
-    {
-        requestBlock.State = RequestBlockState.Pending;
-        requestBlock.RequestedAt = null;
-    }
-
-    public void SetBlockToRequested(RequestBlock requestBlock, IPeerConnection peerConnection)
-    {
-        requestBlock.State = RequestBlockState.Requested;
-        requestBlock.RequestedFrom.Add(peerConnection);
-        requestBlock.RequestedAt = DateTimeOffset.UtcNow;
     }
 
     private int? GetPiece(Bitfield peerBitfield, HashSet<int> excluded)

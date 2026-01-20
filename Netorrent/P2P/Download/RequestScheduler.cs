@@ -77,7 +77,14 @@ internal class RequestScheduler(
 
             if (downloadMessage is DownloadMessage.ScheduleMessage scheduleMessage)
             {
-                ScheduleRequests(scheduleMessage.PeerConnection);
+                if (piecePicker.IsEndGame)
+                {
+                    ScheduleRequests();
+                }
+                else
+                {
+                    ScheduleRequests(scheduleMessage.PeerConnection);
+                }
                 continue;
             }
         }
@@ -107,8 +114,10 @@ internal class RequestScheduler(
         }
 
         block.FromPeer.PeerRequestWindow.ReceivedBlock(block.FromPeer.DownloadTracker.Speed.Bps);
-        piecePicker.CompleteRequestBlock(requestedBlock);
         pieceBuffer.AddBlock(block);
+        requestedBlock.State = RequestBlockState.Completed;
+        requestedBlock.RequestedAt = null;
+        requestedBlock.RequestedFrom.Clear();
         TryRequest(block.FromPeer);
 
         if (!pieceBuffer.IsComplete)
@@ -151,7 +160,8 @@ internal class RequestScheduler(
         var currentPeers = peers.Values.AsValueEnumerable();
         foreach (var requestBlock in piecePicker.GetTimeoutRequestBlocks())
         {
-            piecePicker.SetBlockToPending(requestBlock); //TODO set ALL request blocks by lastRequestedFrom requester to pending as they are all more likely to be timed out
+            requestBlock.State = RequestBlockState.Pending;
+            requestBlock.RequestedAt = null; //TODO set ALL request blocks by lastRequestedFrom requester to pending as they are all more likely to be timed out
 
             var freePeer = currentPeers
                 .Where(i => !i.PeerChoking.CurrentValue)
@@ -186,26 +196,39 @@ internal class RequestScheduler(
         }
     }
 
+    private void ScheduleRequests()
+    {
+        var freePeers = peers
+            .Values.AsValueEnumerable()
+            .Where(i => !i.PeerChoking.CurrentValue)
+            .Where(i => i.AmInterested.CurrentValue);
+
+        foreach (var peer in freePeers)
+        {
+            ScheduleRequests(peer);
+        }
+    }
+
     private void ScheduleRequests(IPeerConnection peerConnection)
     {
-        if (peerConnection.PeerBitField is null)
-        {
-            return;
-        }
-
         while (
             peerConnection.RequestedBlocksCount
             < peerConnection.PeerRequestWindow.MaxInFlightRequests
         )
         {
-            if (!piecePicker.TryGetRequestBlock(peerConnection.PeerBitField, out var requestBlock))
+            if (!piecePicker.TryGetRequestBlock(peerConnection, out var requestBlock))
             {
                 return;
             }
 
             if (peerConnection.TrySendRequest(requestBlock))
             {
-                piecePicker.SetBlockToRequested(requestBlock, peerConnection);
+                if (!piecePicker.IsEndGame)
+                {
+                    requestBlock.State = RequestBlockState.Requested;
+                }
+                requestBlock.RequestedAt = DateTimeOffset.UtcNow;
+                requestBlock.RequestedFrom.Add(peerConnection);
                 peerConnection.IncrementRequestedBlock();
             }
             else

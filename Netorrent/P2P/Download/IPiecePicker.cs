@@ -9,19 +9,19 @@ internal interface IPiecePicker : IAsyncDisposable
     int BlockSize { get; }
     bool IsEndGame { get; }
 
-    void CompletePiece(int index);
-    void CompleteRequestBlock(RequestBlock requestBlock);
+    void IncreaseRarity(int index);
     void DecreaseRarity(int index);
-    bool TryGetRequestBlock(Bitfield bitfield, [NotNullWhen(true)] out RequestBlock? requestBlock);
+    void CompletePiece(int index);
+    bool TryGetRequestBlock(
+        IPeerConnection peerConnection,
+        [NotNullWhen(true)] out RequestBlock? requestBlock
+    );
 
     int GetBlockCountByPieceIndex(int pieceIndex);
     int GetPieceSize(int pieceIndex);
     long GetBitfieldSize();
     RequestBlock GetRequestBlockByBlockIndex(int pieceIndex, int blockIndex);
     IEnumerable<RequestBlock> GetTimeoutRequestBlocks();
-    void IncreaseRarity(int index);
-    void SetBlockToPending(RequestBlock requestBlock);
-    void SetBlockToRequested(RequestBlock requestBlock, IPeerConnection peerConnection);
     bool TryGetRequestedBlock(
         Block receiveBlock,
         [NotNullWhen(true)] out RequestBlock? requestBlock
