@@ -1,24 +1,27 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 using Netorrent.P2P.Messages;
+using R3;
 
 namespace Netorrent.P2P.Download;
 
-internal interface IPiecePicker : IAsyncDisposable
+internal interface IPiecePicker
 {
     int BlockSize { get; }
+    bool IsEndGame { get; }
 
-    void CompletePiece(int index);
-    void CompleteRequestBlock(RequestBlock requestBlock);
+    void IncreaseRarity(int index);
     void DecreaseRarity(int index);
-    RequestBlock? GetBlock(Bitfield bitfield);
+    void CompletePiece(int index);
+    bool TryGetRequestBlock(
+        IPeerConnection peerConnection,
+        [NotNullWhen(true)] out RequestBlock? requestBlock
+    );
+
     int GetBlockCountByPieceIndex(int pieceIndex);
     int GetPieceSize(int pieceIndex);
     long GetBitfieldSize();
     RequestBlock GetRequestBlockByBlockIndex(int pieceIndex, int blockIndex);
     IEnumerable<RequestBlock> GetTimeoutRequestBlocks();
-    void IncreaseRarity(int index);
-    void SetBlockToPending(RequestBlock requestBlock);
-    void SetBlockToRequested(RequestBlock requestBlock, IPeerConnection peerConnection);
     bool TryGetRequestedBlock(
         Block receiveBlock,
         [NotNullWhen(true)] out RequestBlock? requestBlock

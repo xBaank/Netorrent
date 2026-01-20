@@ -1,4 +1,4 @@
-﻿using System.Buffers;
+using System.Buffers;
 using System.Buffers.Binary;
 using Netorrent.Extensions;
 using Netorrent.IO;
@@ -352,7 +352,7 @@ internal class PeerConnection(
 
         var request = new RequestBlock(index, begin, length)
         {
-            RequestedAt = DateTimeOffset.UtcNow,
+            TimeoutAt = null,
             RequestedFrom = [this],
         };
         await uploadScheduler.AddRequestAsync(request, cancellationToken).ConfigureAwait(false);

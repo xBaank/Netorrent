@@ -1,4 +1,4 @@
-﻿using System.Threading.Channels;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
 using Netorrent.IO;
@@ -49,7 +49,7 @@ internal class RequestScheduler(
             await _downloadMessageChannel
                 .Writer.WriteAsync(_timeoutMessage, cancellationToken)
                 .ConfigureAwait(false);
-            await Task.Delay(10.Seconds, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(1.Seconds, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -77,7 +77,14 @@ internal class RequestScheduler(
 
             if (downloadMessage is DownloadMessage.ScheduleMessage scheduleMessage)
             {
-                ScheduleRequests(scheduleMessage.PeerConnection);
+                if (piecePicker.IsEndGame)
+                {
+                    ScheduleRequests();
+                }
+                else
+                {
+                    ScheduleRequests(scheduleMessage.PeerConnection);
+                }
                 continue;
             }
         }
@@ -107,8 +114,10 @@ internal class RequestScheduler(
         }
 
         block.FromPeer.PeerRequestWindow.ReceivedBlock(block.FromPeer.DownloadTracker.Speed.Bps);
-        piecePicker.CompleteRequestBlock(requestedBlock);
         pieceBuffer.AddBlock(block);
+        requestedBlock.State = RequestBlockState.Completed;
+        requestedBlock.TimeoutAt = null;
+        requestedBlock.RequestedFrom.Clear();
         TryRequest(block.FromPeer);
 
         if (!pieceBuffer.IsComplete)
@@ -151,7 +160,8 @@ internal class RequestScheduler(
         var currentPeers = peers.Values.AsValueEnumerable();
         foreach (var requestBlock in piecePicker.GetTimeoutRequestBlocks())
         {
-            piecePicker.SetBlockToPending(requestBlock); //TODO set ALL request blocks by lastRequestedFrom requester to pending as they are all more likely to be timed out
+            requestBlock.State = RequestBlockState.Pending;
+            requestBlock.TimeoutAt = null; //TODO set ALL request blocks by lastRequestedFrom requester to pending as they are all more likely to be timed out
 
             var freePeer = currentPeers
                 .Where(i => !i.PeerChoking.CurrentValue)
@@ -186,28 +196,38 @@ internal class RequestScheduler(
         }
     }
 
+    private void ScheduleRequests()
+    {
+        var freePeers = peers
+            .Values.AsValueEnumerable()
+            .Where(i => !i.PeerChoking.CurrentValue)
+            .Where(i => i.AmInterested.CurrentValue);
+
+        foreach (var peer in freePeers)
+        {
+            ScheduleRequests(peer);
+        }
+    }
+
     private void ScheduleRequests(IPeerConnection peerConnection)
     {
-        if (peerConnection.PeerBitField is null)
-        {
-            return;
-        }
-
         while (
             peerConnection.RequestedBlocksCount
             < peerConnection.PeerRequestWindow.MaxInFlightRequests
         )
         {
-            var requestBlock = piecePicker.GetBlock(peerConnection.PeerBitField);
-
-            if (requestBlock is null)
+            if (!piecePicker.TryGetRequestBlock(peerConnection, out var requestBlock))
             {
                 return;
             }
 
             if (peerConnection.TrySendRequest(requestBlock))
             {
-                piecePicker.SetBlockToRequested(requestBlock, peerConnection);
+                requestBlock.State = piecePicker.IsEndGame
+                    ? RequestBlockState.EndgameRequested
+                    : RequestBlockState.Requested;
+                requestBlock.TimeoutAt = CalculateTimeout(peerConnection, requestBlock.Length);
+                requestBlock.RequestedFrom.Add(peerConnection);
                 peerConnection.IncrementRequestedBlock();
             }
             else
@@ -236,6 +256,19 @@ internal class RequestScheduler(
                 new DownloadMessage.ScheduleMessage(peerConnection)
             );
         }
+    }
+
+    private static DateTimeOffset CalculateTimeout(IPeerConnection peerConnection, int blockLength)
+    {
+        var speedBps = peerConnection.DownloadTracker.Speed.Bps;
+        if (speedBps <= 0)
+        {
+            return DateTimeOffset.UtcNow + 30.Seconds;
+        }
+
+        var estimatedSeconds = blockLength / speedBps;
+        var timeoutSeconds = estimatedSeconds * 3 + 2;
+        return DateTimeOffset.UtcNow + (Math.Min(timeoutSeconds, 60)).Seconds;
     }
 
     public async ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken)
@@ -289,7 +322,6 @@ internal class RequestScheduler(
             catch { }
 
             await DrainChannelsAsync().ConfigureAwait(false);
-            await piecePicker.DisposeAsync().ConfigureAwait(false);
             _cts?.Dispose();
         }
     }

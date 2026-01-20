@@ -236,6 +236,7 @@ static async Task RunStatusUI(Torrent torrent, CancellationToken token) =>
                 RemainingStyle = new Style(Color.Grey),
             },
             new PercentageColumn(),
+            new TransferSpeedColumn(),
             new RemainingTimeColumn(),
             new SpinnerColumn()
         )
