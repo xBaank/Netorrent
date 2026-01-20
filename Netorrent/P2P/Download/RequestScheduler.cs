@@ -223,10 +223,9 @@ internal class RequestScheduler(
 
             if (peerConnection.TrySendRequest(requestBlock))
             {
-                if (!piecePicker.IsEndGame)
-                {
-                    requestBlock.State = RequestBlockState.Requested;
-                }
+                requestBlock.State = piecePicker.IsEndGame
+                    ? RequestBlockState.EndgameRequested
+                    : RequestBlockState.Requested;
                 requestBlock.RequestedAt = DateTimeOffset.UtcNow;
                 requestBlock.RequestedFrom.Add(peerConnection);
                 peerConnection.IncrementRequestedBlock();

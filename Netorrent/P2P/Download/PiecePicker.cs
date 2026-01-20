@@ -32,17 +32,6 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
     {
         _requestedIndexes.Remove(index);
         _requestBlocks.Remove(index);
-
-        var toRequest = 0;
-        for (int i = 0; i < myBitfield.Length; i++)
-        {
-            if (!myBitfield.HasPiece(i) && !_requestedIndexes.Contains(i))
-            {
-                toRequest++;
-            }
-        }
-
-        _isEndGame = toRequest == 0;
     }
 
     public bool TryGetRequestedBlock(
@@ -88,7 +77,7 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
             _requestedIndexes.Add(item.Index);
 
             if (
-                item.State == RequestBlockState.Pending
+                item is { State: RequestBlockState.Pending or RequestBlockState.EndgameRequested }
                 && peerConnection.PeerBitField.HasPiece(item.Index)
                 && !item.RequestedFrom.Contains(peerConnection)
             )
@@ -97,6 +86,24 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
                 return true;
             }
         }
+
+        bool hasUnrequestedPiece = false;
+
+        for (int i = 0; i < myBitfield.Length; i++)
+        {
+            if (myBitfield.HasPiece(i))
+            {
+                continue;
+            }
+
+            if (!_requestedIndexes.Contains(i))
+            {
+                hasUnrequestedPiece = true;
+                break;
+            }
+        }
+
+        _isEndGame = !hasUnrequestedPiece;
 
         var piece = GetPiece(peerConnection.PeerBitField, _requestedIndexes);
 
@@ -131,7 +138,7 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         return _requestBlocks
             .Values.SelectMany(i => i)
             .Where(i =>
-                i?.State == RequestBlockState.Requested
+                i is { State: RequestBlockState.EndgameRequested or RequestBlockState.Requested }
                 && i.RequestedAt is not null
                 && (now - i.RequestedAt.Value) > timeout
             );
