@@ -309,7 +309,6 @@ internal class RequestScheduler(
             catch { }
 
             await DrainChannelsAsync().ConfigureAwait(false);
-            await piecePicker.DisposeAsync().ConfigureAwait(false);
             _cts?.Dispose();
         }
     }

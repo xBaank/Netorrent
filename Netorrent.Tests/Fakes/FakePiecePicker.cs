@@ -18,8 +18,6 @@ internal class FakePiecePicker : IPiecePicker
 
     public void DecreaseRarity(int index) { }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-
     public long GetBitfieldSize()
     {
         throw new NotImplementedException();

@@ -4,7 +4,7 @@ using R3;
 
 namespace Netorrent.P2P.Download;
 
-internal interface IPiecePicker : IAsyncDisposable
+internal interface IPiecePicker
 {
     int BlockSize { get; }
     bool IsEndGame { get; }

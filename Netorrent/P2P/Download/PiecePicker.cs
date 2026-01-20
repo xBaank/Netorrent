@@ -14,7 +14,6 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
     private readonly Dictionary<int, RequestBlock[]> _requestBlocks = [];
     private readonly HashSet<int> _requestedIndexes = [];
     private bool _isEndGame = false;
-    private readonly double _endGameThreshold = myBitfield.Length * 0.05;
     public int BlockSize => blockSize;
     public bool IsEndGame => _isEndGame;
 
@@ -239,6 +238,4 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         }
         return total;
     }
-
-    public async ValueTask DisposeAsync() { }
 }
