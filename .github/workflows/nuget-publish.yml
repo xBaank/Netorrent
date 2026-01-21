@@ -168,82 +168,61 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # required to create releases
+      packages: write   # required for NuGet push
     if: needs.build.outputs.should-publish == 'true'
     environment: ${{ needs.build.outputs.environment }}
-    
+
     steps:
-    - name: Download artifacts
-      uses: actions/download-artifact@v7
-      with:
-        name: nuget-packages-${{ needs.build.outputs.version }}
-        path: ./artifacts
-    
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v5
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-    
-    - name: Publish to NuGet
-      run: |
-        dotnet nuget push ./artifacts/*.nupkg \
-          --source ${{ env.NUGET_SOURCE }} \
-          --api-key ${{ secrets.NUGET_API_KEY }} \
-          --skip-duplicate
-    
-    - name: Create GitHub Release
-      if: needs.build.outputs.create-release == 'true'
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ needs.build.outputs.version }}
-        release_name: Release ${{ needs.build.outputs.version }}
-        body: |
-          ## 📦 Package Information
-          - **Version**: `${{ needs.build.outputs.version }}`
-          - **NuGet**: [Netorrent.${{ needs.build.outputs.version }}](https://www.nuget.org/packages/Netorrent/${{ needs.build.outputs.version }})
-          - **Installation**: `dotnet add package Netorrent --version ${{ needs.build.outputs.version }}`
-          
-          ${{ github.event.inputs.release_notes || '' }}
-          
-          ---
-          
-          🤖 *This release was automatically generated. Check [Actions](https://github.com/${{ github.repository }}/actions) for build details.*
-        draft: false
-        prerelease: ${{ contains(needs.build.outputs.version, 'nightly') || contains(needs.build.outputs.version, 'preview') || contains(needs.build.outputs.version, 'rc') }}
-    
-    - name: Upload release assets
-      if: needs.build.outputs.create-release == 'true'
-      uses: actions/github-script@v8
-      with:
-        script: |
-          const fs = require('fs');
-          const path = require('path');
-          
-          const version = '${{ needs.build.outputs.version }}';
-          const artifactsDir = './artifacts';
-          
-          // Get release ID
-          const { data: release } = await github.rest.repos.getReleaseByTag({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            tag: version
-          });
-          
-          // Upload all .nupkg and .snupkg files
-          const files = fs.readdirSync(artifactsDir)
-            .filter(file => file.endsWith('.nupkg') || file.endsWith('.snupkg'));
-          
-          for (const file of files) {
-            const filePath = path.join(artifactsDir, file);
-            const fileData = fs.readFileSync(filePath);
+      - name: Download artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: nuget-packages-${{ needs.build.outputs.version }}
+          path: ./artifacts
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Publish to NuGet
+        run: |
+          dotnet nuget push ./artifacts/*.nupkg \
+            --source ${{ env.NUGET_SOURCE }} \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --skip-duplicate
+
+      - name: Create GitHub Release
+        if: needs.build.outputs.create-release == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.build.outputs.version }}
+          name: Release ${{ needs.build.outputs.version }}
+          body: |
+            ## 📦 Package Information
+            - **Version**: `${{ needs.build.outputs.version }}`
+            - **NuGet**: [Netorrent.${{ needs.build.outputs.version }}](https://www.nuget.org/packages/Netorrent/${{ needs.build.outputs.version }})
+            - **Installation**: `dotnet add package Netorrent --version ${{ needs.build.outputs.version }}`
             
-            await github.rest.repos.uploadReleaseAsset({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              release_id: release.id,
-              name: file,
-              data: fileData
-            });
-          }
+            ${{ github.event.inputs.release_notes || '' }}
+            
+            ---
+            
+            🤖 *This release was automatically generated. Check [Actions](https://github.com/${{ github.repository }}/actions) for build details.*
+          draft: false
+          prerelease: ${{ contains(needs.build.outputs.version, 'nightly') || contains(needs.build.outputs.version, 'preview') || contains(needs.build.outputs.version, 'rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release assets
+        if: needs.build.outputs.create-release == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.build.outputs.version }}
+          name: Release ${{ needs.build.outputs.version }}
+          files: ./artifacts/*.nupkg ./artifacts/*.snupkg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
