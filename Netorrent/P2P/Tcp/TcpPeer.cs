@@ -29,7 +29,7 @@ internal class TcpPeer(
         await tcpClient.ConnectAsync(iPEndPoint, cts.Token).ConfigureAwait(false);
 
         var handshake = await Handshake
-            .PerformHandshakeAsync(tcpClient.GetStream(), infoHash, peerId, cancellationToken)
+            .PerformHandshakeAsync(tcpClient.GetStream(), infoHash, peerId, cts.Token)
             .ConfigureAwait(false);
 
         return _tcpMessageStream = tcpClient.GetMessageStream(handshake);
