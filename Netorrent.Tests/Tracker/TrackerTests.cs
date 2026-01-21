@@ -169,22 +169,87 @@ public class TrackerTests
     }
 
     [Test]
+    public async Task Should_not_get_peers_from_tracker_client(CancellationToken cancellationToken)
+    {
+        var ctx = CreateDefaultContext();
+
+        await using var udptrackerManagerv4 = new FakeUdpTrackerTransactionManager(
+            [.. ctx.Ips.Where(i => i.AddressFamily == AddressFamily.InterNetwork)],
+            ctx.Interval,
+            new Exception()
+        );
+
+        await using var udptrackerManagerv6 = new FakeUdpTrackerTransactionManager(
+            [.. ctx.Ips.Where(i => i.AddressFamily == AddressFamily.InterNetworkV6)],
+            ctx.Interval,
+            new Exception()
+        );
+
+        using var httpTrackerHandlerv4 = new FakeHttpTrackerHandler(
+            [.. ctx.Ips.Where(i => i.AddressFamily == AddressFamily.InterNetwork)],
+            ctx.Interval,
+            new Exception()
+        );
+        using var httpTrackerHandlerv6 = new FakeHttpTrackerHandler(
+            [.. ctx.Ips.Where(i => i.AddressFamily == AddressFamily.InterNetworkV6)],
+            ctx.Interval,
+            new Exception()
+        );
+
+        var trackerHandlers = new TrackerHandlers(
+            httpTrackerHandlerv4,
+            udptrackerManagerv4,
+            httpTrackerHandlerv6,
+            udptrackerManagerv6
+        );
+
+        await using var trackerClient = new TrackerClient(
+            trackerHandlers,
+            UsedTrackers.Http | UsedTrackers.Udp,
+            1,
+            new(3),
+            new(),
+            ctx.Channel,
+            [
+                ["udp://localhost:1", "https://localhost:2"],
+                ["http://localhost:3", "aaaa://localhost:4"],
+            ],
+            new byte[20],
+            ctx.Logger
+        );
+
+        await trackerClient.StartAsync(cancellationToken).ShouldNotThrowAsync();
+    }
+
+    [Test]
     public async Task Should_get_peers_from_tracker_client(CancellationToken cancellationToken)
     {
         var ctx = CreateDefaultContext();
 
-        await using var udptrackerManager = new FakeUdpTrackerTransactionManager(
-            ctx.Ips,
+        await using var udptrackerManagerv4 = new FakeUdpTrackerTransactionManager(
+            [.. ctx.Ips.Where(i => i.AddressFamily == AddressFamily.InterNetwork)],
             ctx.Interval
         );
 
-        var httpTrackerHandler = new FakeHttpTrackerHandler(ctx.Ips, ctx.Interval);
+        await using var udptrackerManagerv6 = new FakeUdpTrackerTransactionManager(
+            [.. ctx.Ips.Where(i => i.AddressFamily == AddressFamily.InterNetworkV6)],
+            ctx.Interval
+        );
+
+        using var httpTrackerHandlerv4 = new FakeHttpTrackerHandler(
+            [.. ctx.Ips.Where(i => i.AddressFamily == AddressFamily.InterNetwork)],
+            ctx.Interval
+        );
+        using var httpTrackerHandlerv6 = new FakeHttpTrackerHandler(
+            [.. ctx.Ips.Where(i => i.AddressFamily == AddressFamily.InterNetworkV6)],
+            ctx.Interval
+        );
 
         var trackerHandlers = new TrackerHandlers(
-            httpTrackerHandler,
-            udptrackerManager,
-            httpTrackerHandler,
-            udptrackerManager
+            httpTrackerHandlerv4,
+            udptrackerManagerv4,
+            httpTrackerHandlerv6,
+            udptrackerManagerv6
         );
 
         await using var trackerClient = new TrackerClient(
@@ -214,6 +279,7 @@ public class TrackerTests
 
         IPEndPoint[] resultIps = [.. ctx.Ips, .. ctx.Ips, .. ctx.Ips, .. ctx.Ips];
         ipendpoints.Length.ShouldBe(ctx.Ips.Length * 4);
-        ipendpoints.ShouldBe(resultIps);
+        var sorted = ipendpoints.OrderBy(i => i.ToString()).ToArray();
+        sorted.ShouldBe([.. resultIps.OrderBy(i => i.ToString())]);
     }
 }

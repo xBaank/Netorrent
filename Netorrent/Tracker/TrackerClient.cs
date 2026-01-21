@@ -34,14 +34,20 @@ internal class TrackerClient(
             Random.Shared.Shuffle(urls);
 
             await foreach (
-                var tracker in CreateTrackers(urls, cancellationToken)
+                var (Ipv4, Ipv6) in CreateTrackers(urls, cancellationToken)
                     .WithCancellation(cancellationToken)
                     .ConfigureAwait(false)
             )
             {
                 try
                 {
-                    await tracker.StartAsync(cancellationToken).ConfigureAwait(false);
+                    Task?[] tasks =
+                    [
+                        Ipv4?.StartAsync(cancellationToken).AsTask(),
+                        Ipv6?.StartAsync(cancellationToken).AsTask(),
+                    ];
+
+                    await Task.WhenAll(tasks.Where(i => i is not null).Cast<Task>());
                 }
                 catch (AnnounceException ex)
                 {
@@ -49,7 +55,6 @@ internal class TrackerClient(
                     {
                         logger.LogError(ex, "Error Announcing");
                     }
-                    continue;
                 }
                 catch (OperationCanceledException oce)
                     when (oce.CancellationToken == cancellationToken)
@@ -57,21 +62,30 @@ internal class TrackerClient(
                     try
                     {
                         using var ct = new CancellationTokenSource(5.Seconds);
-                        await tracker.StopAsync(ct.Token).ConfigureAwait(false);
+                        if (Ipv4 is not null)
+                        {
+                            await Ipv4.StopAsync(ct.Token).ConfigureAwait(false);
+                        }
+                        if (Ipv6 is not null)
+                        {
+                            await Ipv6.StopAsync(ct.Token).ConfigureAwait(false);
+                        }
                     }
-                    catch (Exception ex)
+                    catch (Exception stopEx)
                     {
                         if (logger.IsEnabled(LogLevel.Error))
                         {
-                            logger.LogError(ex, "Error stopping");
+                            logger.LogError(stopEx, "Error stopping");
                         }
                     }
+
+                    return;
                 }
             }
         }
     }
 
-    private async IAsyncEnumerable<ITracker> CreateTrackers(
+    private async IAsyncEnumerable<(ITracker? Ipv4, ITracker? Ipv6)> CreateTrackers(
         string[] urls,
         [EnumeratorCancellation] CancellationToken cancellationToken
     )
@@ -97,19 +111,11 @@ internal class TrackerClient(
                 _ => LogUnknownTracker(url),
             };
 
-            foreach (var tracker in trackers)
-            {
-                if (tracker is null)
-                {
-                    continue;
-                }
-
-                yield return tracker;
-            }
+            yield return trackers;
         }
     }
 
-    private async ValueTask<HttpTracker[]> CreateHttpTrackersAsync(
+    private async ValueTask<(HttpTracker? Ipv4, HttpTracker? Ipv6)> CreateHttpTrackersAsync(
         Uri uri,
         CancellationToken cancellationToken
     )
@@ -118,9 +124,12 @@ internal class TrackerClient(
         var (ipv4, ipv6) = await Dns.GetHostAdressesOrEmptyAsync(uri, cancellationToken)
             .ConfigureAwait(false);
 
+        HttpTracker? trackerv4 = null;
+        HttpTracker? trackerv6 = null;
+
         if (trackerHandlers.HttpTrackerHandlerIpv4 is not null && ipv4 is not null)
         {
-            var trackerv4 = new HttpTracker(
+            trackerv4 = new HttpTracker(
                 port,
                 transferStatistics,
                 trackerHandlers.HttpTrackerHandlerIpv4,
@@ -134,7 +143,7 @@ internal class TrackerClient(
 
         if (trackerHandlers.HttpTrackerHandlerIpv6 is not null && ipv6 is not null)
         {
-            var trackerv6 = new HttpTracker(
+            trackerv6 = new HttpTracker(
                 port,
                 transferStatistics,
                 trackerHandlers.HttpTrackerHandlerIpv6,
@@ -146,10 +155,10 @@ internal class TrackerClient(
             httpsTrackers.Add(trackerv6);
         }
 
-        return [.. httpsTrackers];
+        return (trackerv4, trackerv6);
     }
 
-    private async ValueTask<UdpTracker[]> CreateUdpTrackersAsync(
+    private async ValueTask<(UdpTracker? Ipv4, UdpTracker? Ipv6)> CreateUdpTrackersAsync(
         Uri uri,
         CancellationToken cancellationToken
     )
@@ -158,10 +167,13 @@ internal class TrackerClient(
         var (ipv4, ipv6) = await Dns.GetHostAdressesOrEmptyAsync(uri, cancellationToken)
             .ConfigureAwait(false);
 
+        UdpTracker? trackerv4 = null;
+        UdpTracker? trackerv6 = null;
+
         if (trackerHandlers.UdpTrackerHandlerIpv4 is not null && ipv4 is not null && uri.Port > 0)
         {
             var ipEndpoint = new IPEndPoint(ipv4, uri.Port);
-            var trackerv4 = new UdpTracker(
+            trackerv4 = new UdpTracker(
                 trackerHandlers.UdpTrackerHandlerIpv4,
                 port,
                 transferStatistics,
@@ -176,7 +188,7 @@ internal class TrackerClient(
         if (trackerHandlers.UdpTrackerHandlerIpv6 is not null && ipv6 is not null && uri.Port > 0)
         {
             var ipEndpoint = new IPEndPoint(ipv6, uri.Port);
-            var trackerv6 = new UdpTracker(
+            trackerv6 = new UdpTracker(
                 trackerHandlers.UdpTrackerHandlerIpv6,
                 port,
                 transferStatistics,
@@ -188,17 +200,17 @@ internal class TrackerClient(
             udpTrackers.Add(trackerv6);
         }
 
-        return [.. udpTrackers];
+        return (trackerv4, trackerv6);
     }
 
-    private ITracker[] LogUnknownTracker(string scheme)
+    private (ITracker? Ipv4, ITracker? Ipv6) LogUnknownTracker(string scheme)
     {
         if (logger.IsEnabled(LogLevel.Debug))
         {
             logger.LogDebug("Unknown {scheme} tracker", scheme);
         }
 
-        return [];
+        return (null, null);
     }
 
     public async ValueTask DisposeAsync()
