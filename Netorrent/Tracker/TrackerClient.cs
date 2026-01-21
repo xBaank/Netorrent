@@ -17,6 +17,7 @@ using ZLinq;
 namespace Netorrent.Tracker;
 
 internal class TrackerClient(
+    Bitfield myBitfield,
     TrackerHandlers trackerHandlers,
     UsedTrackers usedTrackers,
     int port,
@@ -146,6 +147,7 @@ internal class TrackerClient(
         if (trackerHandlers.HttpTrackerHandlerIpv4 is not null && ipv4 is not null)
         {
             trackerv4 = new HttpTracker(
+                myBitfield,
                 port,
                 transferStatistics,
                 trackerHandlers.HttpTrackerHandlerIpv4,
@@ -160,6 +162,7 @@ internal class TrackerClient(
         if (trackerHandlers.HttpTrackerHandlerIpv6 is not null && ipv6 is not null)
         {
             trackerv6 = new HttpTracker(
+                myBitfield,
                 port,
                 transferStatistics,
                 trackerHandlers.HttpTrackerHandlerIpv6,
@@ -190,6 +193,7 @@ internal class TrackerClient(
         {
             var ipEndpoint = new IPEndPoint(ipv4, uri.Port);
             trackerv4 = new UdpTracker(
+                myBitfield,
                 trackerHandlers.UdpTrackerHandlerIpv4,
                 port,
                 transferStatistics,
@@ -205,6 +209,7 @@ internal class TrackerClient(
         {
             var ipEndpoint = new IPEndPoint(ipv6, uri.Port);
             trackerv6 = new UdpTracker(
+                myBitfield,
                 trackerHandlers.UdpTrackerHandlerIpv6,
                 port,
                 transferStatistics,

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Netorrent.Exceptions;
 using Netorrent.Extensions;
+using Netorrent.P2P.Messages;
 using Netorrent.Tests.Extensions;
 using Netorrent.Tests.Fakes;
 using Netorrent.TorrentFile.Options;
@@ -64,6 +65,7 @@ public class TrackerTests
         );
 
         var udptracker = new UdpTracker(
+            new Bitfield(5),
             udptrackerManager,
             1,
             new(3),
@@ -95,6 +97,7 @@ public class TrackerTests
         var ctx = CreateDefaultContext();
 
         var httpTracker = new HttpTracker(
+            new Bitfield(5),
             1,
             new Statistics.DataStatistics(3),
             new FakeHttpTrackerHandler(ctx.Ips, ctx.Interval),
@@ -126,6 +129,7 @@ public class TrackerTests
         var ctx = CreateDefaultContext();
 
         var httpTracker = new HttpTracker(
+            new Bitfield(5),
             1,
             new Statistics.DataStatistics(3),
             new FakeHttpTrackerHandler(ctx.Ips, ctx.Interval, new Exception()),
@@ -153,6 +157,7 @@ public class TrackerTests
         );
 
         var udptracker = new UdpTracker(
+            new Bitfield(5),
             udptrackerManager,
             1,
             new(3),
@@ -204,6 +209,7 @@ public class TrackerTests
         );
 
         await using var trackerClient = new TrackerClient(
+            new Bitfield(5),
             trackerHandlers,
             UsedTrackers.Http | UsedTrackers.Udp,
             1,
@@ -253,6 +259,7 @@ public class TrackerTests
         );
 
         await using var trackerClient = new TrackerClient(
+            new Bitfield(5),
             trackerHandlers,
             UsedTrackers.Http | UsedTrackers.Udp,
             1,

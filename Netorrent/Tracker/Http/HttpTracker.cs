@@ -5,10 +5,12 @@ using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 using Netorrent.Statistics;
 using Netorrent.TorrentFile.FileStructure;
+using R3;
 
 namespace Netorrent.Tracker.Http;
 
 internal class HttpTracker(
+    Bitfield myBitfield,
     int port,
     DataStatistics transfer,
     IHttpTrackerHandler httpTrackerHandler,
@@ -20,7 +22,24 @@ internal class HttpTracker(
 {
     public async ValueTask StartAsync(CancellationToken cancellationToken)
     {
-        var response = await AnnounceAsync(Events.Started, cancellationToken).ConfigureAwait(false);
+        var response = await AnnounceAsync(
+                myBitfield.IsComplete ? Events.Completed : Events.Started,
+                cancellationToken
+            )
+            .ConfigureAwait(false);
+
+        using var completeDisposable = myBitfield.StateChanged.SubscribeAwait(
+            async (value, ct) =>
+            {
+                if (myBitfield.IsComplete)
+                {
+                    response = await AnnounceAsync(Events.Completed, cancellationToken: ct)
+                        .ConfigureAwait(false);
+                }
+            },
+            configureAwait: false
+        );
+
         foreach (var iPEndPoint in response.Peers)
         {
             await channelWriter.WriteAsync(iPEndPoint, cancellationToken).ConfigureAwait(false);

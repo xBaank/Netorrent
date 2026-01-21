@@ -7,10 +7,12 @@ using Netorrent.Statistics;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker.Udp.Request;
 using Netorrent.Tracker.Udp.Response;
+using R3;
 
 namespace Netorrent.Tracker.Udp;
 
 internal class UdpTracker(
+    Bitfield myBitfield,
     IUdpTrackerHandler udpTrackerHandler,
     int port,
     DataStatistics transfer,
@@ -29,10 +31,26 @@ internal class UdpTracker(
 
         _lastResponse = await AnnounceAsync(
                 iPEndPoint,
-                @event: Events.Started,
+                @event: myBitfield.IsComplete ? Events.Completed : Events.Started,
                 cancellationToken: cancellationToken
             )
             .ConfigureAwait(false);
+
+        using var completeDisposable = myBitfield.StateChanged.SubscribeAwait(
+            async (value, ct) =>
+            {
+                if (myBitfield.IsComplete)
+                {
+                    _lastResponse = await AnnounceAsync(
+                            iPEndPoint,
+                            @event: Events.Completed,
+                            cancellationToken: cancellationToken
+                        )
+                        .ConfigureAwait(false);
+                }
+            },
+            configureAwait: false
+        );
 
         foreach (var peer in _lastResponse.Peers)
         {
