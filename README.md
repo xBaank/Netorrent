@@ -111,8 +111,8 @@ var torrent = await client.CreateTorrentAsync(
 // Create torrent from directory with multiple trackers
 var torrent = await client.CreateTorrentAsync(
     "path/to/directory",
-    "http://primary.tracker.com/announce",
-    announceUrls: ["http://backup1.tracker.com/announce", "http://backup2.tracker.com/announce"],
+    "http://main.tracker.com/announce",
+    announceUrls: [["http://main.tracker.com/announce"], ["http://backup.tracker.com/announce"]],
     pieceLength: 512 * 1024  // 512KB pieces
 );
 ```
