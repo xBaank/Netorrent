@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System;
+using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
@@ -31,10 +32,10 @@ internal class TrackerClient(
     {
         foreach (var urls in announceList)
         {
-            Random.Shared.Shuffle(urls);
+            var snapshot = urls.AsValueEnumerable().Shuffle().ToArray();
 
             await foreach (
-                var (Ipv4, Ipv6) in CreateTrackers(urls, cancellationToken)
+                var (url, (Ipv4, Ipv6)) in CreateTrackers(snapshot, cancellationToken)
                     .WithCancellation(cancellationToken)
                     .ConfigureAwait(false)
             )
@@ -71,6 +72,8 @@ internal class TrackerClient(
                         {
                             await Ipv6.StopAsync(ct.Token).ConfigureAwait(false);
                         }
+
+                        Promote(urls, url);
                     }
                     catch (Exception stopEx)
                     {
@@ -86,7 +89,19 @@ internal class TrackerClient(
         }
     }
 
-    private async IAsyncEnumerable<(ITracker? Ipv4, ITracker? Ipv6)> CreateTrackers(
+    private static void Promote(string[] tier, string winner)
+    {
+        var idx = Array.IndexOf(tier, winner);
+        if (idx <= 0)
+            return;
+
+        // Swap to front
+        var first = tier[0];
+        tier[0] = winner;
+        tier[idx] = first;
+    }
+
+    private async IAsyncEnumerable<(string url, (ITracker? Ipv4, ITracker? Ipv6))> CreateTrackers(
         string[] urls,
         [EnumeratorCancellation] CancellationToken cancellationToken
     )
@@ -112,7 +127,7 @@ internal class TrackerClient(
                 _ => LogUnknownTracker(url),
             };
 
-            yield return trackers;
+            yield return (url, trackers);
         }
     }
 

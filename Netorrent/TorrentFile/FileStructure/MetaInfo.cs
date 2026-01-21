@@ -5,13 +5,13 @@ namespace Netorrent.TorrentFile.FileStructure;
 public record MetaInfo(
     Info Info,
     string Announce,
-    List<string[]>? AnnounceList = null,
+    IReadOnlyList<string[]>? AnnounceList = null,
     long? CreationDate = null,
     string? Comment = null,
     string? CreatedBy = null,
     string? Encoding = null,
     string? Title = null,
-    List<string>? UrlList = null
+    IReadOnlyList<string>? UrlList = null
 )
 {
     public BDictionary ToBDictionary()
