@@ -1,9 +1,10 @@
-﻿namespace Netorrent.P2P.Messages;
+namespace Netorrent.P2P.Messages;
 
 enum RequestBlockState
 {
     Pending,
     Requested,
+    EndgameRequested,
     Cancelled,
     Completed,
 }
@@ -15,7 +16,7 @@ internal class RequestBlock(int index, int begin, int length)
     public readonly int Length = length;
     public RequestBlockState State { get; set; } = RequestBlockState.Pending;
     public List<IPeerConnection> RequestedFrom { get; set; } = [];
-    public DateTimeOffset? RequestedAt { get; set; }
+    public DateTimeOffset? TimeoutAt { get; set; }
 
     public static bool operator ==(RequestBlock left, RequestBlock right) => left.Equals(right);
 
@@ -26,11 +27,12 @@ internal class RequestBlock(int index, int begin, int length)
         return obj is RequestBlock request
             && Index == request.Index
             && Begin == request.Begin
-            && Length == request.Length;
+            && Length == request.Length
+            && RequestedFrom.SequenceEqual(request.RequestedFrom);
     }
 
     public override int GetHashCode()
     {
-        return HashCode.Combine(Index, Begin, Length);
+        return HashCode.Combine(Index, Begin, Length, RequestedFrom);
     }
 }

@@ -174,6 +174,10 @@ internal class UdpTrackerHandler : IUdpTrackerHandler
                         .ConfigureAwait(false);
                     transaction.RetryCount++;
                     var seconds = _retryDelay * (transaction.RetryCount + 1);
+                    if (seconds > 60.Seconds)
+                    {
+                        seconds = 60.Seconds;
+                    }
                     transaction.NextRetryTime = DateTime.UtcNow + seconds;
                 }
             }

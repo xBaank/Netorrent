@@ -454,7 +454,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
             var seederTorrent = await seeder.CreateTorrentAsync(
                 path,
                 _fixture.AnnounceUrl,
-                [.. _fixture.AnnounceUrls]
+                [_fixture.AnnounceUrls]
             );
 
             yield return (seederTorrent, seeder);

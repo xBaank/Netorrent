@@ -1,34 +1,44 @@
 ﻿using System.Net;
-using System.Net.Sockets;
 using System.Threading.Channels;
-using Microsoft.Extensions.Logging;
+using Netorrent.Exceptions;
 using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 using Netorrent.Statistics;
 using Netorrent.TorrentFile.FileStructure;
+using R3;
 
 namespace Netorrent.Tracker.Http;
 
 internal class HttpTracker(
+    Bitfield myBitfield,
     int port,
     DataStatistics transfer,
     IHttpTrackerHandler httpTrackerHandler,
     PeerId peerId,
     InfoHash infoHash,
     string announceUrl,
-    ILogger logger,
     ChannelWriter<IPEndPoint> channelWriter
 ) : ITracker
 {
     public async ValueTask StartAsync(CancellationToken cancellationToken)
     {
-        var response = await TryAnnounceAsync(Events.Started, cancellationToken)
+        var response = await AnnounceAsync(
+                myBitfield.IsComplete ? Events.Completed : Events.Started,
+                cancellationToken
+            )
             .ConfigureAwait(false);
 
-        if (response is null)
-        {
-            return;
-        }
+        using var completeDisposable = myBitfield.StateChanged.SubscribeAwait(
+            async (value, ct) =>
+            {
+                if (myBitfield.IsComplete)
+                {
+                    response = await AnnounceAsync(Events.Completed, cancellationToken: ct)
+                        .ConfigureAwait(false);
+                }
+            },
+            configureAwait: false
+        );
 
         foreach (var iPEndPoint in response.Peers)
         {
@@ -39,21 +49,10 @@ internal class HttpTracker(
         {
             var interval = response.Interval.Seconds;
 
-            if (logger.IsEnabled(LogLevel.Information))
-            {
-                logger.LogInformation("Waiting {seconds} seconds", interval.TotalSeconds);
-            }
-
             await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
 
-            var newResponse = await TryAnnounceAsync(cancellationToken: cancellationToken)
+            var newResponse = await AnnounceAsync(cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
-
-            if (newResponse is null)
-            {
-                continue;
-            }
-
             response = newResponse;
 
             foreach (var iPEndPoint in response.Peers)
@@ -63,16 +62,11 @@ internal class HttpTracker(
         }
     }
 
-    private async Task<HttpTrackerResponse?> TryAnnounceAsync(
+    private async Task<HttpTrackerResponse> AnnounceAsync(
         string? @event = null,
         CancellationToken cancellationToken = default
     )
     {
-        if (logger.IsEnabled(LogLevel.Information))
-        {
-            logger.LogInformation("Announcing to {url}", announceUrl);
-        }
-
         try
         {
             var request = new HttpTrackerRequest(
@@ -85,7 +79,7 @@ internal class HttpTracker(
                 true,
                 false,
                 @event,
-                50
+                200
             );
 
             return await httpTrackerHandler
@@ -94,17 +88,12 @@ internal class HttpTracker(
         }
         catch (Exception ex)
         {
-            if (logger.IsEnabled(LogLevel.Debug))
-            {
-                logger.LogDebug(ex, "Couldn't announce to {trackerUrl}", announceUrl);
-            }
-
-            return null;
+            throw new AnnounceException(ex.Message);
         }
     }
 
     public async ValueTask StopAsync(CancellationToken cancellationToken)
     {
-        await TryAnnounceAsync(Events.Stopped, cancellationToken).ConfigureAwait(false);
+        await AnnounceAsync(Events.Stopped, cancellationToken).ConfigureAwait(false);
     }
 }

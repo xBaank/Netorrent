@@ -59,7 +59,7 @@ internal class FakePeerConnection(Bitfield myBitfield) : IPeerConnection
 
     public ulong DecrementUploadRequested() => _uploadRequestedCount--;
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public async ValueTask DisposeAsync() => SentBlocks.OnCompleted();
 
     public ulong IncrementRequestedBlock()
     {

@@ -109,13 +109,18 @@ public sealed class Torrent : IAsyncDisposable
             torrentClientOptions.Logger
         );
         _trackerClient = new TrackerClient(
+            _myBitfield,
             trackerHandlers,
             torrentClientOptions.UsedTrackers,
             peersListener.Port,
             dataStatistics,
             peerId,
             trackersChannel.Writer,
-            [metaInfo.Announce, .. metaInfo.AnnounceList ?? []],
+            metaInfo.AnnounceList?.Select(i => i.ToArray()).ToList() //Don't modify the original announce list
+                ??
+                [
+                    [metaInfo.Announce],
+                ],
             metaInfo.Info.InfoHash,
             torrentClientOptions.Logger
         );
@@ -265,12 +270,25 @@ public sealed class Torrent : IAsyncDisposable
         var piecesChannel = Channel.CreateBounded<(int PieceIndex, RentedArray<byte> Piece)>(
             new BoundedChannelOptions(channelSize) { SingleReader = true, SingleWriter = true }
         );
+        var indexChannel = Channel.CreateBounded<int>(
+            new BoundedChannelOptions(channelSize) { SingleReader = true, SingleWriter = false }
+        );
         var processPiecesTask = ProcessPiecesAsync();
+        var processIndexesTask = ProcessIndicesAsync();
         var getPiecesTask = GetPiecesAsync();
 
-        await Task.WhenAll(processPiecesTask, getPiecesTask).ConfigureAwait(false);
+        await Task.WhenAll(processPiecesTask, getPiecesTask, processIndexesTask)
+            .ConfigureAwait(false);
 
         Statistics.Data.SetVerifiedBytes(_piecePicker.GetBitfieldSize());
+
+        async Task ProcessIndicesAsync()
+        {
+            await foreach (var index in indexChannel.Reader.ReadAllAsync(cancellationToken))
+            {
+                _myBitfield.SetPiece(index);
+            }
+        }
 
         async Task ProcessPiecesAsync()
         {
@@ -278,11 +296,16 @@ public sealed class Torrent : IAsyncDisposable
                 var items in piecesChannel.Reader.ReadAllAsync(cancellationToken).Chunk(16)
             )
             {
-                Parallel.ForEach(
-                    items,
-                    (item) => VerifyPiece(item.PieceIndex, item.Piece, cancellationToken)
-                );
+                await Parallel
+                    .ForEachAsync(
+                        items,
+                        cancellationToken: cancellationToken,
+                        (item, ct) => VerifyPieceAsync(item.PieceIndex, pieceData: item.Piece, ct)
+                    )
+                    .ConfigureAwait(false);
             }
+
+            indexChannel.Writer.TryComplete();
         }
 
         async Task GetPiecesAsync()
@@ -360,7 +383,7 @@ public sealed class Torrent : IAsyncDisposable
             piecesChannel.Writer.TryComplete();
         }
 
-        void VerifyPiece(
+        async ValueTask VerifyPieceAsync(
             int pieceIndex,
             RentedArray<byte> pieceData,
             CancellationToken cancellationToken
@@ -374,7 +397,9 @@ public sealed class Torrent : IAsyncDisposable
 
                 if (hasPiece)
                 {
-                    _myBitfield.SetPiece(pieceIndex);
+                    await indexChannel
+                        .Writer.WriteAsync(pieceIndex, cancellationToken)
+                        .ConfigureAwait(false);
                 }
 
                 Statistics.Check.AddCheckedPiece();
@@ -388,9 +413,9 @@ public sealed class Torrent : IAsyncDisposable
         {
             _disposed = true;
             await StopAndWaitToFinishAsync().ConfigureAwait(false);
-            _pieceStorage.Dispose();
             await _peersClient.DisposeAsync().ConfigureAwait(false);
             await _trackerClient.DisposeAsync().ConfigureAwait(false);
+            _pieceStorage.Dispose();
             Completion.Dispose();
             _cancellationTokenSource?.Dispose();
             _cancellationTokenSource = null;

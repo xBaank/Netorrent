@@ -1,4 +1,4 @@
-﻿using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics.CodeAnalysis;
 using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 using ZLinq;
@@ -8,11 +8,12 @@ namespace Netorrent.P2P.Download;
 internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, long totalSize)
     : IPiecePicker
 {
-    public const int TimeoutSeconds = 10;
-
     private readonly int[] _pieceRarity = new int[myBitfield.Length];
     private readonly Dictionary<int, RequestBlock[]> _requestBlocks = [];
+    private readonly HashSet<int> _requestedIndexes = [];
+    private bool _isEndGame = false;
     public int BlockSize => blockSize;
+    public bool IsEndGame => _isEndGame;
 
     public void IncreaseRarity(int index)
     {
@@ -24,15 +25,9 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         Interlocked.Decrement(ref _pieceRarity[index]);
     }
 
-    public void CompleteRequestBlock(RequestBlock requestBlock)
-    {
-        requestBlock.State = RequestBlockState.Completed;
-        requestBlock.RequestedAt = null;
-        requestBlock.RequestedFrom.Clear();
-    }
-
     public void CompletePiece(int index)
     {
+        _requestedIndexes.Remove(index);
         _requestBlocks.Remove(index);
     }
 
@@ -63,28 +58,56 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         return false;
     }
 
-    public RequestBlock? GetBlock(Bitfield bitfield)
+    public bool TryGetRequestBlock(
+        IPeerConnection peerConnection,
+        [NotNullWhen(true)] out RequestBlock? requestBlock
+    )
     {
-        HashSet<int> excludedIndices = [];
-
-        foreach (var requestBlock in _requestBlocks.Values.AsValueEnumerable().SelectMany(i => i))
+        if (peerConnection.PeerBitField is null)
         {
-            excludedIndices.Add(requestBlock.Index);
+            requestBlock = null;
+            return false;
+        }
+
+        foreach (var item in _requestBlocks.Values.AsValueEnumerable().SelectMany(i => i))
+        {
+            _requestedIndexes.Add(item.Index);
 
             if (
-                requestBlock.State == RequestBlockState.Pending
-                && bitfield.HasPiece(requestBlock.Index)
+                item is { State: RequestBlockState.Pending or RequestBlockState.EndgameRequested }
+                && peerConnection.PeerBitField.HasPiece(item.Index)
+                && !item.RequestedFrom.Contains(peerConnection)
             )
             {
-                return requestBlock;
+                requestBlock = item;
+                return true;
             }
         }
 
-        var piece = GetPiece(bitfield, excludedIndices);
+        bool hasUnrequestedPiece = false;
+
+        for (int i = 0; i < myBitfield.Length; i++)
+        {
+            if (myBitfield.HasPiece(i))
+            {
+                continue;
+            }
+
+            if (!_requestedIndexes.Contains(i))
+            {
+                hasUnrequestedPiece = true;
+                break;
+            }
+        }
+
+        _isEndGame = !hasUnrequestedPiece;
+
+        var piece = GetPiece(peerConnection.PeerBitField, _requestedIndexes);
 
         if (piece is null)
         {
-            return null;
+            requestBlock = null;
+            return false;
         }
 
         var blockCount = GetBlockCountByPieceIndex(piece.Value);
@@ -100,34 +123,21 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
             }
         }
 
-        return requestBlocks[0];
+        requestBlock = requestBlocks[0];
+        return true;
     }
 
     public IEnumerable<RequestBlock> GetTimeoutRequestBlocks()
     {
-        var timeout = TimeoutSeconds.Seconds;
         var now = DateTime.UtcNow;
 
         return _requestBlocks
             .Values.SelectMany(i => i)
             .Where(i =>
-                i?.State == RequestBlockState.Requested
-                && i.RequestedAt is not null
-                && (now - i.RequestedAt.Value) > timeout
+                i is { State: RequestBlockState.EndgameRequested or RequestBlockState.Requested }
+                && i.TimeoutAt is not null
+                && now > i.TimeoutAt.Value
             );
-    }
-
-    public void SetBlockToPending(RequestBlock requestBlock)
-    {
-        requestBlock.State = RequestBlockState.Pending;
-        requestBlock.RequestedAt = null;
-    }
-
-    public void SetBlockToRequested(RequestBlock requestBlock, IPeerConnection peerConnection)
-    {
-        requestBlock.State = RequestBlockState.Requested;
-        requestBlock.RequestedFrom.Add(peerConnection);
-        requestBlock.RequestedAt = DateTimeOffset.UtcNow;
     }
 
     private int? GetPiece(Bitfield peerBitfield, HashSet<int> excluded)
@@ -171,6 +181,8 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         int blockCount = (pieceSize + BlockSize - 1) / BlockSize;
         return blockCount;
     }
+
+    //TODO Move this to bitfield class?
 
     public int GetPieceSize(int pieceIndex)
     {
@@ -223,6 +235,4 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         }
         return total;
     }
-
-    public async ValueTask DisposeAsync() { }
 }

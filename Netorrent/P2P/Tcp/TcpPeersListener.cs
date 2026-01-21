@@ -18,7 +18,7 @@ internal class TcpPeersListeners(
 {
     private readonly ConcurrentDictionary<InfoHash, PeersClient> _peersClientByInfoHash = new();
     private readonly Channel<TcpClient> _incomingConnections = Channel.CreateBounded<TcpClient>(
-        128
+        new BoundedChannelOptions(128) { SingleWriter = false, SingleReader = true }
     );
 
     public int Port => ((IPEndPoint)tcpListeners[0].LocalEndpoint).Port;

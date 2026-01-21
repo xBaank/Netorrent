@@ -13,7 +13,7 @@ public class UploadSchedulerTests
 {
     //TODO use matrix to create multiple peers
     [Test]
-    public async Task Should_Upload_To_Peer(CancellationToken cancellationToken)
+    public async Task Should_Upload_Block_To_Peer(CancellationToken cancellationToken)
     {
         var logger = NullLogger.Instance;
         var bitfield = new Bitfield(5, true);
@@ -40,6 +40,37 @@ public class UploadSchedulerTests
         block.Index.ShouldBe(0);
         block.Begin.ShouldBe(0);
         block.Payload.Length.ShouldBe(0);
+        chokeState.ShouldBe(false);
+    }
+
+    [Test]
+    public async Task Should_Cancel_Block_To_Peer(CancellationToken cancellationToken)
+    {
+        var logger = NullLogger.Instance;
+        var bitfield = new Bitfield(5, true);
+        var peerConnection = new FakePeerConnection(bitfield);
+        await using var uploadScheduler = new UploadScheduler(
+            new Dictionary<PeerEndpoint, IPeerConnection>()
+            {
+                [peerConnection.PeerEndpoint] = peerConnection,
+            },
+            new FakePieceStorage(),
+            bitfield,
+            new DataStatistics(10),
+            logger
+        );
+        var requestBlock = new RequestBlock(0, 0, 0);
+        var amChokingTask = peerConnection.AmChoking.FirstAsync(i => i == false, cancellationToken);
+        var isEmptyTask = peerConnection.SentBlocks.IsEmptyAsync(cancellationToken);
+        peerConnection.PeerInterested.Value = true;
+        requestBlock.RequestedFrom.Add(peerConnection);
+        var uploadTask = uploadScheduler.StartAsync(cancellationToken);
+        var chokeState = await amChokingTask;
+        await uploadScheduler.AddRequestAsync(requestBlock, cancellationToken);
+        uploadScheduler.CancelRequest(requestBlock);
+        await Task.Delay(1000, cancellationToken);
+        await peerConnection.DisposeAsync();
+        (await isEmptyTask).ShouldBe(true);
         chokeState.ShouldBe(false);
     }
 }

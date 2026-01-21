@@ -5,13 +5,13 @@ namespace Netorrent.TorrentFile.FileStructure;
 public record MetaInfo(
     Info Info,
     string Announce,
-    List<string>? AnnounceList = null,
+    IReadOnlyList<string[]>? AnnounceList = null,
     long? CreationDate = null,
     string? Comment = null,
     string? CreatedBy = null,
     string? Encoding = null,
     string? Title = null,
-    List<string>? UrlList = null
+    IReadOnlyList<string>? UrlList = null
 )
 {
     public BDictionary ToBDictionary()
@@ -23,16 +23,16 @@ public record MetaInfo(
             root.Elements["announce"] = new BString(Announce);
         }
 
-        if (AnnounceList != null && AnnounceList.Count != 0)
+        if (AnnounceList is not null && AnnounceList.Count != 0)
         {
-            var innerTier = new BList([
-                .. AnnounceList.Select(u => (IBencodingNode)new BString(u)),
+            root.Elements["announce-list"] = new BList([
+                .. AnnounceList.Select(u => new BList([
+                    .. u.Select(i => (IBencodingNode)new BString(i)),
+                ])),
             ]);
-            var outer = new BList([innerTier]);
-            root.Elements["announce-list"] = outer;
         }
 
-        if (UrlList != null && UrlList.Count != 0)
+        if (UrlList is not null && UrlList.Count != 0)
         {
             root.Elements["url-list"] = new BList([
                 .. UrlList.Select(u => (IBencodingNode)new BString(u)),
