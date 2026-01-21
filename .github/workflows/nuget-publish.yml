@@ -168,6 +168,7 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
+    permissions: write-all
     if: needs.build.outputs.should-publish == 'true'
     environment: ${{ needs.build.outputs.environment }}
     
