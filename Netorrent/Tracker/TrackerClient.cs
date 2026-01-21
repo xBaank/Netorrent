@@ -47,7 +47,8 @@ internal class TrackerClient(
                         Ipv6?.StartAsync(cancellationToken).AsTask(),
                     ];
 
-                    await Task.WhenAll(tasks.Where(i => i is not null).Cast<Task>());
+                    await Task.WhenAll(tasks.Where(i => i is not null).Cast<Task>())
+                        .ConfigureAwait(false);
                 }
                 catch (AnnounceException ex)
                 {
