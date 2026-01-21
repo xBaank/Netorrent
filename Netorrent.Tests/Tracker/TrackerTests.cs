@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Netorrent.Exceptions;
 using Netorrent.Extensions;
 using Netorrent.Tests.Extensions;
 using Netorrent.Tests.Fakes;
@@ -69,9 +70,7 @@ public class TrackerTests
             new(),
             ctx.Channel.Writer,
             new byte[20],
-            "null",
-            new(IPAddress.Loopback, 1),
-            ctx.Logger
+            new(IPAddress.Loopback, 1)
         );
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -102,7 +101,6 @@ public class TrackerTests
             new(),
             new byte[20],
             "null",
-            ctx.Logger,
             ctx.Channel
         );
 
@@ -134,23 +132,13 @@ public class TrackerTests
             new(),
             new byte[20],
             "null",
-            ctx.Logger,
             ctx.Channel
         );
 
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var trackerTask = httpTracker.StartAsync(cts.Token).AsTask();
-
-        await Task.Delay(5.Seconds, cancellationToken);
-        cts.Cancel();
-        ctx.Channel.Writer.TryComplete();
-
-        var ipendpoints = await ctx
-            .Channel.Reader.ReadAllAsync(cancellationToken)
-            .ToArrayAsync(cancellationToken: cancellationToken)
-            .AsTask();
-
-        ipendpoints.Length.ShouldBe(0);
+        await httpTracker
+            .StartAsync(cancellationToken)
+            .AsTask()
+            .ShouldThrowAsync<AnnounceException>();
     }
 
     [Test]
@@ -171,24 +159,13 @@ public class TrackerTests
             new(),
             ctx.Channel.Writer,
             new byte[20],
-            "null",
-            new(IPAddress.Loopback, 1),
-            ctx.Logger
+            new(IPAddress.Loopback, 1)
         );
 
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var trackerTask = udptracker.StartAsync(cts.Token).AsTask();
-
-        await Task.Delay(5.Seconds, cancellationToken);
-        cts.Cancel();
-        ctx.Channel.Writer.TryComplete();
-
-        var ipendpoints = await ctx
-            .Channel.Reader.ReadAllAsync(cancellationToken)
-            .ToArrayAsync(cancellationToken: cancellationToken)
-            .AsTask();
-
-        ipendpoints.Length.ShouldBe(0);
+        await udptracker
+            .StartAsync(cancellationToken)
+            .AsTask()
+            .ShouldThrowAsync<AnnounceException>();
     }
 
     [Test]
@@ -218,10 +195,8 @@ public class TrackerTests
             new(),
             ctx.Channel,
             [
-                "udp://localhost:1",
-                "https://localhost:2",
-                "http://localhost:3",
-                "aaaa://localhost:4",
+                ["udp://localhost:1", "https://localhost:2"],
+                ["http://localhost:3", "aaaa://localhost:4"],
             ],
             new byte[20],
             ctx.Logger

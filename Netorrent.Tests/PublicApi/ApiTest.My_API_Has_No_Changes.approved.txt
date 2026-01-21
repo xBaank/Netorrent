@@ -207,9 +207,9 @@ namespace Netorrent.TorrentFile.FileStructure
     }
     public class MetaInfo : System.IEquatable<Netorrent.TorrentFile.FileStructure.MetaInfo>
     {
-        public MetaInfo(Netorrent.TorrentFile.FileStructure.Info Info, string Announce, System.Collections.Generic.List<string>? AnnounceList = null, long? CreationDate = default, string? Comment = null, string? CreatedBy = null, string? Encoding = null, string? Title = null, System.Collections.Generic.List<string>? UrlList = null) { }
+        public MetaInfo(Netorrent.TorrentFile.FileStructure.Info Info, string Announce, System.Collections.Generic.List<string[]>? AnnounceList = null, long? CreationDate = default, string? Comment = null, string? CreatedBy = null, string? Encoding = null, string? Title = null, System.Collections.Generic.List<string>? UrlList = null) { }
         public string Announce { get; init; }
-        public System.Collections.Generic.List<string>? AnnounceList { get; init; }
+        public System.Collections.Generic.List<string[]>? AnnounceList { get; init; }
         public string? Comment { get; init; }
         public string? CreatedBy { get; init; }
         public long? CreationDate { get; init; }
@@ -265,7 +265,7 @@ namespace Netorrent.TorrentFile
     public sealed class TorrentClient : System.IAsyncDisposable
     {
         public TorrentClient(System.Func<Netorrent.TorrentFile.Options.TorrentClientOptions, Netorrent.TorrentFile.Options.TorrentClientOptions>? action = null) { }
-        public System.Threading.Tasks.ValueTask<Netorrent.TorrentFile.Torrent> CreateTorrentAsync(string path, string announceUrl, System.Collections.Generic.List<string>? announceUrls = null, System.Collections.Generic.List<string>? webUrls = null, int pieceLength = 262144, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<Netorrent.TorrentFile.Torrent> CreateTorrentAsync(string path, string announceUrl, System.Collections.Generic.List<string[]>? announceUrls = null, System.Collections.Generic.List<string>? webUrls = null, int pieceLength = 262144, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask DisposeAsync() { }
         public Netorrent.TorrentFile.Torrent LoadTorrent(Netorrent.TorrentFile.FileStructure.MetaInfo metaInfo, string outputDirectory, int[]? downloadedPieces = null) { }
         public System.Threading.Tasks.ValueTask<Netorrent.TorrentFile.Torrent> LoadTorrentAsync(string path, string outputDirectory, int[]? downloadedPieces = null, System.Threading.CancellationToken cancellationToken = default) { }

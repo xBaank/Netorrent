@@ -1,6 +1,6 @@
 ﻿using System.Net;
 using System.Threading.Channels;
-using Microsoft.Extensions.Logging;
+using Netorrent.Exceptions;
 using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 using Netorrent.Statistics;
@@ -17,9 +17,7 @@ internal class UdpTracker(
     PeerId peerId,
     ChannelWriter<IPEndPoint> channelWriter,
     InfoHash infoHash,
-    string announceUrl,
-    IPEndPoint iPEndPoint,
-    ILogger logger
+    IPEndPoint iPEndPoint
 ) : ITracker
 {
     private UdpTrackerResponse? _lastResponse;
@@ -27,22 +25,14 @@ internal class UdpTracker(
 
     public async ValueTask StartAsync(CancellationToken cancellationToken)
     {
-        if (await TryConnectAsync(iPEndPoint, cancellationToken).ConfigureAwait(false) is null)
-        {
-            return;
-        }
+        await ConnectAsync(iPEndPoint, cancellationToken).ConfigureAwait(false);
 
-        _lastResponse = await TryAnnounceAsync(
+        _lastResponse = await AnnounceAsync(
                 iPEndPoint,
                 @event: Events.Started,
                 cancellationToken: cancellationToken
             )
             .ConfigureAwait(false);
-
-        if (_lastResponse is null)
-        {
-            return;
-        }
 
         foreach (var peer in _lastResponse.Peers)
         {
@@ -54,18 +44,8 @@ internal class UdpTracker(
             var interval = _lastResponse.Interval.Seconds;
             await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
 
-            if (logger.IsEnabled(LogLevel.Information))
-            {
-                logger.LogInformation("Waiting {seconds} seconds", interval);
-            }
-
-            var newResponse = await TryAnnounceAsync(iPEndPoint, null, cancellationToken)
+            var newResponse = await AnnounceAsync(iPEndPoint, null, cancellationToken)
                 .ConfigureAwait(false);
-
-            if (newResponse is null)
-            {
-                continue;
-            }
 
             _lastResponse = newResponse;
 
@@ -76,7 +56,7 @@ internal class UdpTracker(
         }
     }
 
-    public async Task<UdpTrackerConnectResponse?> TryConnectAsync(
+    public async Task<UdpTrackerConnectResponse> ConnectAsync(
         IPEndPoint iPEndPoint,
         CancellationToken cancellationToken
     )
@@ -89,16 +69,11 @@ internal class UdpTracker(
         }
         catch (Exception ex)
         {
-            if (logger.IsEnabled(LogLevel.Debug))
-            {
-                logger.LogDebug(ex, "Couldn't connect to {trackerUrl}", announceUrl);
-            }
-
-            return null;
+            throw new AnnounceException(ex.Message);
         }
     }
 
-    public async Task<UdpTrackerResponse?> TryAnnounceAsync(
+    public async Task<UdpTrackerResponse> AnnounceAsync(
         IPEndPoint iPEndPoint,
         string? @event,
         CancellationToken cancellationToken
@@ -106,11 +81,6 @@ internal class UdpTracker(
     {
         try
         {
-            if (logger.IsEnabled(LogLevel.Information))
-            {
-                logger.LogInformation("Announcing to {url}", announceUrl);
-            }
-
             var connectionId = udpTrackerHandler.GetConnectionIdOrNull(_trackerId);
 
             if (connectionId is null || udpTrackerHandler.IsOutdated(connectionId.Value))
@@ -133,7 +103,7 @@ internal class UdpTracker(
                 (ushort)port,
                 ConnectionId: connectionId.Value,
                 TransactionId: udpTrackerHandler.MakeTransactionId(),
-                NumWant: 50
+                NumWant: 200
             );
 
             return await udpTrackerHandler
@@ -142,12 +112,7 @@ internal class UdpTracker(
         }
         catch (Exception ex)
         {
-            if (logger.IsEnabled(LogLevel.Debug))
-            {
-                logger.LogDebug(ex, "Couldn't announce to {trackerUrl}", announceUrl);
-            }
-
-            return null;
+            throw new AnnounceException(ex.Message);
         }
     }
 
@@ -156,7 +121,7 @@ internal class UdpTracker(
         if (iPEndPoint is not null && _lastResponse is not null)
         {
             //Udp tracker don't respond to stop so there is no point in awaiting as it will never complete
-            _ = TryAnnounceAsync(iPEndPoint, Events.Stopped, cancellationToken);
+            _ = AnnounceAsync(iPEndPoint, Events.Stopped, cancellationToken);
         }
     }
 }

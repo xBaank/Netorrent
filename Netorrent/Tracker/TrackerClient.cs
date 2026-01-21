@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
+using Netorrent.Exceptions;
 using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 using Netorrent.Statistics;
@@ -21,48 +22,57 @@ internal class TrackerClient(
     DataStatistics transferStatistics,
     PeerId peerId,
     ChannelWriter<IPEndPoint> trackersChannel,
-    string[] announceList,
+    List<string[]> announceList,
     InfoHash infoHash,
     ILogger logger
 ) : IAsyncDisposable
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        var urls =
-            announceList
-                .Where(url => !string.IsNullOrWhiteSpace(url))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-            ?? [];
-
-        List<Task> trackerTasks = [];
-        List<ITracker> trackers = [];
-
-        //The trackers should not fail by them self
-        //They finish successfully because of dns problems, udp timeouts, etc.
-        try
+        foreach (var urls in announceList)
         {
+            Random.Shared.Shuffle(urls);
+
             await foreach (
                 var tracker in CreateTrackers(urls, cancellationToken)
                     .WithCancellation(cancellationToken)
                     .ConfigureAwait(false)
             )
             {
-                trackers.Add(tracker);
-                trackerTasks.Add(tracker.StartAsync(cancellationToken).AsTask());
+                try
+                {
+                    await tracker.StartAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch (AnnounceException ex)
+                {
+                    if (logger.IsEnabled(LogLevel.Error))
+                    {
+                        logger.LogError(ex, "Error Announcing");
+                    }
+                    continue;
+                }
+                catch (OperationCanceledException oce)
+                    when (oce.CancellationToken == cancellationToken)
+                {
+                    try
+                    {
+                        using var ct = new CancellationTokenSource(5.Seconds);
+                        await tracker.StopAsync(ct.Token).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        if (logger.IsEnabled(LogLevel.Error))
+                        {
+                            logger.LogError(ex, "Error stopping");
+                        }
+                    }
+                }
             }
-
-            await Task.WhenAll(trackerTasks).ConfigureAwait(false);
-        }
-        finally
-        {
-            using var cts = new CancellationTokenSource(5.Seconds);
-            var trackerDisposeTasks = trackers.Select(i => i.StopAsync(cts.Token).AsTask());
-            await Task.WhenAll(trackerDisposeTasks).ConfigureAwait(false);
         }
     }
 
     private async IAsyncEnumerable<ITracker> CreateTrackers(
-        IEnumerable<string> urls,
+        string[] urls,
         [EnumeratorCancellation] CancellationToken cancellationToken
     )
     {
@@ -117,7 +127,6 @@ internal class TrackerClient(
                 peerId,
                 infoHash,
                 uri.OriginalString,
-                logger,
                 trackersChannel
             );
             httpsTrackers.Add(trackerv4);
@@ -132,7 +141,6 @@ internal class TrackerClient(
                 peerId,
                 infoHash,
                 uri.OriginalString,
-                logger,
                 trackersChannel
             );
             httpsTrackers.Add(trackerv6);
@@ -160,9 +168,7 @@ internal class TrackerClient(
                 peerId,
                 trackersChannel,
                 infoHash,
-                uri.OriginalString,
-                ipEndpoint,
-                logger
+                ipEndpoint
             );
             udpTrackers.Add(trackerv4);
         }
@@ -177,9 +183,7 @@ internal class TrackerClient(
                 peerId,
                 trackersChannel,
                 infoHash,
-                uri.OriginalString,
-                ipEndpoint,
-                logger
+                ipEndpoint
             );
             udpTrackers.Add(trackerv6);
         }
