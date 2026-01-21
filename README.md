@@ -1,4 +1,5 @@
-# Netorrent
+# Netorrent ![Build Status](https://github.com/xBaank/Netorrent/actions/workflows/dotnet.yml/badge.svg) [![NuGet](https://img.shields.io/nuget/v/Netorrent?label=NuGet&color=blue)](https://www.nuget.org/packages/Netorrent) [![NuGet Nightly](https://img.shields.io/nuget/vpre/Netorrent?label=NuGet%20Nightly&color=orange)](https://www.nuget.org/packages/Netorrent)
+
 
 A async-first .NET 10.0 BitTorrent client library for downloading and seeding torrents.
 
