@@ -115,7 +115,11 @@ public sealed class Torrent : IAsyncDisposable
             dataStatistics,
             peerId,
             trackersChannel.Writer,
-            [metaInfo.Announce, .. metaInfo.AnnounceList ?? []],
+            metaInfo.AnnounceList?.Select(i => i.ToArray()).ToList() //Don't modify the original announce list
+                ??
+                [
+                    [metaInfo.Announce],
+                ],
             metaInfo.Info.InfoHash,
             torrentClientOptions.Logger
         );

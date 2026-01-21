@@ -64,7 +64,9 @@ public class TorrentFileTests
         await using var torrent = await torrentClient.CreateTorrentAsync(
             "Data/MultifileTest",
             "http://test.com",
-            ["http://test.com"],
+            [
+                ["http://test.com"],
+            ],
             ["http://test.com"],
             cancellationToken: cancellationToken
         );
@@ -90,7 +92,9 @@ public class TorrentFileTests
         await using var torrent = await torrentClient.CreateTorrentAsync(
             "Data/MultifileTest/test.txt",
             "http://test.com",
-            ["http://test.com"],
+            [
+                ["http://test.com"],
+            ],
             ["http://test.com"],
             cancellationToken: cancellationToken
         );
@@ -112,7 +116,9 @@ public class TorrentFileTests
             .CreateTorrentAsync(
                 "Data/ASdasd",
                 "http://test.com",
-                ["http://test.com"],
+                [
+                    ["http://test.com"],
+                ],
                 ["http://test.com"],
                 cancellationToken: cancellationToken
             )
@@ -128,7 +134,9 @@ public class TorrentFileTests
             .CreateTorrentAsync(
                 "Data/MultifileTest/adasdasd.txt",
                 "http://test.com",
-                ["http://test.com"],
+                [
+                    ["http://test.com"],
+                ],
                 ["http://test.com"],
                 cancellationToken: cancellationToken
             )
@@ -146,7 +154,9 @@ public class TorrentFileTests
         await using var torrent = await torrentClient.CreateTorrentAsync(
             path,
             "http://test.com",
-            ["http://test.com"],
+            [
+                ["http://test.com"],
+            ],
             ["http://test.com"],
             pieceLength: pieceLength,
             cancellationToken: cancellationToken
@@ -177,7 +187,9 @@ public class TorrentFileTests
         await using var torrent = await torrentClient.CreateTorrentAsync(
             path,
             "http://test.com",
-            ["http://test.com"],
+            [
+                ["http://test.com"],
+            ],
             ["http://test.com"],
             pieceLength: pieceLength,
             cancellationToken: cancellationToken

@@ -180,7 +180,7 @@ public sealed class TorrentClient : IAsyncDisposable
     public async ValueTask<Torrent> CreateTorrentAsync(
         string path,
         string announceUrl,
-        List<string>? announceUrls = null,
+        List<string[]>? announceUrls = null,
         List<string>? webUrls = null,
         int pieceLength = 256 * 1024, // 256 KB default
         CancellationToken cancellationToken = default
@@ -211,7 +211,7 @@ public sealed class TorrentClient : IAsyncDisposable
     internal static async ValueTask<MetaInfo> CreateMetaInfoFromPathAsync(
         string path,
         string announceUrl,
-        List<string>? announceUrls,
+        List<string[]>? announceUrls,
         List<string>? webUrls,
         int pieceLength,
         CancellationToken cancellationToken = default
@@ -252,7 +252,7 @@ public sealed class TorrentClient : IAsyncDisposable
             throw new ArgumentException($"Invalid announce URL: '{announceUrl}'");
         }
 
-        string[] allUrls = [.. announceUrls ?? [], .. webUrls ?? []];
+        string[] allUrls = [.. announceUrls?.SelectMany(i => i) ?? [], .. webUrls ?? []];
         foreach (string url in allUrls)
         {
             if (!IsValidUrl(url))
@@ -461,8 +461,7 @@ public sealed class TorrentClient : IAsyncDisposable
             .Elements.GetValueOrDefault("announce-list")
             ?.As<BList>()
             ?.Elements.Select(i => i.As<BList>()!.Value.Elements)
-            .SelectMany(i => i)
-            .Select<IBencodingNode, string>(i => i.As<BString>()!.Value)
+            ?.Select(i => i.Select(i => i.As<BString>()!.Value.Data).ToArray())
             .ToList();
         var urlList = dictionary
             .Elements.GetValueOrDefault("url-list")
