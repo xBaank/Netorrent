@@ -503,12 +503,12 @@ public class TorrentTests(OpenTrackerFixture fixture)
             PeerIpProxy = iPAddress =>
             {
                 //Because docker use NAT and host mode doesn't work properly on win and mac we need to transform those ips.
-                if (addressFamilies.Contains(AddressFamily.InterNetwork))
+                if (addressFamilies?.Contains(AddressFamily.InterNetwork) == true)
                 {
                     return IPAddress.Loopback;
                 }
 
-                if (addressFamilies.Contains(AddressFamily.InterNetworkV6))
+                if (addressFamilies?.Contains(AddressFamily.InterNetworkV6) == true)
                 {
                     return IPAddress.IPv6Loopback;
                 }
@@ -531,11 +531,11 @@ public class TorrentTests(OpenTrackerFixture fixture)
             {
                 ListenIpv4Address = addressFamilies
                     ?.Where(i => i == AddressFamily.InterNetwork)
-                    .Select(i => IPAddress.Any)
+                    .Select(i => IPAddress.Loopback)
                     .FirstOrDefault(),
                 ListenIpv6Address = addressFamilies
                     ?.Where(i => i == AddressFamily.InterNetworkV6)
-                    .Select(i => IPAddress.IPv6Any)
+                    .Select(i => IPAddress.IPv6Loopback)
                     .FirstOrDefault(),
             };
         }
