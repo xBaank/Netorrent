@@ -20,7 +20,10 @@ internal static class TcpListenerExtensions
                 {
                     var usedPort = port ?? 0;
                     var listener = new TcpListener(ipAddress, usedPort);
-                    listener.Server.DualMode = false;
+                    if (ipAddress.AddressFamily == AddressFamily.InterNetworkV6)
+                    {
+                        listener.Server.DualMode = false;
+                    }
                     listener.Start();
                     port ??= ((IPEndPoint)listener.LocalEndpoint).Port;
                     listeners.Add(listener);
