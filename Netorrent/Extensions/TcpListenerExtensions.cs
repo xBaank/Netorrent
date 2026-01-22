@@ -12,18 +12,34 @@ internal static class TcpListenerExtensions
             int? port = null
         )
         {
-            List<TcpListener> tcpListeners = new(ipAddresses.Length);
+            var listeners = new List<TcpListener>(ipAddresses.Length);
 
-            foreach (var ipAddress in ipAddresses)
+            try
             {
-                var address = ipAddress;
-                var usedPort = port ?? 0;
-                var listener = new TcpListener(address, usedPort);
-                listener.Start();
-                port ??= ((IPEndPoint)listener.LocalEndpoint).Port;
-                tcpListeners.Add(listener);
+                foreach (var ipAddress in ipAddresses)
+                {
+                    var usedPort = port ?? 0;
+                    var listener = new TcpListener(ipAddress, usedPort);
+                    listener.Server.DualMode = false;
+                    listener.Start();
+                    port ??= ((IPEndPoint)listener.LocalEndpoint).Port;
+                    listeners.Add(listener);
+                }
+
+                return listeners;
             }
-            return tcpListeners;
+            catch
+            {
+                foreach (var l in listeners)
+                {
+                    try
+                    {
+                        l.Stop();
+                    }
+                    catch { }
+                }
+                throw;
+            }
         }
     }
 }
