@@ -1,10 +1,10 @@
 using System.Buffers;
 using System.Buffers.Binary;
-using System.IO.Pipelines;
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.Other;
 using Netorrent.P2P.Messages;
+using Netorrent.Tests.Fakes;
 using R3;
 using Shouldly;
 
