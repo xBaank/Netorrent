@@ -1,9 +1,11 @@
 using System.Buffers;
 using System.Buffers.Binary;
+using System.IO.Pipelines;
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.Other;
 using Netorrent.P2P.Messages;
+using R3;
 using Shouldly;
 
 namespace Netorrent.Tests.P2P;
@@ -21,12 +23,9 @@ internal class MessageStreamTests
         using var message = Message.CreateChoke();
         using var rawData = message.ToRentedArray();
 
-        await using var memoryStream = new MemoryStream();
+        await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
         await memoryStream.FlushAsync(cancellationToken);
-
-        // Reset position for reading
-        memoryStream.Position = 0;
 
         await using var messageStream = new MessageStream(
             memoryStream,
@@ -43,6 +42,30 @@ internal class MessageStreamTests
     }
 
     [Test]
+    public async Task Should_Send_Choke(CancellationToken cancellationToken)
+    {
+        var peerId = new PeerId();
+        var infohash = new byte[20];
+
+        using var message = Message.CreateChoke();
+        using var expectedData = message.ToRentedArray();
+
+        await using var memoryStream = new FakeMemoryStream();
+        await using var messageStream = new MessageStream(
+            memoryStream,
+            Handshake.Create(infohash, peerId.ToBytes()),
+            120.Seconds
+        );
+
+        var itemTask = memoryStream.WrittenData.FirstAsync(cancellationToken);
+        await messageStream.OutgoingMessages.WriteAsync(message, cancellationToken);
+        var streamTask = messageStream.StartAsync(cancellationToken);
+
+        var item = await itemTask;
+        item.Span.SequenceEqual(expectedData.Memory.Span).ShouldBeTrue();
+    }
+
+    [Test]
     public async Task Should_Receive_Unchoke(CancellationToken cancellationToken)
     {
         var peerId = new PeerId();
@@ -51,10 +74,9 @@ internal class MessageStreamTests
         using var message = Message.CreateUnchoke();
         using var rawData = message.ToRentedArray();
 
-        await using var memoryStream = new MemoryStream();
+        await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
         await memoryStream.FlushAsync(cancellationToken);
-        memoryStream.Position = 0;
 
         await using var messageStream = new MessageStream(
             memoryStream,
@@ -79,10 +101,9 @@ internal class MessageStreamTests
         using var message = Message.CreateInterested();
         using var rawData = message.ToRentedArray();
 
-        await using var memoryStream = new MemoryStream();
+        await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
         await memoryStream.FlushAsync(cancellationToken);
-        memoryStream.Position = 0;
 
         await using var messageStream = new MessageStream(
             memoryStream,
@@ -107,10 +128,9 @@ internal class MessageStreamTests
         using var message = Message.CreateNotInterested();
         using var rawData = message.ToRentedArray();
 
-        await using var memoryStream = new MemoryStream();
+        await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
         await memoryStream.FlushAsync(cancellationToken);
-        memoryStream.Position = 0;
 
         await using var messageStream = new MessageStream(
             memoryStream,
@@ -136,10 +156,9 @@ internal class MessageStreamTests
         using var message = Message.CreateHave(pieceIndex);
         using var rawData = message.ToRentedArray();
 
-        await using var memoryStream = new MemoryStream();
+        await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
         await memoryStream.FlushAsync(cancellationToken);
-        memoryStream.Position = 0;
 
         await using var messageStream = new MessageStream(
             memoryStream,
@@ -177,10 +196,9 @@ internal class MessageStreamTests
         using var message = Message.CreateBitfield(rentedBitfield);
         using var rawData = message.ToRentedArray();
 
-        await using var memoryStream = new MemoryStream();
+        await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
         await memoryStream.FlushAsync(cancellationToken);
-        memoryStream.Position = 0;
 
         await using var messageStream = new MessageStream(
             memoryStream,
@@ -212,10 +230,9 @@ internal class MessageStreamTests
         using var message = Message.CreateRequest(index, begin, length);
         using var rawData = message.ToRentedArray();
 
-        await using var memoryStream = new MemoryStream();
+        await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
         await memoryStream.FlushAsync(cancellationToken);
-        memoryStream.Position = 0;
 
         await using var messageStream = new MessageStream(
             memoryStream,
@@ -253,10 +270,9 @@ internal class MessageStreamTests
         using var message = Message.CreateCancel(index, begin, length);
         using var rawData = message.ToRentedArray();
 
-        await using var memoryStream = new MemoryStream();
+        await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
         await memoryStream.FlushAsync(cancellationToken);
-        memoryStream.Position = 0;
 
         await using var messageStream = new MessageStream(
             memoryStream,
@@ -300,10 +316,9 @@ internal class MessageStreamTests
         using var message = Message.CreatePiece(index, begin, rentedBlock);
         using var rawData = message.ToRentedArray();
 
-        await using var memoryStream = new MemoryStream();
+        await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
         await memoryStream.FlushAsync(cancellationToken);
-        memoryStream.Position = 0;
 
         await using var messageStream = new MessageStream(
             memoryStream,
@@ -338,10 +353,9 @@ internal class MessageStreamTests
         using var message = Message.CreateKeepAlive();
         using var rawData = message.ToRentedArray();
 
-        await using var memoryStream = new MemoryStream();
+        await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
         await memoryStream.FlushAsync(cancellationToken);
-        memoryStream.Position = 0;
 
         await using var messageStream = new MessageStream(
             memoryStream,
@@ -372,10 +386,9 @@ internal class MessageStreamTests
         using var message = new Message(Message.Port, rentedPayload);
         using var rawData = message.ToRentedArray();
 
-        await using var memoryStream = new MemoryStream();
+        await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
         await memoryStream.FlushAsync(cancellationToken);
-        memoryStream.Position = 0;
 
         await using var messageStream = new MessageStream(
             memoryStream,
