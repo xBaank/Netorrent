@@ -57,7 +57,7 @@ public sealed class FakeMemoryStream(bool infiniteHold = false) : Stream
 
     public override void Write(byte[] buffer, int offset, int count)
     {
-        WrittenData.OnNext(buffer.AsMemory(offset, count));
+        WrittenData.OnNext(buffer.AsMemory(offset, count).ToArray());
         _memoryStream.Write(buffer, offset, count);
     }
 
