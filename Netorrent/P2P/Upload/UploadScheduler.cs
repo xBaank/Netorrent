@@ -155,7 +155,10 @@ internal class UploadScheduler(
         }
         finally
         {
-            _requests.Remove(requestBlock);
+            lock (_cancelLock)
+            {
+                _requests.Remove(requestBlock);
+            }
             peer.DecrementUploadRequested();
         }
     }
@@ -291,7 +294,17 @@ internal class UploadScheduler(
             return;
         }
 
-        if (_requests.Add(request))
+        bool shouldAdd = false;
+
+        lock (_cancelLock)
+        {
+            if (_requests.Add(request))
+            {
+                shouldAdd = true;
+            }
+        }
+
+        if (shouldAdd)
         {
             from.IncrementUploadRequested();
 
