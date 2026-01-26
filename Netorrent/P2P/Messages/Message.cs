@@ -83,17 +83,16 @@ internal readonly record struct Message(byte Id, RentedArray<byte>? Payload) : I
     public static Message From(byte[] array, int length, byte id)
     {
         if (
-            id
-            is not Choke
-                or Unchoke
-                or Interested
-                or NotInterested
-                or Have
-                or Bitfield
-                or Request
-                or Piece
-                or Cancel
-                or Port
+            id != Choke
+            && id != Unchoke
+            && id != Interested
+            && id != NotInterested
+            && id != Have
+            && id != Bitfield
+            && id != Request
+            && id != Piece
+            && id != Cancel
+            && id != Port
         )
         {
             throw new BitorrentProtocolViolationException("Invalid Id");

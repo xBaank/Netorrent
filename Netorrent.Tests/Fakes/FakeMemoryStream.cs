@@ -37,7 +37,7 @@ public sealed class FakeMemoryStream(bool infiniteHold = false) : Stream
         {
             await Task.Delay(-1, cancellationToken);
         }
-        return await base.ReadAsync(buffer, cancellationToken);
+        return await _memoryStream.ReadAsync(buffer, cancellationToken);
     }
 
     public override int Read(byte[] buffer, int offset, int count)
