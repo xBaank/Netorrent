@@ -698,36 +698,36 @@ internal class MessageStreamTests
     }
 
     //TODO do some fuzzing to get invalid data
-    public static IEnumerable<byte[]> GetInvalidData()
+    public static IEnumerable<Func<byte[]>> GetInvalidData()
     {
         // random garbage
-        yield return [5, 4, 43, 44, 123, 244, 99, 32, 0, 55, 255];
+        yield return () => [5, 4, 43, 44, 123, 244, 99, 32, 0, 55, 255];
 
         // length = 1 but missing ID
-        yield return [0, 0, 0, 1];
+        yield return () => [0, 0, 0, 1];
 
         // truncated payload
-        yield return [0, 0, 0, 10, 1, 2];
+        yield return () => [0, 0, 0, 10, 1, 2];
 
         // keep-alive followed by garbage
-        yield return [0, 0, 0, 0, 99];
+        yield return () => [0, 0, 0, 0, 99];
 
         // invalid message ID
-        yield return [0, 0, 0, 1, 255];
+        yield return () => [0, 0, 0, 1, 255];
 
         // payload shorter than declared
-        yield return [0, 0, 0, 5, 4, 0, 1];
+        yield return () => [0, 0, 0, 5, 4, 0, 1];
 
         // payload longer than declared
-        yield return [0, 0, 0, 1, 0, 99, 88];
+        yield return () => [0, 0, 0, 1, 0, 99, 88];
 
         // negative length
-        yield return [255, 255, 255, 255];
+        yield return () => [255, 255, 255, 255];
 
         // absurdly large length
-        yield return [127, 255, 255, 255];
+        yield return () => [127, 255, 255, 255];
 
         // invalid piece message
-        yield return [0, 0, 0, 2, 7, 0];
+        yield return () => [0, 0, 0, 2, 7, 0];
     }
 }
