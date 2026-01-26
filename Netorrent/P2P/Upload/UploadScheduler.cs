@@ -294,14 +294,11 @@ internal class UploadScheduler(
             return;
         }
 
-        bool shouldAdd = false;
+        bool shouldAdd;
 
         lock (_cancelLock)
         {
-            if (_requests.Add(request))
-            {
-                shouldAdd = true;
-            }
+            shouldAdd = _requests.Add(request);
         }
 
         if (shouldAdd)
