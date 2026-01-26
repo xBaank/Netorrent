@@ -1,6 +1,7 @@
 ﻿using System.Buffers;
 using System.Buffers.Binary;
 using System.Threading.Channels;
+using Netorrent.Exceptions;
 using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 
@@ -46,7 +47,7 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
 
     private async Task ReadLoopAsync(CancellationToken cancellationToken)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        while (true)
         {
             var message = await ReceiveMessageAsync(cancellationToken).ConfigureAwait(false);
             await _incomingMessages
@@ -100,6 +101,18 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
         if (messageLength == 0)
         {
             return Message.CreateKeepAlive();
+        }
+
+        const int MaxLength = 1024 * 1024;
+
+        if (messageLength > MaxLength)
+        {
+            throw new BitorrentProtocolViolationException("Exceeded max message length");
+        }
+
+        if (messageLength < 0)
+        {
+            throw new BitorrentProtocolViolationException("Negative length not allowed");
         }
 
         var array = ArrayPool<byte>.Shared.Rent(messageLength);

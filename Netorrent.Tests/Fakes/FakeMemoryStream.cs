@@ -3,7 +3,7 @@ using R3;
 
 namespace Netorrent.Tests.Fakes;
 
-public sealed class FakeMemoryStream : Stream
+public sealed class FakeMemoryStream(bool infiniteHold = false) : Stream
 {
     private readonly MemoryStream _memoryStream = new();
     public Subject<ReadOnlyMemory<byte>> WrittenData { get; } = new();
@@ -28,10 +28,21 @@ public sealed class FakeMemoryStream : Stream
         _memoryStream.Position = 0;
     }
 
+    public override async ValueTask<int> ReadAsync(
+        Memory<byte> buffer,
+        CancellationToken cancellationToken = default
+    )
+    {
+        if (infiniteHold)
+        {
+            await Task.Delay(-1, cancellationToken);
+        }
+        return await base.ReadAsync(buffer, cancellationToken);
+    }
+
     public override int Read(byte[] buffer, int offset, int count)
     {
-        var read = _memoryStream.Read(buffer, offset, count);
-        return read;
+        return _memoryStream.Read(buffer, offset, count);
     }
 
     public override long Seek(long offset, SeekOrigin origin)
