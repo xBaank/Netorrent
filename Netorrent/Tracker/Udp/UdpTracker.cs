@@ -128,6 +128,10 @@ internal class UdpTracker(
                 .SendAsync<UdpTrackerResponse>(updRequest, _trackerId, cancellationToken)
                 .ConfigureAwait(false);
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             throw new AnnounceException(ex.Message);

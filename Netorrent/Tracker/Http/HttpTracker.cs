@@ -86,6 +86,10 @@ internal class HttpTracker(
                 .SendAsync(announceUrl, request, cancellationToken)
                 .ConfigureAwait(false);
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             throw new AnnounceException(ex.Message);
