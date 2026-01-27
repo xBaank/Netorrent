@@ -15,6 +15,22 @@ jobs:
 
     steps:
     - uses: actions/checkout@v6
+
+    - name: Enable IPv6 UDP
+      run: |
+        sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0
+        sudo sysctl -w net.ipv6.conf.default.disable_ipv6=0
+
+        # Allow everything for IPv6 (CI-safe)
+        sudo ip6tables -P INPUT ACCEPT
+        sudo ip6tables -P OUTPUT ACCEPT
+        sudo ip6tables -P FORWARD ACCEPT
+
+        # Explicitly allow UDP + ICMPv6
+        sudo ip6tables -A INPUT -p udp -j ACCEPT
+        sudo ip6tables -A OUTPUT -p udp -j ACCEPT
+        sudo ip6tables -A INPUT -p ipv6-icmp -j ACCEPT
+        sudo ip6tables -A OUTPUT -p ipv6-icmp -j ACCEPT
     
     - name: Setup .NET
       uses: actions/setup-dotnet@v5
