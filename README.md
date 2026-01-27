@@ -17,10 +17,6 @@ dotnet add package Netorrent --version 1.0.0-nightly-*
 
 **Requirements:**
 - .NET 10.0 or higher
-- Dependencies automatically included:
-  - Microsoft.Extensions.Logging.Abstractions
-  - R3 (Reactive Extensions)
-  - ZLinq (High-performance LINQ)
 
 ## Quick Start
 
