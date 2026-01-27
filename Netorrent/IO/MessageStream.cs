@@ -1,6 +1,7 @@
 ﻿using System.Buffers;
 using System.Buffers.Binary;
 using System.Threading.Channels;
+using Netorrent.Exceptions;
 using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 
@@ -24,19 +25,29 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
     private readonly byte[] _idBuffer = new byte[1];
     private CancellationTokenSource? _receiveCts;
     private CancellationTokenSource? _sendCts;
+    private CancellationTokenSource? _cancellationTokenSource;
+    private Task? _runTask;
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        await cts.CancelOnFirstCompletionAndAwaitAllAsync([
-            ReadLoopAsync(cts.Token),
-            WriteLoopAsync(cts.Token),
+        if (_runTask is not null)
+        {
+            return _runTask;
+        }
+
+        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken
+        );
+        _runTask = _cancellationTokenSource.CancelOnFirstCompletionAndAwaitAllAsync([
+            ReadLoopAsync(_cancellationTokenSource.Token),
+            WriteLoopAsync(_cancellationTokenSource.Token),
         ]);
+        return _runTask;
     }
 
     private async Task ReadLoopAsync(CancellationToken cancellationToken)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        while (true)
         {
             var message = await ReceiveMessageAsync(cancellationToken).ConfigureAwait(false);
             await _incomingMessages
@@ -92,6 +103,18 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
             return Message.CreateKeepAlive();
         }
 
+        const int MaxLength = 1024 * 1024;
+
+        if (messageLength > MaxLength)
+        {
+            throw new BitorrentProtocolViolationException("Exceeded max message length");
+        }
+
+        if (messageLength < 0)
+        {
+            throw new BitorrentProtocolViolationException("Negative length not allowed");
+        }
+
         var array = ArrayPool<byte>.Shared.Rent(messageLength);
         try
         {
@@ -120,13 +143,23 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
 
     public async ValueTask DisposeAsync()
     {
+        _cancellationTokenSource?.Cancel();
         stream.Dispose();
         _incomingMessages.Writer.TryComplete();
         _outgoingMessages.Writer.TryComplete();
+        try
+        {
+            if (_runTask is not null)
+            {
+                await _runTask.ConfigureAwait(false);
+            }
+        }
+        catch { }
         await DrainChannelsAsync().ConfigureAwait(false);
         await _incomingMessages.Reader.Completion;
         await _outgoingMessages.Reader.Completion;
         _receiveCts?.Dispose();
         _sendCts?.Dispose();
+        _cancellationTokenSource?.Dispose();
     }
 }

@@ -1,5 +1,6 @@
 ﻿using System.Buffers;
 using System.Buffers.Binary;
+using Netorrent.Exceptions;
 using Netorrent.Extensions;
 using Netorrent.Other;
 
@@ -81,9 +82,25 @@ internal readonly record struct Message(byte Id, RentedArray<byte>? Payload) : I
     /// </summary>
     public static Message From(byte[] array, int length, byte id)
     {
+        if (
+            id != Choke
+            && id != Unchoke
+            && id != Interested
+            && id != NotInterested
+            && id != Have
+            && id != Bitfield
+            && id != Request
+            && id != Piece
+            && id != Cancel
+            && id != Port
+        )
+        {
+            throw new BitorrentProtocolViolationException("Invalid Id");
+        }
+
         if (array.Length < length)
         {
-            throw new ArgumentException("Incomplete message");
+            throw new BitorrentProtocolViolationException("Incomplete message");
         }
 
         if (length == 0)

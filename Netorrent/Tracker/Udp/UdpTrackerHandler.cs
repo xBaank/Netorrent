@@ -86,10 +86,7 @@ internal class UdpTrackerHandler : IUdpTrackerHandler
                     ),
                     UdpTrackerResponse.Action => UdpTrackerResponse.From(
                         result.Buffer,
-                        result.RemoteEndPoint.AddressFamily == AddressFamily.InterNetwork
-                        || result.RemoteEndPoint.Address.IsIPv4MappedToIPv6
-                            ? AddressFamily.InterNetwork
-                            : AddressFamily.InterNetworkV6
+                        result.RemoteEndPoint.AddressFamily
                     ),
                     UdpTrackerErrorResponse.Action => UdpTrackerErrorResponse.From(result.Buffer),
                     _ => null,
