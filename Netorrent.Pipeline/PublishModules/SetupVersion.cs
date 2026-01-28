@@ -26,8 +26,11 @@ public partial class SetupVersion : Module<string>
                 )
         ).StandardOutput;
 
-        var gitTags = gitTagsOutput.Split("\n").ToArray();
-        var version = gitTags.FirstOrDefault("0.0.1");
+        var gitTags = gitTagsOutput
+            .Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)
+            .ToArray();
+
+        var version = gitTags.FirstOrDefault() ?? "0.0.1";
 
         if (gitRef is null)
         {
