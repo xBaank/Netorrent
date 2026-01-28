@@ -1,6 +1,7 @@
 ﻿using ModularPipelines.Context;
 using ModularPipelines.DotNet.Extensions;
 using ModularPipelines.DotNet.Options;
+using ModularPipelines.Git.Extensions;
 using ModularPipelines.Models;
 using ModularPipelines.Modules;
 
@@ -17,7 +18,10 @@ public class BuildModule : Module<CommandResult>
             .Build(
                 new DotNetBuildOptions
                 {
-                    ProjectSolution = "Netorrent.sln",
+                    ProjectSolution = Path.Combine(
+                        context.Git().RootDirectory.Path,
+                        "Netorrent.sln"
+                    ),
                     Configuration = "Release",
                 },
                 cancellationToken: cancellationToken
