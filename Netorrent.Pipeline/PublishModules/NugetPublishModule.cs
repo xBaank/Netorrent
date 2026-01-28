@@ -19,12 +19,17 @@ public class NugetPublishModule(IOptions<NuGetSettings> nugetSettings) : Module<
             .Create()
             .WithSkipWhen(ctx =>
             {
-                if (ctx.IsRunningInCI() && OperatingSystem.IsLinux())
+                if (!ctx.IsRunningInCI() && !OperatingSystem.IsLinux())
                 {
-                    return SkipDecision.DoNotSkip;
+                    return SkipDecision.Skip("Not running on Linux CI");
                 }
 
-                return SkipDecision.Skip("Not running on Linux CI");
+                if (string.IsNullOrWhiteSpace(nugetSettings.Value.ApiKey))
+                {
+                    return SkipDecision.Skip("Not ApiKey specified");
+                }
+
+                return SkipDecision.DoNotSkip;
             })
             .Build();
 
