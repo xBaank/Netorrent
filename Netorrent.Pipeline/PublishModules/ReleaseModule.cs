@@ -10,7 +10,7 @@ using Octokit;
 namespace Netorrent.Pipeline.PublishModules;
 
 [DependsOn<PackModule>]
-[RunOnlyOnBranch("main")]
+[RunOnlyOnBranch("master")]
 [RunOnLinuxOnly]
 public class ReleaseModule : Module<Release>
 {
