@@ -32,7 +32,7 @@ public partial class SetupVersion : Module<string>
 
         var version = gitTags.FirstOrDefault() ?? "0.0.1";
 
-        if (gitRef is null)
+        if (gitRef is null || gitRef == "refs/heads/develop")
         {
             var commitSha = context.Git().Information.LastCommitSha[..7];
             var time = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
