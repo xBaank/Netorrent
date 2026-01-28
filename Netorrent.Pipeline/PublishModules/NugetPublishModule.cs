@@ -51,7 +51,10 @@ public class NugetPublishModule(IOptions<NuGetSettings> nugetSettings) : Module<
                 new DotNetNugetPushOptions
                 {
                     Path = Path.Combine(context.Git().RootDirectory.Path, "artifacts", "*.nupkg"),
-                    Source = context.IsRunningInCI() ? nugetSettings.Value.FeedUrl : localSource,
+                    Source =
+                        context.IsRunningInCI() && !string.IsNullOrEmpty(nugetSettings.Value.ApiKey)
+                            ? nugetSettings.Value.FeedUrl
+                            : localSource,
                     ApiKey = nugetSettings.Value.ApiKey,
                     SkipDuplicate = true,
                 },
