@@ -24,12 +24,7 @@ public class NugetPublishModule(IOptions<NuGetSettings> nugetSettings) : Module<
                     return SkipDecision.DoNotSkip;
                 }
 
-                if (ctx.IsRunningLocally())
-                {
-                    return SkipDecision.DoNotSkip;
-                }
-
-                return SkipDecision.Skip("Running on CI other than Linux");
+                return SkipDecision.Skip("Not running on Linux CI");
             })
             .Build();
 
@@ -38,23 +33,13 @@ public class NugetPublishModule(IOptions<NuGetSettings> nugetSettings) : Module<
         CancellationToken cancellationToken
     )
     {
-        var localSource = Path.GetFullPath(Path.Combine("artifacts", "local-nuget"));
-
-        if (!context.IsRunningInCI())
-        {
-            Directory.CreateDirectory(localSource);
-        }
-
         return await context
             .DotNet()
             .Nuget.Push(
                 new DotNetNugetPushOptions
                 {
                     Path = Path.Combine(context.Git().RootDirectory.Path, "artifacts", "*.nupkg"),
-                    Source =
-                        context.IsRunningInCI() && !string.IsNullOrEmpty(nugetSettings.Value.ApiKey)
-                            ? nugetSettings.Value.FeedUrl
-                            : localSource,
+                    Source = nugetSettings.Value.FeedUrl,
                     ApiKey = nugetSettings.Value.ApiKey,
                     SkipDuplicate = true,
                 },
