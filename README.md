@@ -1,4 +1,8 @@
-# Netorrent ![Build Status](https://github.com/xBaank/Netorrent/actions/workflows/dotnet.yml/badge.svg) [![NuGet](https://img.shields.io/nuget/v/Netorrent?label=NuGet&color=blue)](https://www.nuget.org/packages/Netorrent) [![NuGet Nightly](https://img.shields.io/nuget/vpre/Netorrent?label=NuGet%20Nightly&color=orange)](https://www.nuget.org/packages/Netorrent)
+# Netorrent 
+![Build Status](https://github.com/xBaank/Netorrent/actions/workflows/dotnet.yml/badge.svg)
+[![NuGet](https://img.shields.io/nuget/v/Netorrent?label=NuGet&color=blue)](https://www.nuget.org/packages/Netorrent)
+[![NuGet Nightly](https://img.shields.io/nuget/vpre/Netorrent?label=NuGet%20Nightly&color=orange)](https://www.nuget.org/packages/Netorrent)
+
 
 
 A async-first .NET 10.0 BitTorrent client library for downloading and seeding torrents.
@@ -8,11 +12,6 @@ A async-first .NET 10.0 BitTorrent client library for downloading and seeding to
 ### Stable Release
 ```bash
 dotnet add package Netorrent
-```
-
-### Nightly Builds (for testing latest features)
-```bash
-dotnet add package Netorrent --version 1.0.0-nightly-*
 ```
 
 **Requirements:**
@@ -131,42 +130,6 @@ Console.WriteLine("Stop requested");
 await torrent.StopAsync();
 Console.WriteLine("Torrent stopped gracefully");
 ```
-
-### Performance Considerations
-
-The library is designed with async-first architecture for optimal performance:
-- Channel-based communication between components
-- Memory pooling for efficient buffer management
-- Concurrent collections for thread-safe operations
-
-## Package Versions
-
-### 📦 Stable Releases
-- **Purpose**: Production-ready versions with stable APIs
-- **Versioning**: Semantic Versioning (e.g., 1.0.0, 1.1.0, 1.0.1)
-- **Updates**: Bug fixes and new features
-- **Installation**: `dotnet add package Netorrent`
-
-### 🌙 Nightly Builds
-- **Purpose**: Latest code from every commit to develop branch
-- **Versioning**: Timestamped with commit hash (e.g., `1.0.0-nightly-20250114-1430-a1b2c3d`)
-- **Updates**: Per-commit builds for immediate testing
-- **Installation**: `dotnet add package Netorrent --version 1.0.0-nightly-*`
-- **Warning**: May contain breaking changes or bugs
-
-## Features
-
-- **Torrent files** - Complete .torrent file support
-- **HTTP Trackers** - Full HTTP tracker protocol implementation
-- **Peer Wire Protocol** - TCP peer communication
-- **UDP Trackers** - High-performance UDP tracker support
-- **Piece Verification** - SHA-1 hash verification of downloaded pieces
-- **Multi-tracker Support** - Primary and backup tracker support
-- **Resume Downloads** - Support for partially downloaded torrents
-- **Real-time Statistics** - Comprehensive download/upload monitoring
-- **Async/Await Support** - Modern async-first API design
-- **Cancellation Support** - Full CancellationToken integration
-- **Torrent Creation** - Create torrents from files and directories
 
 ## BEP Implementation
 
