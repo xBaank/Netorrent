@@ -30,7 +30,12 @@ public partial class SetupVersion : Module<string>
             .Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)
             .ToArray();
 
-        var version = gitTags.FirstOrDefault() ?? "0.0.1";
+        var version = gitTags.FirstOrDefault() ?? "0.0.0";
+
+        version = string.Join(
+            ".",
+            (version.Split('.').Select(int.Parse).Select((v, i) => i == 2 ? v + 1 : v))
+        );
 
         if (gitRef is null || gitRef == "refs/heads/develop")
         {
