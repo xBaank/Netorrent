@@ -32,13 +32,12 @@ public partial class SetupVersion : Module<string>
 
         var version = gitTags.FirstOrDefault() ?? "0.0.0";
 
-        version = string.Join(
-            ".",
-            (version.Split('.').Select(int.Parse).Select((v, i) => i == 2 ? v + 1 : v))
-        );
-
         if (gitRef is null || gitRef == "refs/heads/develop")
         {
+            version = string.Join(
+                ".",
+                (version.Split('.').Select(int.Parse).Select((v, i) => i == 2 ? v + 1 : v))
+            );
             var commitSha = context.Git().Information.LastCommitSha[..7];
             var time = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             version = $"{version}-nightly-{time}-{commitSha}";
