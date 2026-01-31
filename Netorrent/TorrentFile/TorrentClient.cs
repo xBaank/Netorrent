@@ -457,7 +457,7 @@ public sealed class TorrentClient : IAsyncDisposable
         return meta;
     }
 
-    private static async Task<InfoHash> GetInfoHashAsync(
+    private static async ValueTask<InfoHash> GetInfoHashAsync(
         BDictionary infoDict,
         CancellationToken cancellationToken
     )
