@@ -249,9 +249,8 @@ public sealed class Torrent : IAsyncDisposable
         }
 
         var rawMetainfo = MetaInfo.ToBDictionary();
-        await using var encoder = new BEncoder();
-        await File.WriteAllBytesAsync(outputPath, encoder.Encode(rawMetainfo), cancellationToken)
-            .ConfigureAwait(false);
+        await using var encoder = new BEncoder(File.Open(outputPath, FileMode.OpenOrCreate));
+        await encoder.EncodeAsync(rawMetainfo, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

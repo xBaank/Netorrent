@@ -26,8 +26,12 @@ public class TorrentFileTests
         var original = (BDictionary)await decoder.DecodeAsync(cancellationToken);
         var expected = (BDictionary)await decoder2.DecodeAsync(cancellationToken);
 
-        var originalMetainfo = TorrentClient.ParseMetaInfo(original);
-        var expectedMetainfo = TorrentClient.ParseMetaInfo(expected);
+        var originalMetainfo = await TorrentClient
+            .ParseMetaInfoAsync(original, cancellationToken)
+            .ConfigureAwait(false);
+        var expectedMetainfo = await TorrentClient
+            .ParseMetaInfoAsync(expected, cancellationToken)
+            .ConfigureAwait(false);
 
         torrent.Statistics.Data.Downloaded.ShouldBe(0);
         torrent.Statistics.Data.Verified.ShouldBe(0);

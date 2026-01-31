@@ -2,6 +2,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
+using System.Threading;
 using Microsoft.Extensions.Logging.Abstractions;
 using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
@@ -132,7 +133,8 @@ public sealed class TorrentClient : IAsyncDisposable
             throw new InvalidDataException("Torrent file is not a valid bencoded dictionary.");
         }
 
-        var metaInfo = ParseMetaInfo(bDictionary);
+        var metaInfo = await ParseMetaInfoAsync(bDictionary, cancellationToken)
+            .ConfigureAwait(false);
 
         return LoadTorrent(metaInfo, outputDirectory, downloadedPieces);
     }
@@ -377,9 +379,11 @@ public sealed class TorrentClient : IAsyncDisposable
             infoElements[new BString("length")] = new BInt(Length);
 
             var infoDict = new BDictionary(infoElements);
-
+            var infoHash = await GetInfoHashAsync(infoDict, cancellationToken)
+                .ConfigureAwait(false);
             infoObj = new Info(
-                RawInfo: infoDict,
+                infoHash,
+                infoDict,
                 PieceLength: pieceLength,
                 Pieces: [.. piecesBytes],
                 Private: 0,
@@ -422,9 +426,12 @@ public sealed class TorrentClient : IAsyncDisposable
             infoElements[new BString("files")] = new BList(filesListNodes);
 
             var infoDict = new BDictionary(infoElements);
+            var infoHash = await GetInfoHashAsync(infoDict, cancellationToken)
+                .ConfigureAwait(false);
 
             infoObj = new Info(
-                RawInfo: infoDict,
+                infoHash,
+                infoDict,
                 PieceLength: pieceLength,
                 Pieces: [.. piecesBytes],
                 Private: 0,
@@ -450,7 +457,24 @@ public sealed class TorrentClient : IAsyncDisposable
         return meta;
     }
 
-    internal static MetaInfo ParseMetaInfo(BDictionary dictionary)
+    private static async Task<InfoHash> GetInfoHashAsync(
+        BDictionary infoDict,
+        CancellationToken cancellationToken
+    )
+    {
+        var memoryStream = new MemoryStream();
+        await using var bencoder = new BEncoder(memoryStream);
+        await bencoder.EncodeAsync(infoDict, cancellationToken).ConfigureAwait(false);
+        memoryStream.Seek(0, SeekOrigin.Begin);
+        var infoHash = await SHA1.HashDataAsync(memoryStream, cancellationToken)
+            .ConfigureAwait(false);
+        return infoHash;
+    }
+
+    internal static async ValueTask<MetaInfo> ParseMetaInfoAsync(
+        BDictionary dictionary,
+        CancellationToken cancellationToken
+    )
     {
         var info =
             dictionary.Elements["info"].As<BDictionary>() ?? throw new InvalidDataException();
@@ -491,8 +515,11 @@ public sealed class TorrentClient : IAsyncDisposable
             ?.Elements?.Select(ParseFile)
             .ToList();
 
+        var infoHash = await GetInfoHashAsync(info, cancellationToken).ConfigureAwait(false);
+
         return new MetaInfo(
             Info: new Info(
+                infoHash,
                 info,
                 pieceLength,
                 pieces.RawData,
