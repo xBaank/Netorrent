@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
 using Netorrent.Tests.Bencoding.Data;
@@ -6,6 +6,7 @@ using Shouldly;
 
 namespace Netorrent.Tests.Bencoding;
 
+[Timeout(5_000)]
 public class BDecoderTests
 {
     [Test]
@@ -21,12 +22,17 @@ public class BDecoderTests
     [Arguments("12:áéíóúñ", "áéíóúñ")]
     [Arguments("9:🙂emoji", "🙂emoji")]
     [Arguments("1:a", "a")]
-    public void Should_Decode_BString(string input, string actual)
+    public async Task Should_Decode_BString(
+        string input,
+        string actual,
+        CancellationToken cancellationToken
+    )
     {
         var bytes = Encoding.UTF8.GetBytes(input);
-        var decoder = new BDecoder(bytes);
+        var stream = new MemoryStream(bytes);
+        await using var decoder = new BDecoder(stream);
 
-        var decoded = (BString)decoder.Decode();
+        var decoded = (BString)await decoder.DecodeAsync(cancellationToken);
 
         decoded.Data.ShouldBeEquivalentTo(actual);
     }
@@ -39,19 +45,21 @@ public class BDecoderTests
     [Arguments("i999e", 999)]
     [Arguments("i123456789e", 123456789)]
     [Arguments("i-99999e", -99999)]
-    [Arguments("i2147483647e", 2147483647)] // max 32-bit int
-    [Arguments("i-2147483648e", -2147483648)] // min 32-bit int
-    [Arguments("i9223372036854775807e", 9223372036854775807L)] // max 64-bit
-    [Arguments("i-9223372036854775808e", -9223372036854775808L)] // min 64-bit
-    [Arguments("i007e", 7)] // technically invalid in strict bencoding (leading zeros), but useful for tests
-    [Arguments("i-0e", 0)] // another edge case: negative zero normalization
-    [Arguments("i000000e", 0)] // leading zeros case
-    public void Should_Decode_BInt(string input, long actual)
+    [Arguments("i2147483647e", 2147483647)]
+    [Arguments("i-2147483648e", -2147483648)]
+    [Arguments("i9223372036854775807e", 9223372036854775807L)]
+    [Arguments("i-9223372036854775808e", -9223372036854775808L)]
+    public async Task Should_Decode_BInt(
+        string input,
+        long actual,
+        CancellationToken cancellationToken
+    )
     {
         var bytes = Encoding.UTF8.GetBytes(input);
-        var decoder = new BDecoder(bytes);
+        var stream = new MemoryStream(bytes);
+        await using var decoder = new BDecoder(stream);
 
-        var decoded = (BInt)decoder.Decode();
+        var decoded = (BInt)await decoder.DecodeAsync(cancellationToken);
 
         decoded.Data.ShouldBeEquivalentTo(actual);
     }
@@ -59,13 +67,55 @@ public class BDecoderTests
     [Test]
     [MethodDataSource(typeof(BDictionaryData), nameof(BDictionaryData.GetTestData))]
     [MethodDataSource(typeof(BlistData), nameof(BlistData.GetTestData))]
-    public void Should_Decode_Collections(string input, IBencodingNode actual)
+    public async Task Should_Decode_Collections(
+        string input,
+        IBencodingNode actual,
+        CancellationToken cancellationToken
+    )
     {
         var bytes = Encoding.UTF8.GetBytes(input);
-        var decoder = new BDecoder(bytes);
+        var stream = new MemoryStream(bytes);
+        await using var decoder = new BDecoder(stream);
 
-        var decoded = decoder.Decode();
+        var decoded = await decoder.DecodeAsync(cancellationToken);
 
         decoded.ShouldBeEquivalentTo(actual);
+    }
+
+    [Test]
+    [MethodDataSource(
+        typeof(InvalidBencodingData),
+        nameof(InvalidBencodingData.GetMalformedStringData)
+    )]
+    [MethodDataSource(
+        typeof(InvalidBencodingData),
+        nameof(InvalidBencodingData.GetCorruptedIntegerData)
+    )]
+    [MethodDataSource(
+        typeof(InvalidBencodingData),
+        nameof(InvalidBencodingData.GetStructureValidationData)
+    )]
+    [MethodDataSource(
+        typeof(InvalidBencodingData),
+        nameof(InvalidBencodingData.GetBufferSafetyData)
+    )]
+    [MethodDataSource(
+        typeof(InvalidBencodingData),
+        nameof(InvalidBencodingData.GetInvalidTypeData)
+    )]
+    public async Task Should_Throw_Exception_For_Invalid_Data(
+        string input,
+        string description,
+        CancellationToken cancellationToken
+    )
+    {
+        var bytes = Encoding.UTF8.GetBytes(input);
+        var stream = new MemoryStream(bytes);
+        await using var decoder = new BDecoder(stream);
+
+        await Should.ThrowAsync<Exception>(
+            async () => await decoder.DecodeAsync(cancellationToken),
+            description
+        );
     }
 }

@@ -123,11 +123,10 @@ public sealed class TorrentClient : IAsyncDisposable
         CancellationToken cancellationToken = default
     )
     {
-        var torrentFileData = await File.ReadAllBytesAsync(path, cancellationToken)
-            .ConfigureAwait(false);
+        var stream = File.Open(path, FileMode.Open, FileAccess.Read);
 
-        var decoder = new BDecoder(torrentFileData);
-        var decoded = decoder.Decode();
+        await using var decoder = new BDecoder(stream);
+        var decoded = await decoder.DecodeAsync(cancellationToken).ConfigureAwait(false);
         if (decoded is not BDictionary bDictionary)
         {
             throw new InvalidDataException("Torrent file is not a valid bencoded dictionary.");
