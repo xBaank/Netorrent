@@ -6,6 +6,7 @@ using Shouldly;
 
 namespace Netorrent.Tests.Bencoding;
 
+[Timeout(5_000)]
 public class BEncoderTests
 {
     [Test]
