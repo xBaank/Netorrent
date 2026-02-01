@@ -45,10 +45,10 @@ public class BDecoderTests
     [Arguments("i999e", 999)]
     [Arguments("i123456789e", 123456789)]
     [Arguments("i-99999e", -99999)]
-    [Arguments("i2147483647e", 2147483647)]
-    [Arguments("i-2147483648e", -2147483648)]
-    [Arguments("i9223372036854775807e", 9223372036854775807L)]
-    [Arguments("i-9223372036854775808e", -9223372036854775808L)]
+    [Arguments("i2147483647e", int.MaxValue)]
+    [Arguments("i-2147483648e", int.MinValue)]
+    [Arguments("i9223372036854775807e", long.MaxValue)]
+    [Arguments("i-9223372036854775808e", long.MinValue)]
     public async Task Should_Decode_BInt(
         string input,
         long actual,

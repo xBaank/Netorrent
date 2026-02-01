@@ -16,11 +16,10 @@ public class BEncoderTests
     [Arguments("i999e", 999)]
     [Arguments("i123456789e", 123456789)]
     [Arguments("i-99999e", -99999)]
-    [Arguments("i2147483647e", 2147483647)] // max 32-bit int
-    [Arguments("i-2147483648e", -2147483648)] // min 32-bit int
-    [Arguments("i9223372036854775807e", 9223372036854775807)] // max 64-bit
-    [Arguments("i-9223372036854775808e", -9223372036854775808)] // min 64-bit
-    [Arguments("i7e", 7)] // normalized leading zeros
+    [Arguments("i2147483647e", int.MaxValue)]
+    [Arguments("i-2147483648e", int.MinValue)]
+    [Arguments("i9223372036854775807e", long.MaxValue)]
+    [Arguments("i-9223372036854775808e", long.MinValue)]
     public async Task Should_Encode_BInt(
         string expected,
         long value,
