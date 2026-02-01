@@ -15,8 +15,6 @@ using Netorrent.Statistics;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.TorrentFile.Options;
 using Netorrent.Tracker;
-using Netorrent.Tracker.Http;
-using Netorrent.Tracker.Udp;
 using ZLinq;
 
 namespace Netorrent.TorrentFile;

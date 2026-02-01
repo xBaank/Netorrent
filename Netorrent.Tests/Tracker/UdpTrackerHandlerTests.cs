@@ -4,7 +4,6 @@ using System.Net.Sockets;
 using Microsoft.Extensions.Logging.Abstractions;
 using Netorrent.Extensions;
 using Netorrent.Tests.Extensions;
-using Netorrent.TorrentFile;
 using Netorrent.Tracker;
 using Netorrent.Tracker.Udp;
 using Netorrent.Tracker.Udp.Exceptions;

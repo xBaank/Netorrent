@@ -1,5 +1,4 @@
-﻿using System.Reflection.PortableExecutable;
-using Netorrent.P2P.Measurement;
+﻿using Netorrent.P2P.Measurement;
 
 namespace Netorrent.P2P.Download;
 

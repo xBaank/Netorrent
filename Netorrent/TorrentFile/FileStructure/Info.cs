@@ -1,6 +1,4 @@
-﻿using System.Security.Cryptography;
-using Netorrent.Bencoding;
-using Netorrent.Bencoding.Structs;
+﻿using Netorrent.Bencoding.Structs;
 using ZLinq;
 
 namespace Netorrent.TorrentFile.FileStructure;

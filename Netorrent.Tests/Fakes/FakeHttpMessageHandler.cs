@@ -1,5 +1,4 @@
 ﻿using System.Net;
-using System.Net.Sockets;
 using Netorrent.Tracker.Http;
 
 namespace Netorrent.Tests.Fakes;

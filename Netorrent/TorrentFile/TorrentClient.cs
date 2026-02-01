@@ -2,7 +2,6 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
-using System.Threading;
 using Microsoft.Extensions.Logging.Abstractions;
 using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;

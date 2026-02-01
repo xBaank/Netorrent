@@ -1,6 +1,4 @@
-﻿using System.Net.Sockets;
-
-namespace Netorrent.Tracker.Http;
+﻿namespace Netorrent.Tracker.Http;
 
 internal class HttpTrackerHandler(HttpClient httpClient) : IHttpTrackerHandler
 {

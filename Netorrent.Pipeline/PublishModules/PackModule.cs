@@ -1,5 +1,4 @@
 ﻿using ModularPipelines.Attributes;
-using ModularPipelines.Configuration;
 using ModularPipelines.Context;
 using ModularPipelines.DotNet.Extensions;
 using ModularPipelines.DotNet.Options;

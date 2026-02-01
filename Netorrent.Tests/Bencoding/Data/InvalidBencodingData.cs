@@ -1,5 +1,3 @@
-using System.Text;
-
 namespace Netorrent.Tests.Bencoding.Data;
 
 public static class InvalidBencodingData
