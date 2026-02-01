@@ -1,5 +1,4 @@
 ﻿using System.Text;
-using System.Threading;
 using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
 using Netorrent.Tests.Bencoding.Data;
