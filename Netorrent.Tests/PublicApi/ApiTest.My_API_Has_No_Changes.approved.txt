@@ -52,6 +52,13 @@ namespace Netorrent.Bencoding.Structs
     }
     public interface IBencodingNode { }
 }
+namespace Netorrent.Exceptions
+{
+    public class BencodingException : System.Exception
+    {
+        public BencodingException(string? message = null) { }
+    }
+}
 namespace Netorrent.P2P.Measurement
 {
     public readonly struct ByteSize

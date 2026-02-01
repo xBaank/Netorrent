@@ -2,6 +2,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Pipelines;
 using Netorrent.Bencoding.Structs;
+using Netorrent.Exceptions;
 
 namespace Netorrent.Bencoding;
 
@@ -28,7 +29,7 @@ internal sealed class BDecoder(Stream stream)
                 reader.AdvanceTo(seqReader.Position);
                 if (seqReader.Remaining > 0)
                 {
-                    throw new InvalidDataException("Extra data after root element");
+                    throw new BencodingException("Extra data after root element");
                 }
                 return node;
             }
@@ -60,7 +61,7 @@ internal sealed class BDecoder(Stream stream)
             (byte)'i' => TryDecodeInt(ref reader, out node),
             (byte)'l' => TryDecodeList(ref reader, out node),
             (byte)'d' => TryDecodeDictionary(ref reader, out node),
-            _ => throw new InvalidDataException(),
+            _ => throw new BencodingException($"Invalid Token: {b}"),
         };
     }
 
@@ -78,7 +79,7 @@ internal sealed class BDecoder(Stream stream)
 
         if (!int.TryParse(lenSpan, out var length))
         {
-            throw new InvalidDataException();
+            throw new BencodingException("Can't decode BString");
         }
 
         if (!reader.TryReadExact(length, out var data))
@@ -105,7 +106,7 @@ internal sealed class BDecoder(Stream stream)
 
         if (!IsValidBencodeInteger(numSpan) || !long.TryParse(numSpan, out var value))
         {
-            throw new InvalidDataException();
+            throw new BencodingException("Can't decode BInt");
         }
 
         node = new BInt(value);
