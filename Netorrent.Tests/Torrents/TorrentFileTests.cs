@@ -1,4 +1,5 @@
 ﻿using Netorrent.Bencoding;
+using Netorrent.Bencoding.Structs;
 using Netorrent.TorrentFile;
 using Shouldly;
 
@@ -19,19 +20,18 @@ public class TorrentFileTests
         File.Delete("Output/asd.torrent");
         await torrent.ExportAsync("Output/asd.torrent", cancellationToken);
 
-        var decoder = new BDecoder(
-            await File.ReadAllBytesAsync("Data/nosferatu.torrent", cancellationToken)
-        );
+        await using var decoder = new BDecoder(File.Open("Data/nosferatu.torrent", FileMode.Open));
+        await using var decoder2 = new BDecoder(File.Open("Output/asd.torrent", FileMode.Open));
 
-        var decoder2 = new BDecoder(
-            await File.ReadAllBytesAsync("Output/asd.torrent", cancellationToken)
-        );
+        var original = (BDictionary)await decoder.DecodeAsync(cancellationToken);
+        var expected = (BDictionary)await decoder2.DecodeAsync(cancellationToken);
 
-        var original = decoder.DecodeDic();
-        var expected = decoder2.DecodeDic();
-
-        var originalMetainfo = TorrentClient.ParseMetaInfo(original);
-        var expectedMetainfo = TorrentClient.ParseMetaInfo(expected);
+        var originalMetainfo = await TorrentClient
+            .ParseMetaInfoAsync(original, cancellationToken)
+            .ConfigureAwait(false);
+        var expectedMetainfo = await TorrentClient
+            .ParseMetaInfoAsync(expected, cancellationToken)
+            .ConfigureAwait(false);
 
         torrent.Statistics.Data.Downloaded.ShouldBe(0);
         torrent.Statistics.Data.Verified.ShouldBe(0);

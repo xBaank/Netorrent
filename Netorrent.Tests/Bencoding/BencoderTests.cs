@@ -9,25 +9,29 @@ namespace Netorrent.Tests.Bencoding;
 public class BEncoderTests
 {
     [Test]
-    [Arguments(0, "i0e")]
-    [Arguments(1, "i1e")]
-    [Arguments(42, "i42e")]
-    [Arguments(-1, "i-1e")]
-    [Arguments(999, "i999e")]
-    [Arguments(123456789, "i123456789e")]
-    [Arguments(-99999, "i-99999e")]
-    [Arguments(2147483647, "i2147483647e")] // max 32-bit int
-    [Arguments(-2147483648, "i-2147483648e")] // min 32-bit int
-    [Arguments(9223372036854775807, "i9223372036854775807e")] // max 64-bit
-    [Arguments(-9223372036854775808, "i-9223372036854775808e")] // min 64-bit
-    [Arguments(7, "i7e")] // normalized leading zeros
-    public async Task Should_Encode_BInt(long value, string expected)
+    [Arguments("i0e", 0)]
+    [Arguments("i1e", 1)]
+    [Arguments("i42e", 42)]
+    [Arguments("i-1e", -1)]
+    [Arguments("i999e", 999)]
+    [Arguments("i123456789e", 123456789)]
+    [Arguments("i-99999e", -99999)]
+    [Arguments("i2147483647e", int.MaxValue)]
+    [Arguments("i-2147483648e", int.MinValue)]
+    [Arguments("i9223372036854775807e", long.MaxValue)]
+    [Arguments("i-9223372036854775808e", long.MinValue)]
+    public async Task Should_Encode_BInt(
+        string expected,
+        long value,
+        CancellationToken cancellationToken
+    )
     {
-        await using var encoder = new BEncoder();
+        var memoryStream = new MemoryStream();
+        await using var encoder = new BEncoder(memoryStream);
         var bint = new BInt(value);
 
-        byte[] encoded = encoder.Encode(bint);
-        string result = Encoding.UTF8.GetString(encoded);
+        await encoder.EncodeAsync(bint, cancellationToken);
+        string result = Encoding.UTF8.GetString(memoryStream.ToArray());
 
         result.ShouldBe(expected);
     }
@@ -45,27 +49,37 @@ public class BEncoderTests
     [Arguments("12:áéíóúñ", "áéíóúñ")]
     [Arguments("9:🙂emoji", "🙂emoji")]
     [Arguments("1:a", "a")]
-    public async Task Should_Encode_BString(string expectedEncoded, string value)
+    public async Task Should_Encode_BString(
+        string expected,
+        string value,
+        CancellationToken cancellationToken
+    )
     {
-        await using var encoder = new BEncoder();
-        var bstring = new BString(value);
+        var memoryStream = new MemoryStream();
+        await using var encoder = new BEncoder(memoryStream);
+        var bint = new BString(value);
 
-        byte[] encoded = encoder.Encode(bstring);
-        string result = Encoding.UTF8.GetString(encoded);
+        await encoder.EncodeAsync(bint, cancellationToken);
+        string result = Encoding.UTF8.GetString(memoryStream.ToArray());
 
-        result.ShouldBe(expectedEncoded);
+        result.ShouldBe(expected);
     }
 
     [Test]
     [MethodDataSource(typeof(BDictionaryData), nameof(BDictionaryData.GetTestData))]
     [MethodDataSource(typeof(BlistData), nameof(BlistData.GetTestData))]
-    public async Task Shoud_Encode_Collections(string expectedEncoded, IBencodingNode node)
+    public async Task Shoud_Encode_Collections(
+        string expected,
+        IBencodingNode node,
+        CancellationToken cancellationToken
+    )
     {
-        await using var encoder = new BEncoder();
+        var memoryStream = new MemoryStream();
+        await using var encoder = new BEncoder(memoryStream);
 
-        byte[] encoded = encoder.Encode(node);
-        string result = Encoding.UTF8.GetString(encoded);
+        await encoder.EncodeAsync(node, cancellationToken);
+        string result = Encoding.UTF8.GetString(memoryStream.ToArray());
 
-        result.ShouldBe(expectedEncoded);
+        result.ShouldBe(expected);
     }
 }

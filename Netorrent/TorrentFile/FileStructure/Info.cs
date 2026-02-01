@@ -12,6 +12,7 @@ public enum InfoType
 }
 
 public record Info(
+    InfoHash InfoHash,
     BDictionary RawInfo,
     long PieceLength,
     byte[] Pieces,
@@ -25,19 +26,10 @@ public record Info(
     List<InfoFile>? Files = null
 )
 {
-    public InfoHash InfoHash = ComputeInfoHash(RawInfo);
-
     public IReadOnlyList<InfoFile> NormalizedFiles { get; } =
         Type == InfoType.Single ? [new InfoFile(Length ?? 0, [Name], Md5sum)] : Files ?? [];
     public IReadOnlyList<byte[]> PiecesHashes { get; } =
         Pieces.AsValueEnumerable().Chunk(20).ToList();
-
-    private static InfoHash ComputeInfoHash(BDictionary info)
-    {
-        using var encoder = new BEncoder();
-        var infoBytes = encoder.Encode(info);
-        return SHA1.HashData(infoBytes);
-    }
 }
 
 public record InfoFile(long Length, List<string> Path, string? Md5sum = null);

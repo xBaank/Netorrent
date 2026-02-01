@@ -52,6 +52,13 @@ namespace Netorrent.Bencoding.Structs
     }
     public interface IBencodingNode { }
 }
+namespace Netorrent.Exceptions
+{
+    public class BencodingException : System.Exception
+    {
+        public BencodingException(string? message = null) { }
+    }
+}
 namespace Netorrent.P2P.Measurement
 {
     public readonly struct ByteSize
@@ -168,9 +175,9 @@ namespace Netorrent.TorrentFile.FileStructure
 {
     public class Info : System.IEquatable<Netorrent.TorrentFile.FileStructure.Info>
     {
-        public Netorrent.TorrentFile.FileStructure.InfoHash InfoHash;
-        public Info(Netorrent.Bencoding.Structs.BDictionary RawInfo, long PieceLength, byte[] Pieces, long? Private, Netorrent.TorrentFile.FileStructure.InfoType Type, string Name, long? Length = default, string? Md5sum = null, System.Collections.Generic.List<Netorrent.TorrentFile.FileStructure.InfoFile>? Files = null) { }
+        public Info(Netorrent.TorrentFile.FileStructure.InfoHash InfoHash, Netorrent.Bencoding.Structs.BDictionary RawInfo, long PieceLength, byte[] Pieces, long? Private, Netorrent.TorrentFile.FileStructure.InfoType Type, string Name, long? Length = default, string? Md5sum = null, System.Collections.Generic.List<Netorrent.TorrentFile.FileStructure.InfoFile>? Files = null) { }
         public System.Collections.Generic.List<Netorrent.TorrentFile.FileStructure.InfoFile>? Files { get; init; }
+        public Netorrent.TorrentFile.FileStructure.InfoHash InfoHash { get; init; }
         public long? Length { get; init; }
         public string? Md5sum { get; init; }
         public string Name { get; init; }

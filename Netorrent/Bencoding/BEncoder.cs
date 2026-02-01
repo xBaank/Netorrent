@@ -1,86 +1,112 @@
-﻿using System.Text;
+﻿using System.Buffers.Text;
+using System.IO.Pipelines;
 using Netorrent.Bencoding.Structs;
+using Netorrent.Exceptions;
 
 namespace Netorrent.Bencoding;
 
-internal sealed class BEncoder : IAsyncDisposable, IDisposable
+internal sealed class BEncoder(Stream stream) : IAsyncDisposable
 {
-    private readonly MemoryStream _stream;
+    private readonly PipeWriter _writer = PipeWriter.Create(stream);
+    private static readonly IComparer<byte[]> _bytewiseComparerInstance = Comparer<byte[]>.Create(
+        BytewiseCompare
+    );
 
-    public BEncoder()
+    public async ValueTask EncodeAsync(IBencodingNode node, CancellationToken cancellationToken)
     {
-        _stream = new MemoryStream(4096);
+        await EncodeNodeAsync(node, cancellationToken).ConfigureAwait(false);
+        await _writer.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public byte[] Encode(IBencodingNode value)
+    private async ValueTask EncodeNodeAsync(
+        IBencodingNode node,
+        CancellationToken cancellationToken
+    )
     {
-        EncodeToStream(value);
-        return _stream.ToArray();
-    }
-
-    private void EncodeToStream(IBencodingNode value)
-    {
-        switch (value)
+        switch (node)
         {
             case BString bs:
-                EncodeString(bs);
+                await EncodeStringAsync(bs, cancellationToken).ConfigureAwait(false);
                 break;
             case BInt bi:
                 EncodeInt(bi);
                 break;
             case BList bl:
-                EncodeList(bl);
+                await EncodeListAsync(bl, cancellationToken).ConfigureAwait(false);
                 break;
             case BDictionary bd:
-                EncodeDictionary(bd);
+                await EncodeDictionaryAsync(bd, cancellationToken).ConfigureAwait(false);
                 break;
             default:
-                throw new InvalidOperationException(
-                    $"Unknown Bencoding type: {value.GetType().Name}"
-                );
+                throw new BencodingException($"Unknown Bencoding type: {node.GetType().Name}");
         }
     }
 
-    private void EncodeString(BString value)
+    private async ValueTask EncodeStringAsync(BString value, CancellationToken cancellationToken)
     {
         var bytes = value.RawData;
-        var lengthBytes = Encoding.ASCII.GetBytes(bytes.Length.ToString() + ":");
-        _stream.Write(lengthBytes, 0, lengthBytes.Length);
-        _stream.Write(bytes, 0, bytes.Length);
+
+        // Max digits for int32 = 10
+        var span = _writer.GetSpan(11); // 10 digits + ':'
+
+        if (!Utf8Formatter.TryFormat(bytes.Length, span, out int len))
+        {
+            throw new BencodingException("Failed to format length");
+        }
+
+        span[len] = (byte)':';
+        _writer.Advance(len + 1);
+
+        await _writer.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
     }
 
     private void EncodeInt(BInt value)
     {
-        var bytes = Encoding.ASCII.GetBytes($"i{value.Data}e");
-        _stream.Write(bytes, 0, bytes.Length);
+        // Reserve max 21 bytes: 'i' + 20 digits + 'e' (long.MaxValue is 19 digits)
+        var span = _writer.GetSpan(21);
+        span[0] = (byte)'i';
+        if (!Utf8Formatter.TryFormat(value.Data, span.Slice(1), out int len))
+        {
+            throw new BencodingException("Failed to format integer");
+        }
+        span[len + 1] = (byte)'e';
+        _writer.Advance(len + 2);
     }
 
-    private void EncodeList(BList list)
+    private async ValueTask EncodeListAsync(BList list, CancellationToken cancellationToken)
     {
-        _stream.WriteByte((byte)'l');
+        var span = _writer.GetSpan(1);
+        span[0] = (byte)'l';
+        _writer.Advance(1);
+
         foreach (var item in list.Elements)
         {
-            EncodeToStream(item);
+            await EncodeNodeAsync(item, cancellationToken).ConfigureAwait(false);
         }
-        _stream.WriteByte((byte)'e');
+
+        span = _writer.GetSpan(1);
+        span[0] = (byte)'e';
+        _writer.Advance(1);
     }
 
-    private void EncodeDictionary(BDictionary dic)
+    private async ValueTask EncodeDictionaryAsync(
+        BDictionary dic,
+        CancellationToken cancellationToken
+    )
     {
-        _stream.WriteByte((byte)'d');
+        var span = _writer.GetSpan(1);
+        span[0] = (byte)'d';
+        _writer.Advance(1);
 
-        foreach (
-            var kvp in dic.Elements.OrderBy(
-                k => k.Key.RawData,
-                Comparer<byte[]>.Create(BytewiseCompare)
-            )
-        )
+        foreach (var kvp in dic.Elements.OrderBy(k => k.Key.RawData, _bytewiseComparerInstance))
         {
-            EncodeString(kvp.Key);
-            EncodeToStream(kvp.Value);
+            await EncodeStringAsync(kvp.Key, cancellationToken).ConfigureAwait(false);
+            await EncodeNodeAsync(kvp.Value, cancellationToken).ConfigureAwait(false);
         }
 
-        _stream.WriteByte((byte)'e');
+        span = _writer.GetSpan(1);
+        span[0] = (byte)'e';
+        _writer.Advance(1);
     }
 
     private static int BytewiseCompare(byte[]? a, byte[]? b)
@@ -109,10 +135,13 @@ internal sealed class BEncoder : IAsyncDisposable, IDisposable
                 return diff;
             }
         }
+
         return a.Length.CompareTo(b.Length);
     }
 
-    public async ValueTask DisposeAsync() => await _stream.DisposeAsync().ConfigureAwait(false);
-
-    public void Dispose() => _stream.Dispose();
+    public async ValueTask DisposeAsync()
+    {
+        await _writer.FlushAsync().ConfigureAwait(false);
+        await _writer.CompleteAsync().ConfigureAwait(false);
+    }
 }

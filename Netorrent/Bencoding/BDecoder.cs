@@ -1,106 +1,235 @@
-﻿using Netorrent.Bencoding.Structs;
+﻿using System.Buffers;
+using System.Diagnostics.CodeAnalysis;
+using System.IO.Pipelines;
+using Netorrent.Bencoding.Structs;
+using Netorrent.Exceptions;
 
 namespace Netorrent.Bencoding;
 
-internal class BDecoder(byte[] data)
+internal sealed class BDecoder(Stream stream)
 {
-    private readonly byte[] _data = data;
-    private int _pos;
+    private readonly PipeReader reader = PipeReader.Create(stream);
 
-    public IBencodingNode Decode()
+    public async ValueTask<IBencodingNode> DecodeAsync(CancellationToken cancellationToken)
     {
-        var current = (char)_data[_pos];
-        if (Char.IsAsciiDigit(current))
+        while (true)
         {
-            return DecodeString();
-        }
-        if (current == 'i')
-        {
-            return DecodeInt();
-        }
-        if (current == 'l')
-        {
-            return DecodeList();
-        }
-        if (current == 'd')
-        {
-            return DecodeDic();
-        }
+            var result = await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+            var buffer = result.Buffer;
 
-        throw new InvalidDataException();
-    }
+            if (buffer.Length == 0 && result.IsCompleted)
+            {
+                throw new EndOfStreamException();
+            }
 
-    public BString DecodeString()
-    {
-        var current = (char)_data[_pos];
-        var startOffset = _pos;
-        var length = 0;
+            var seqReader = new SequenceReader<byte>(buffer);
 
-        while (current != ':')
-        {
-            length++;
-            current = (char)_data[++_pos];
-        }
+            if (TryDecode(ref seqReader, out var node))
+            {
+                reader.AdvanceTo(seqReader.Position);
+                if (seqReader.Remaining > 0)
+                {
+                    throw new BencodingException("Extra data after root element");
+                }
+                return node;
+            }
 
-        if (int.TryParse(_data.AsSpan().Slice(startOffset, length), out var totalLength))
-        {
-            var result = _data.AsSpan().Slice(++_pos, totalLength);
-            _pos += totalLength;
-            return new BString(result.ToArray());
-        }
-        else
-        {
-            throw new InvalidDataException();
+            if (result.IsCompleted)
+            {
+                throw new EndOfStreamException();
+            }
+
+            reader.AdvanceTo(buffer.Start, buffer.End);
         }
     }
 
-    public BInt DecodeInt()
+    private bool TryDecode(
+        ref SequenceReader<byte> reader,
+        [NotNullWhen(true)] out IBencodingNode? node
+    )
     {
-        var current = (char)_data[++_pos];
-        var startingOffset = _pos;
-        var length = 0;
+        node = null;
 
-        while (current != 'e')
+        if (!reader.TryPeek(out var b))
         {
-            length++;
-            current = (char)_data[++_pos];
+            return false;
         }
 
-        var slice = _data.AsSpan().Slice(startingOffset, length);
-
-        if (long.TryParse(slice, out var result))
+        return b switch
         {
-            _pos++;
-            return result;
-        }
-
-        throw new InvalidDataException();
+            >= (byte)'0' and <= (byte)'9' => TryDecodeString(ref reader, out node),
+            (byte)'i' => TryDecodeInt(ref reader, out node),
+            (byte)'l' => TryDecodeList(ref reader, out node),
+            (byte)'d' => TryDecodeDictionary(ref reader, out node),
+            _ => throw new BencodingException($"Invalid Token: {b}"),
+        };
     }
 
-    public BList DecodeList()
+    private static bool TryDecodeString(
+        ref SequenceReader<byte> reader,
+        [NotNullWhen(true)] out IBencodingNode? node
+    )
     {
+        node = null;
+
+        if (!reader.TryReadTo(out ReadOnlySpan<byte> lenSpan, (byte)':'))
+        {
+            return false;
+        }
+
+        if (!int.TryParse(lenSpan, out var length))
+        {
+            throw new BencodingException("Can't decode BString");
+        }
+
+        if (!reader.TryReadExact(length, out var data))
+        {
+            return false;
+        }
+
+        node = new BString(data.ToArray());
+        return true;
+    }
+
+    private static bool TryDecodeInt(
+        ref SequenceReader<byte> reader,
+        [NotNullWhen(true)] out IBencodingNode? node
+    )
+    {
+        node = null;
+        reader.Advance(1);
+
+        if (!reader.TryReadTo(out ReadOnlySpan<byte> numSpan, (byte)'e'))
+        {
+            return false;
+        }
+
+        if (!IsValidBencodeInteger(numSpan) || !long.TryParse(numSpan, out var value))
+        {
+            throw new BencodingException("Can't decode BInt");
+        }
+
+        node = new BInt(value);
+        return true;
+
+        static bool IsValidBencodeInteger(ReadOnlySpan<byte> span)
+        {
+            if (span.Length == 0)
+            {
+                return false;
+            }
+
+            var first = (char)span[0];
+
+            if (first == '+')
+            {
+                return false;
+            }
+
+            if (first == '-')
+            {
+                if (span.Length == 1)
+                {
+                    return false;
+                }
+
+                if (span[1] == '0')
+                {
+                    return false;
+                }
+            }
+            else if (first == '0' && span.Length > 1)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < span.Length; i++)
+            {
+                var c = (char)span[i];
+
+                if (!char.IsAsciiDigit(c) && c != '-')
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+    }
+
+    private bool TryDecodeList(
+        ref SequenceReader<byte> reader,
+        [NotNullWhen(true)] out IBencodingNode? node
+    )
+    {
+        node = null;
+        reader.Advance(1);
+
         var list = new List<IBencodingNode>();
-        _pos++;
-        while ((char)_data[_pos] != 'e')
+
+        while (true)
         {
-            var item = Decode();
+            if (!reader.TryPeek(out var b))
+            {
+                return false;
+            }
+
+            if (b == (byte)'e')
+            {
+                reader.Advance(1);
+                node = new BList(list);
+                return true;
+            }
+
+            if (!TryDecode(ref reader, out var item))
+            {
+                return false;
+            }
+
             list.Add(item);
         }
-        _pos++;
-        return list;
     }
 
-    public BDictionary DecodeDic()
+    private bool TryDecodeDictionary(
+        ref SequenceReader<byte> reader,
+        [NotNullWhen(true)] out IBencodingNode? node
+    )
     {
-        var dic = new Dictionary<BString, IBencodingNode>();
-        _pos++;
-        while ((char)_data[_pos] != 'e')
+        node = null;
+        reader.Advance(1);
+
+        var dict = new Dictionary<BString, IBencodingNode>();
+
+        while (true)
         {
-            var key = DecodeString();
-            var item = Decode();
-            dic.Add(key, item);
+            if (!reader.TryPeek(out var b))
+            {
+                return false;
+            }
+
+            if (b == (byte)'e')
+            {
+                reader.Advance(1);
+                node = new BDictionary(dict);
+                return true;
+            }
+
+            if (!TryDecodeString(ref reader, out var keyNode))
+            {
+                return false;
+            }
+
+            if (!TryDecode(ref reader, out var value))
+            {
+                return false;
+            }
+
+            dict.Add((BString)keyNode, value);
         }
-        _pos++;
-        return new BDictionary(dic);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await stream.DisposeAsync().ConfigureAwait(false);
     }
 }
