@@ -49,7 +49,7 @@ internal class PeersClient(
         catch
         {
             var disposeTasks = activePeers.Values.Select(i => i.DisposeAsync().AsTask());
-            await Task.WhenAll(disposeTasks);
+            await Task.WhenAll(disposeTasks).ConfigureAwait(false);
             activePeers.Clear();
             throw;
         }

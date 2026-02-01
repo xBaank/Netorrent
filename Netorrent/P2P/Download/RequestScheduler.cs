@@ -53,7 +53,7 @@ internal class RequestScheduler(
         }
     }
 
-    public async Task ProcessDownloadMessagesAsync(CancellationToken cancellationToken)
+    private async Task ProcessDownloadMessagesAsync(CancellationToken cancellationToken)
     {
         await WarmupAsync(cancellationToken).ConfigureAwait(false);
         await foreach (
@@ -157,7 +157,7 @@ internal class RequestScheduler(
 
     private void CheckTimeout()
     {
-        var currentPeers = peers.Values.AsValueEnumerable();
+        var currentPeers = peers.AsValueEnumerable().Select(i => i.Value);
         foreach (var requestBlock in piecePicker.GetTimeoutRequestBlocks())
         {
             requestBlock.State = RequestBlockState.Pending;
@@ -184,7 +184,8 @@ internal class RequestScheduler(
         while (DateTime.UtcNow < warmupDeadline && !cancellationToken.IsCancellationRequested)
         {
             var minPeersReady = peers
-                .Values.AsValueEnumerable()
+                .AsValueEnumerable()
+                .Select(i => i.Value)
                 .Count(i => i.AmInterested.CurrentValue && !i.PeerChoking.CurrentValue);
 
             if (minPeersReady >= MinPeersForRarity)
@@ -199,7 +200,8 @@ internal class RequestScheduler(
     private void ScheduleRequests()
     {
         var freePeers = peers
-            .Values.AsValueEnumerable()
+            .AsValueEnumerable()
+            .Select(i => i.Value)
             .Where(i => !i.PeerChoking.CurrentValue)
             .Where(i => i.AmInterested.CurrentValue);
 
@@ -298,7 +300,7 @@ internal class RequestScheduler(
             }
         }
 
-        foreach (var item in _pieceBuffers.Values)
+        foreach (var (_, item) in _pieceBuffers)
         {
             item.Dispose();
         }
