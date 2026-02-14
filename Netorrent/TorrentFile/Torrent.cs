@@ -86,6 +86,7 @@ public sealed class Torrent : IAsyncDisposable
             _myBitfield,
             dataStatistics,
             torrentClientOptions.WarmupTime,
+            30.Seconds,
             _pieceStorage,
             torrentClientOptions.Logger
         );

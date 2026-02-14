@@ -14,6 +14,7 @@ internal class RequestScheduler(
     Bitfield myBitfield,
     DataStatistics data,
     TimeSpan warmupTime,
+    TimeSpan timeoutTime,
     IPieceStorage pieceStorage,
     ILogger logger
 ) : IRequestScheduler
@@ -260,17 +261,17 @@ internal class RequestScheduler(
         }
     }
 
-    private static DateTimeOffset CalculateTimeout(IPeerConnection peerConnection, int blockLength)
+    private DateTimeOffset CalculateTimeout(IPeerConnection peerConnection, int blockLength)
     {
         var speedBps = peerConnection.DownloadTracker.Speed.Bps;
         if (speedBps <= 0)
         {
-            return DateTimeOffset.UtcNow + 30.Seconds;
+            return DateTimeOffset.UtcNow + timeoutTime;
         }
 
         var estimatedSeconds = blockLength / speedBps;
         var timeoutSeconds = estimatedSeconds * 3 + 2;
-        return DateTimeOffset.UtcNow + (Math.Min(timeoutSeconds, 60)).Seconds;
+        return DateTimeOffset.UtcNow + Math.Min(timeoutSeconds, 60).Seconds;
     }
 
     public async ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken)
