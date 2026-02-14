@@ -4,7 +4,6 @@ enum RequestBlockState
 {
     Pending,
     Requested,
-    EndgameRequested,
     Cancelled,
     Completed,
 }
