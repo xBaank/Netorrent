@@ -127,6 +127,6 @@ public class PeerConectionTests
             new FakeRequestScheduler(),
             new FakeMessageStream(otherPeerId, incommingMessages, outgoingMessages),
             new PeerRequestWindow(16 * 1024),
-            new FakePiecePicker()
+            new PiecePicker(bitfield, 16 * 1024, 256 * 1024, 256 * 1024)
         );
 }

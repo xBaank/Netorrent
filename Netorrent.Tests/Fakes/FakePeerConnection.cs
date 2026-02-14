@@ -6,9 +6,10 @@ using Netorrent.P2P.Measurement;
 using Netorrent.P2P.Messages;
 using R3;
 
-internal class FakePeerConnection(Bitfield myBitfield) : IPeerConnection
+internal class FakePeerConnection(Bitfield myBitfield, Bitfield peerBitifield) : IPeerConnection
 {
     public Subject<Block> SentBlocks = new();
+    public Subject<RequestBlock> SentRequests = new();
     public SynchronizedReactiveProperty<bool> AmChoking { get; } = new(true);
 
     public SynchronizedReactiveProperty<bool> AmInterested { get; } = new(false);
@@ -25,15 +26,19 @@ internal class FakePeerConnection(Bitfield myBitfield) : IPeerConnection
 
     public SpeedTracker UploadTracker => new();
 
-    public ulong RequestedBlocksCount => throw new NotImplementedException();
+    public ulong RequestedBlocksCount => _requestedBlocksCount;
+
+    private ulong _requestedBlocksCount = 0;
 
     public ulong UploadRequestedBlocksCount => _uploadRequestedCount;
 
     public Bitfield MyBitField => myBitfield;
 
-    public Bitfield? PeerBitField => throw new NotImplementedException();
+    public Bitfield? PeerBitField => peerBitifield;
 
-    public PeerRequestWindow PeerRequestWindow => throw new NotImplementedException();
+    public PeerRequestWindow PeerRequestWindow => _fakePeerRequestWindow;
+
+    private readonly FakePeerRequestWindow _fakePeerRequestWindow = new();
 
     ReadOnlyReactiveProperty<bool> IPeerConnection.AmChoking => AmChoking;
 
@@ -50,21 +55,19 @@ internal class FakePeerConnection(Bitfield myBitfield) : IPeerConnection
 
     private ulong _uploadRequestedCount = 0;
 
-    public ulong DecrementRequestedBlock()
-    {
-        throw new NotImplementedException();
-    }
+    public ulong DecrementRequestedBlock() => _requestedBlocksCount--;
 
     public ulong IncrementUploadRequested() => _uploadRequestedCount++;
 
     public ulong DecrementUploadRequested() => _uploadRequestedCount--;
 
-    public async ValueTask DisposeAsync() => SentBlocks.OnCompleted();
-
-    public ulong IncrementRequestedBlock()
+    public async ValueTask DisposeAsync()
     {
-        throw new NotImplementedException();
+        SentBlocks.OnCompleted();
+        SentRequests.OnCompleted();
     }
+
+    public ulong IncrementRequestedBlock() => _requestedBlocksCount++;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -79,12 +82,13 @@ internal class FakePeerConnection(Bitfield myBitfield) : IPeerConnection
 
     public bool TrySendCancel(RequestBlock request)
     {
-        throw new NotImplementedException();
+        return true;
     }
 
     public bool TrySendRequest(RequestBlock nextBlock)
     {
-        throw new NotImplementedException();
+        SentRequests.OnNext(nextBlock);
+        return true;
     }
 
     public void Unchoke()
