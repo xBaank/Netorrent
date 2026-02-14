@@ -129,6 +129,11 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
 
     public IEnumerable<RequestBlock> GetTimeoutRequestBlocks()
     {
+        if (_isEndGame)
+        {
+            return [];
+        }
+
         var now = DateTime.UtcNow;
 
         return _requestBlocks
