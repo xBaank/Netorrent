@@ -158,12 +158,8 @@ internal class RequestScheduler(
         var currentPeers = peers.AsValueEnumerable().Select(i => i.Value);
         foreach (var requestBlock in piecePicker.GetTimeoutRequestBlocks())
         {
-            if (!piecePicker.IsEndGame)
-            {
-                requestBlock.State = RequestBlockState.Pending;
-                requestBlock.TimeoutAt = null; //TODO set ALL request blocks by lastRequestedFrom requester to pending as they are all more likely to be timed out
-            }
-
+            requestBlock.State = RequestBlockState.Pending;
+            requestBlock.TimeoutAt = null; //TODO set ALL request blocks by lastRequestedFrom requester to pending as they are all more likely to be timed out
             var freePeer = currentPeers
                 .Where(i => !i.PeerChoking.CurrentValue)
                 .Where(i => i.AmInterested.CurrentValue)

@@ -75,10 +75,9 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
                 _requestedIndexes.Add(item.Index);
 
                 if (
-                    (_isEndGame && item.State == RequestBlockState.Requested)
-                    || item.State == RequestBlockState.Pending
-                        && peerConnection.PeerBitField.HasPiece(item.Index)
-                        && !item.RequestedFrom.Contains(peerConnection)
+                    (_isEndGame || item.State == RequestBlockState.Pending)
+                    && peerConnection.PeerBitField.HasPiece(item.Index)
+                    && !item.RequestedFrom.Contains(peerConnection)
                 )
                 {
                     requestBlock = item;
