@@ -171,6 +171,7 @@ public class RequestSchedulerTests
         requestScheduler.TryRequest(seederPeerConnection3);
 
         await countTask.ShouldNotThrowAsync();
+        countTask.Status.ShouldBe(TaskStatus.RanToCompletion);
         bitfield.IsComplete.ShouldBeFalse();
     }
 }

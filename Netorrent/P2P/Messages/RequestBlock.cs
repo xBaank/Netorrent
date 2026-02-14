@@ -4,6 +4,7 @@ enum RequestBlockState
 {
     Pending,
     Requested,
+    EndgameRequested,
     Cancelled,
     Completed,
 }
@@ -14,7 +15,6 @@ internal class RequestBlock(int index, int begin, int length)
     public readonly int Begin = begin;
     public readonly int Length = length;
     public RequestBlockState State { get; set; } = RequestBlockState.Pending;
-    public bool IsEndGame { get; set; } = false;
     public List<IPeerConnection> RequestedFrom { get; set; } = [];
     public DateTimeOffset? TimeoutAt { get; set; }
 

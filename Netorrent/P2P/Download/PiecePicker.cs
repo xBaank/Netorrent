@@ -73,10 +73,9 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
             _requestedIndexes.Add(item.Index);
 
             if (
-                (item.State == RequestBlockState.Requested && _isEndGame)
-                || item.State == RequestBlockState.Pending
-                    && peerConnection.PeerBitField.HasPiece(item.Index)
-                    && !item.RequestedFrom.Contains(peerConnection)
+                item is { State: RequestBlockState.Pending or RequestBlockState.EndgameRequested }
+                && peerConnection.PeerBitField.HasPiece(item.Index)
+                && !item.RequestedFrom.Contains(peerConnection)
             )
             {
                 requestBlock = item;
@@ -120,7 +119,6 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
             for (int i = 0; i < blockCount; i++)
             {
                 requestBlocks[i] = GetRequestBlockByBlockIndex(piece.Value, i);
-                requestBlocks[i].IsEndGame = _isEndGame;
             }
         }
 
@@ -135,8 +133,7 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         return _requestBlocks
             .Values.SelectMany(i => i)
             .Where(i =>
-                !i.IsEndGame
-                && i.State == RequestBlockState.Requested
+                i.State == RequestBlockState.Requested
                 && i.TimeoutAt is not null
                 && now > i.TimeoutAt.Value
             );
