@@ -120,6 +120,7 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
             for (int i = 0; i < blockCount; i++)
             {
                 requestBlocks[i] = GetRequestBlockByBlockIndex(piece.Value, i);
+                requestBlocks[i].IsEndGame = _isEndGame;
             }
         }
 
@@ -129,17 +130,13 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
 
     public IEnumerable<RequestBlock> GetTimeoutRequestBlocks()
     {
-        if (_isEndGame)
-        {
-            return [];
-        }
-
         var now = DateTime.UtcNow;
 
         return _requestBlocks
             .Values.SelectMany(i => i)
             .Where(i =>
-                i.State == RequestBlockState.Requested
+                !i.IsEndGame
+                && i.State == RequestBlockState.Requested
                 && i.TimeoutAt is not null
                 && now > i.TimeoutAt.Value
             );
