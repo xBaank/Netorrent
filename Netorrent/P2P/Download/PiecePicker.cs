@@ -1,5 +1,4 @@
 using System.Diagnostics.CodeAnalysis;
-using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 using ZLinq;
 
@@ -74,9 +73,10 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
             _requestedIndexes.Add(item.Index);
 
             if (
-                item is { State: RequestBlockState.Pending or RequestBlockState.EndgameRequested }
-                && peerConnection.PeerBitField.HasPiece(item.Index)
-                && !item.RequestedFrom.Contains(peerConnection)
+                (item.State == RequestBlockState.Requested && _isEndGame)
+                || item.State == RequestBlockState.Pending
+                    && peerConnection.PeerBitField.HasPiece(item.Index)
+                    && !item.RequestedFrom.Contains(peerConnection)
             )
             {
                 requestBlock = item;
@@ -134,7 +134,7 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         return _requestBlocks
             .Values.SelectMany(i => i)
             .Where(i =>
-                i is { State: RequestBlockState.EndgameRequested or RequestBlockState.Requested }
+                i.State == RequestBlockState.Requested
                 && i.TimeoutAt is not null
                 && now > i.TimeoutAt.Value
             );
