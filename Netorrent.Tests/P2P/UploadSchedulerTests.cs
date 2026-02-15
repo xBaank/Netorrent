@@ -18,7 +18,11 @@ public class UploadSchedulerTests
         var logger = NullLogger.Instance;
         var bitfield = new Bitfield(5, true);
         var leecherBitfield = new Bitfield(5, false);
-        await using var leecherPeerConnection = new FakePeerConnection(bitfield, leecherBitfield);
+        await using var leecherPeerConnection = new FakePeerConnection(
+            bitfield,
+            leecherBitfield,
+            1024 * 4
+        );
         leecherPeerConnection.PeerInterested.Value = true;
         await using var uploadScheduler = new UploadScheduler(
             new Dictionary<PeerEndpoint, IPeerConnection>()
@@ -53,7 +57,7 @@ public class UploadSchedulerTests
         var logger = NullLogger.Instance;
         var bitfield = new Bitfield(5, true);
         var leecherBitfield = new Bitfield(5, false);
-        var leecherPeerConnection = new FakePeerConnection(bitfield, leecherBitfield);
+        var leecherPeerConnection = new FakePeerConnection(bitfield, leecherBitfield, 1024 * 4);
         leecherPeerConnection.PeerInterested.Value = true;
         await using var uploadScheduler = new UploadScheduler(
             new Dictionary<PeerEndpoint, IPeerConnection>()

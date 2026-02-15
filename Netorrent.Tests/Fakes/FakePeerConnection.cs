@@ -6,7 +6,8 @@ using Netorrent.P2P.Measurement;
 using Netorrent.P2P.Messages;
 using R3;
 
-internal class FakePeerConnection(Bitfield myBitfield, Bitfield peerBitifield) : IPeerConnection
+internal class FakePeerConnection(Bitfield myBitfield, Bitfield peerBitifield, int blockSize)
+    : IPeerConnection
 {
     public Subject<Block> SentBlocks = new();
     public Subject<RequestBlock> SentRequests = new();
@@ -36,9 +37,9 @@ internal class FakePeerConnection(Bitfield myBitfield, Bitfield peerBitifield) :
 
     public Bitfield? PeerBitField => peerBitifield;
 
-    public PeerRequestWindow PeerRequestWindow => _fakePeerRequestWindow;
+    public PeerRequestWindow PeerRequestWindow => _peerRequestWindow;
 
-    private readonly FakePeerRequestWindow _fakePeerRequestWindow = new();
+    private readonly PeerRequestWindow _peerRequestWindow = new(blockSize);
 
     ReadOnlyReactiveProperty<bool> IPeerConnection.AmChoking => AmChoking;
 

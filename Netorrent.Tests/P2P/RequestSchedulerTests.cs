@@ -25,8 +25,16 @@ public class RequestSchedulerTests
         var logger = NullLogger.Instance;
         var seederBitfield = new Bitfield(PiecesCount, true);
         var bitfield = new Bitfield(PiecesCount, false);
-        await using var seederPeerConnection = new FakePeerConnection(bitfield, seederBitfield);
-        await using var seederPeerConnection2 = new FakePeerConnection(bitfield, seederBitfield);
+        await using var seederPeerConnection = new FakePeerConnection(
+            bitfield,
+            seederBitfield,
+            BlockSize
+        );
+        await using var seederPeerConnection2 = new FakePeerConnection(
+            bitfield,
+            seederBitfield,
+            BlockSize
+        );
         seederPeerConnection.PeerChoking.Value = false;
         seederPeerConnection.AmInterested.Value = true;
         seederPeerConnection2.PeerChoking.Value = false;
@@ -78,7 +86,11 @@ public class RequestSchedulerTests
         var logger = NullLogger.Instance;
         var seederBitfield = new Bitfield(PiecesCount, true);
         var bitfield = new Bitfield(PiecesCount, false);
-        await using var seederPeerConnection = new FakePeerConnection(bitfield, seederBitfield);
+        await using var seederPeerConnection = new FakePeerConnection(
+            bitfield,
+            seederBitfield,
+            BlockSize
+        );
         seederPeerConnection.PeerChoking.Value = true;
         seederPeerConnection.AmInterested.Value = true;
         await using var requestScheduler = new RequestScheduler(
@@ -111,8 +123,16 @@ public class RequestSchedulerTests
         var logger = NullLogger.Instance;
         var seederBitfield = new Bitfield(PiecesCount, true);
         var bitfield = new Bitfield(PiecesCount, false);
-        await using var seederPeerConnection = new FakePeerConnection(bitfield, seederBitfield);
-        await using var seederPeerConnection2 = new FakePeerConnection(bitfield, seederBitfield);
+        await using var seederPeerConnection = new FakePeerConnection(
+            bitfield,
+            seederBitfield,
+            BlockSize
+        );
+        await using var seederPeerConnection2 = new FakePeerConnection(
+            bitfield,
+            seederBitfield,
+            BlockSize
+        );
         seederPeerConnection.PeerChoking.Value = false;
         seederPeerConnection.AmInterested.Value = true;
         seederPeerConnection2.PeerChoking.Value = false;
@@ -151,9 +171,21 @@ public class RequestSchedulerTests
         var logger = NullLogger.Instance;
         var seederBitfield = new Bitfield(PiecesCount, true);
         var bitfield = new Bitfield(PiecesCount, false);
-        await using var seederPeerConnection = new FakePeerConnection(bitfield, seederBitfield);
-        await using var seederPeerConnection2 = new FakePeerConnection(bitfield, seederBitfield);
-        await using var seederPeerConnection3 = new FakePeerConnection(bitfield, seederBitfield);
+        await using var seederPeerConnection = new FakePeerConnection(
+            bitfield,
+            seederBitfield,
+            BlockSize
+        );
+        await using var seederPeerConnection2 = new FakePeerConnection(
+            bitfield,
+            seederBitfield,
+            BlockSize
+        );
+        await using var seederPeerConnection3 = new FakePeerConnection(
+            bitfield,
+            seederBitfield,
+            BlockSize
+        );
         seederPeerConnection.PeerChoking.Value = false;
         seederPeerConnection.AmInterested.Value = true;
         seederPeerConnection2.PeerChoking.Value = false;
