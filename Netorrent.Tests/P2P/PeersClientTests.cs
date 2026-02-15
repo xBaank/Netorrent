@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Netorrent.Extensions;
 using Netorrent.P2P;
+using Netorrent.P2P.Download;
 using Netorrent.P2P.Messages;
 using Netorrent.Tests.Extensions;
 using Netorrent.Tests.Fakes;
@@ -89,14 +90,17 @@ internal class PeersClientTests
         }
     }
 
-    private static PeersClient CreatePeersClient(PeerId peerId, ILogger logger) =>
-        new(
+    private static PeersClient CreatePeersClient(PeerId peerId, ILogger logger)
+    {
+        var bitfield = new Bitfield(5);
+        return new(
             [],
             peerId,
             new FakeRequestScheduler(),
             new FakeUploadScheduler(),
-            new FakePiecePicker(),
-            new Bitfield(5),
+            new PiecePicker(bitfield, 16 * 1024, 256 * 1024, 256 * 1024),
+            bitfield,
             logger
         );
+    }
 }

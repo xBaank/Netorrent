@@ -1,5 +1,4 @@
 using System.Diagnostics.CodeAnalysis;
-using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 using ZLinq;
 
@@ -63,68 +62,73 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         [NotNullWhen(true)] out RequestBlock? requestBlock
     )
     {
-        if (peerConnection.PeerBitField is null)
+        try
         {
-            requestBlock = null;
-            return false;
-        }
-
-        foreach (var item in _requestBlocks.Values.AsValueEnumerable().SelectMany(i => i))
-        {
-            _requestedIndexes.Add(item.Index);
-
-            if (
-                item is { State: RequestBlockState.Pending or RequestBlockState.EndgameRequested }
-                && peerConnection.PeerBitField.HasPiece(item.Index)
-                && !item.RequestedFrom.Contains(peerConnection)
-            )
+            if (peerConnection.PeerBitField is null)
             {
-                requestBlock = item;
-                return true;
-            }
-        }
-
-        bool hasUnrequestedPiece = false;
-
-        for (int i = 0; i < myBitfield.Length; i++)
-        {
-            if (myBitfield.HasPiece(i))
-            {
-                continue;
+                requestBlock = null;
+                return false;
             }
 
-            if (!_requestedIndexes.Contains(i))
+            foreach (var item in _requestBlocks.Values.AsValueEnumerable().SelectMany(i => i))
             {
-                hasUnrequestedPiece = true;
-                break;
+                _requestedIndexes.Add(item.Index);
+
+                if (
+                    (_isEndGame || item.State == RequestBlockState.Pending)
+                    && peerConnection.PeerBitField.HasPiece(item.Index)
+                    && !item.RequestedFrom.Contains(peerConnection)
+                )
+                {
+                    requestBlock = item;
+                    return true;
+                }
             }
-        }
 
-        _isEndGame = !hasUnrequestedPiece;
+            var piece = GetPiece(peerConnection.PeerBitField, _requestedIndexes);
 
-        var piece = GetPiece(peerConnection.PeerBitField, _requestedIndexes);
-
-        if (piece is null)
-        {
-            requestBlock = null;
-            return false;
-        }
-
-        var blockCount = GetBlockCountByPieceIndex(piece.Value);
-
-        if (!_requestBlocks.TryGetValue(piece.Value, out var requestBlocks))
-        {
-            requestBlocks = new RequestBlock[blockCount];
-            _requestBlocks[piece.Value] = requestBlocks;
-
-            for (int i = 0; i < blockCount; i++)
+            if (piece is null)
             {
-                requestBlocks[i] = GetRequestBlockByBlockIndex(piece.Value, i);
+                requestBlock = null;
+                return false;
             }
-        }
 
-        requestBlock = requestBlocks[0];
-        return true;
+            var blockCount = GetBlockCountByPieceIndex(piece.Value);
+
+            if (!_requestBlocks.TryGetValue(piece.Value, out var requestBlocks))
+            {
+                requestBlocks = new RequestBlock[blockCount];
+                _requestBlocks[piece.Value] = requestBlocks;
+
+                for (int i = 0; i < blockCount; i++)
+                {
+                    requestBlocks[i] = GetRequestBlockByBlockIndex(piece.Value, i);
+                }
+            }
+
+            requestBlock = requestBlocks[0];
+            return true;
+        }
+        finally
+        {
+            bool hasUnrequestedPiece = false;
+
+            for (int i = 0; i < myBitfield.Length; i++)
+            {
+                if (myBitfield.HasPiece(i))
+                {
+                    continue;
+                }
+
+                if (!_requestedIndexes.Contains(i))
+                {
+                    hasUnrequestedPiece = true;
+                    break;
+                }
+            }
+
+            _isEndGame = !hasUnrequestedPiece;
+        }
     }
 
     public IEnumerable<RequestBlock> GetTimeoutRequestBlocks()
@@ -134,7 +138,7 @@ internal class PiecePicker(Bitfield myBitfield, int blockSize, int pieceLenght, 
         return _requestBlocks
             .Values.SelectMany(i => i)
             .Where(i =>
-                i is { State: RequestBlockState.EndgameRequested or RequestBlockState.Requested }
+                i.State == RequestBlockState.Requested
                 && i.TimeoutAt is not null
                 && now > i.TimeoutAt.Value
             );

@@ -166,14 +166,16 @@ internal class UploadScheduler(
     private void OptimisticChoke()
     {
         var peerToUnchoke = peers
-            .Values.AsValueEnumerable()
+            .AsValueEnumerable()
+            .Select(i => i.Value)
             .Where(i => i.AmChoking.CurrentValue)
             .Where(i => i.PeerInterested.CurrentValue)
             .Shuffle()
             .FirstOrDefault();
 
         var activePeers = peers
-            .Values.AsValueEnumerable()
+            .AsValueEnumerable()
+            .Select(i => i.Value)
             .Where(i => i.ActiveDownloader.CurrentValue)
             .Count();
 
@@ -185,7 +187,8 @@ internal class UploadScheduler(
         if (activePeers == MaxActivePeers)
         {
             var worstPeer = peers
-                .Values.AsValueEnumerable()
+                .Select(i => i.Value)
+                .AsValueEnumerable()
                 .OrderBy(i =>
                     i.MyBitField.IsComplete
                         ? i.UploadTracker.Speed.Bps
@@ -205,7 +208,8 @@ internal class UploadScheduler(
     private void RegularChoke()
     {
         var bestPeersByDownload = peers
-            .Values.AsValueEnumerable()
+            .Select(i => i.Value)
+            .AsValueEnumerable()
             .OrderByDescending(i =>
                 i.MyBitField.IsComplete ? i.UploadTracker.Speed.Bps : i.DownloadTracker.Speed.Bps
             )

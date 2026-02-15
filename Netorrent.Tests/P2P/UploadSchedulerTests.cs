@@ -17,11 +17,13 @@ public class UploadSchedulerTests
     {
         var logger = NullLogger.Instance;
         var bitfield = new Bitfield(5, true);
-        await using var peerConnection = new FakePeerConnection(bitfield);
+        var leecherBitfield = new Bitfield(5, false);
+        await using var leecherPeerConnection = new FakePeerConnection(bitfield, leecherBitfield);
+        leecherPeerConnection.PeerInterested.Value = true;
         await using var uploadScheduler = new UploadScheduler(
             new Dictionary<PeerEndpoint, IPeerConnection>()
             {
-                [peerConnection.PeerEndpoint] = peerConnection,
+                [leecherPeerConnection.PeerEndpoint] = leecherPeerConnection,
             },
             new FakePieceStorage(),
             bitfield,
@@ -29,10 +31,12 @@ public class UploadSchedulerTests
             logger
         );
         var requestBlock = new RequestBlock(0, 0, 0);
-        var amChokingTask = peerConnection.AmChoking.FirstAsync(i => i == false, cancellationToken);
-        var blockTask = peerConnection.SentBlocks.FirstAsync(cancellationToken);
-        peerConnection.PeerInterested.Value = true;
-        requestBlock.RequestedFrom.Add(peerConnection);
+        var amChokingTask = leecherPeerConnection.AmChoking.FirstAsync(
+            i => i == false,
+            cancellationToken
+        );
+        var blockTask = leecherPeerConnection.SentBlocks.FirstAsync(cancellationToken);
+        requestBlock.RequestedFrom.Add(leecherPeerConnection);
         var uploadTask = uploadScheduler.StartAsync(cancellationToken);
         var chokeState = await amChokingTask;
         await uploadScheduler.AddRequestAsync(requestBlock, cancellationToken);
@@ -48,11 +52,13 @@ public class UploadSchedulerTests
     {
         var logger = NullLogger.Instance;
         var bitfield = new Bitfield(5, true);
-        var peerConnection = new FakePeerConnection(bitfield);
+        var leecherBitfield = new Bitfield(5, false);
+        var leecherPeerConnection = new FakePeerConnection(bitfield, leecherBitfield);
+        leecherPeerConnection.PeerInterested.Value = true;
         await using var uploadScheduler = new UploadScheduler(
             new Dictionary<PeerEndpoint, IPeerConnection>()
             {
-                [peerConnection.PeerEndpoint] = peerConnection,
+                [leecherPeerConnection.PeerEndpoint] = leecherPeerConnection,
             },
             new FakePieceStorage(),
             bitfield,
@@ -60,16 +66,18 @@ public class UploadSchedulerTests
             logger
         );
         var requestBlock = new RequestBlock(0, 0, 0);
-        var amChokingTask = peerConnection.AmChoking.FirstAsync(i => i == false, cancellationToken);
-        var isEmptyTask = peerConnection.SentBlocks.IsEmptyAsync(cancellationToken);
-        peerConnection.PeerInterested.Value = true;
-        requestBlock.RequestedFrom.Add(peerConnection);
+        var amChokingTask = leecherPeerConnection.AmChoking.FirstAsync(
+            i => i == false,
+            cancellationToken
+        );
+        var isEmptyTask = leecherPeerConnection.SentBlocks.IsEmptyAsync(cancellationToken);
+        requestBlock.RequestedFrom.Add(leecherPeerConnection);
         var uploadTask = uploadScheduler.StartAsync(cancellationToken);
         var chokeState = await amChokingTask;
         await uploadScheduler.AddRequestAsync(requestBlock, cancellationToken);
         uploadScheduler.CancelRequest(requestBlock);
         await Task.Delay(1000, cancellationToken);
-        await peerConnection.DisposeAsync();
+        await leecherPeerConnection.DisposeAsync();
         (await isEmptyTask).ShouldBe(true);
         chokeState.ShouldBe(false);
     }
