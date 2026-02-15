@@ -14,21 +14,30 @@ namespace Netorrent.Tests.P2P;
 [Timeout(10_000)]
 public class RequestSchedulerTests
 {
+    const int BlockSize = 1024 * 16;
+    const int PieceSize = BlockSize * 4;
+    const int TotalSize = PieceSize * 4;
+    const int PiecesCount = TotalSize / PieceSize;
+
     [Test]
     public async Task Should_Download_Piece_From_Peer(CancellationToken cancellationToken)
     {
         var logger = NullLogger.Instance;
-        var seederBitfield = new Bitfield(1, true);
-        var bitfield = new Bitfield(1, false);
+        var seederBitfield = new Bitfield(PiecesCount, true);
+        var bitfield = new Bitfield(PiecesCount, false);
         await using var seederPeerConnection = new FakePeerConnection(bitfield, seederBitfield);
+        await using var seederPeerConnection2 = new FakePeerConnection(bitfield, seederBitfield);
         seederPeerConnection.PeerChoking.Value = false;
         seederPeerConnection.AmInterested.Value = true;
+        seederPeerConnection2.PeerChoking.Value = false;
+        seederPeerConnection2.AmInterested.Value = true;
         await using var requestScheduler = new RequestScheduler(
             new Dictionary<PeerEndpoint, IPeerConnection>()
             {
                 [seederPeerConnection.PeerEndpoint] = seederPeerConnection,
+                [seederPeerConnection2.PeerEndpoint] = seederPeerConnection2,
             },
-            new PiecePicker(bitfield, 16 * 1024, 16 * 1024 * 4, 16 * 1024 * 4 * 4),
+            new PiecePicker(bitfield, BlockSize, PieceSize, TotalSize), //whole file is 4 blocks and 1 piece
             bitfield,
             new DataStatistics(4),
             TimeSpan.Zero,
@@ -36,6 +45,9 @@ public class RequestSchedulerTests
             new FakePieceStorage(),
             logger
         );
+
+        var cts = cancellationToken.WithTimeout(3.Seconds);
+        var seeder2SentRequestTask = seederPeerConnection2.SentRequests.FirstAsync(cts.Token);
         var completion = bitfield.StateChanged.FirstAsync(cancellationToken);
         var requestTask = requestScheduler.StartAsync(cancellationToken);
 
@@ -56,14 +68,16 @@ public class RequestSchedulerTests
 
         await completion.ShouldNotThrowAsync();
         (await completion).ShouldBe(0);
+        await seeder2SentRequestTask.ShouldNotThrowAsync();
+        seeder2SentRequestTask.Status.ShouldBe(TaskStatus.Canceled);
     }
 
     [Test]
     public async Task Should_Not_Download_Piece_From_Peer(CancellationToken cancellationToken)
     {
         var logger = NullLogger.Instance;
-        var seederBitfield = new Bitfield(1, true);
-        var bitfield = new Bitfield(1, false);
+        var seederBitfield = new Bitfield(PiecesCount, true);
+        var bitfield = new Bitfield(PiecesCount, false);
         await using var seederPeerConnection = new FakePeerConnection(bitfield, seederBitfield);
         seederPeerConnection.PeerChoking.Value = true;
         seederPeerConnection.AmInterested.Value = true;
@@ -72,7 +86,7 @@ public class RequestSchedulerTests
             {
                 [seederPeerConnection.PeerEndpoint] = seederPeerConnection,
             },
-            new PiecePicker(bitfield, 16 * 1024, 16 * 1024 * 4, 16 * 1024 * 4), //whole file is 4 blocks and 1 piece
+            new PiecePicker(bitfield, BlockSize, PieceSize, TotalSize),
             bitfield,
             new DataStatistics(4),
             TimeSpan.Zero,
@@ -95,8 +109,8 @@ public class RequestSchedulerTests
     public async Task Should_Timeout_Blocks_From_Peer(CancellationToken cancellationToken)
     {
         var logger = NullLogger.Instance;
-        var seederBitfield = new Bitfield(1, true);
-        var bitfield = new Bitfield(1, false);
+        var seederBitfield = new Bitfield(PiecesCount, true);
+        var bitfield = new Bitfield(PiecesCount, false);
         await using var seederPeerConnection = new FakePeerConnection(bitfield, seederBitfield);
         await using var seederPeerConnection2 = new FakePeerConnection(bitfield, seederBitfield);
         seederPeerConnection.PeerChoking.Value = false;
@@ -109,7 +123,7 @@ public class RequestSchedulerTests
                 [seederPeerConnection.PeerEndpoint] = seederPeerConnection,
                 [seederPeerConnection2.PeerEndpoint] = seederPeerConnection2,
             },
-            new PiecePicker(bitfield, 16 * 1024, 16 * 1024 * 4, 16 * 1024 * 4), //whole file is 4 blocks and 1 piece
+            new PiecePicker(bitfield, BlockSize, PieceSize, TotalSize),
             bitfield,
             new DataStatistics(4),
             TimeSpan.Zero,
@@ -135,8 +149,8 @@ public class RequestSchedulerTests
     )
     {
         var logger = NullLogger.Instance;
-        var seederBitfield = new Bitfield(1, true);
-        var bitfield = new Bitfield(1, false);
+        var seederBitfield = new Bitfield(PiecesCount, true);
+        var bitfield = new Bitfield(PiecesCount, false);
         await using var seederPeerConnection = new FakePeerConnection(bitfield, seederBitfield);
         await using var seederPeerConnection2 = new FakePeerConnection(bitfield, seederBitfield);
         await using var seederPeerConnection3 = new FakePeerConnection(bitfield, seederBitfield);
@@ -153,7 +167,7 @@ public class RequestSchedulerTests
                 [seederPeerConnection2.PeerEndpoint] = seederPeerConnection2,
                 [seederPeerConnection3.PeerEndpoint] = seederPeerConnection3,
             },
-            new PiecePicker(bitfield, 16 * 1024, 16 * 1024 * 4, 16 * 1024 * 4), //whole file is 4 blocks and 1 piece
+            new PiecePicker(bitfield, BlockSize, PieceSize, TotalSize),
             bitfield,
             new DataStatistics(4),
             TimeSpan.Zero,
@@ -162,16 +176,34 @@ public class RequestSchedulerTests
             logger
         );
 
+        using var sentDipose = seederPeerConnection.SentRequests.SubscribeAwait(
+            async (i, ct) =>
+            {
+                var array = ArrayPool<byte>.Shared.Rent(i.Length);
+                var rentedArray = new RentedArray<byte>(array, i.Length);
+                await requestScheduler.ReceiveBlockAsync(
+                    new Block(i.Index, i.Begin, rentedArray, seederPeerConnection),
+                    ct
+                );
+            }
+        );
+
         var requestTask = requestScheduler.StartAsync(cancellationToken);
         var countTask = Task.WhenAll(
-            seederPeerConnection.SentRequests.Take(4).CountAsync(cancellationToken),
-            seederPeerConnection2.SentRequests.Take(4).CountAsync(cancellationToken),
-            seederPeerConnection3.SentRequests.Take(4).CountAsync(cancellationToken)
+            seederPeerConnection
+                .SentRequests.Take(PieceSize / BlockSize)
+                .CountAsync(cancellationToken),
+            seederPeerConnection2
+                .SentRequests.Take(PieceSize / BlockSize)
+                .CountAsync(cancellationToken),
+            seederPeerConnection3
+                .SentRequests.Take(PieceSize / BlockSize)
+                .CountAsync(cancellationToken)
         );
         requestScheduler.TryRequest(seederPeerConnection);
 
         await countTask.ShouldNotThrowAsync();
         countTask.Status.ShouldBe(TaskStatus.RanToCompletion);
-        bitfield.IsComplete.ShouldBeFalse();
+        bitfield.IsComplete.ShouldBeTrue();
     }
 }
