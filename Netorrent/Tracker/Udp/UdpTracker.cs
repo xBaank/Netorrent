@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Threading.Channels;
 using Netorrent.Exceptions;
 using Netorrent.Extensions;
@@ -97,35 +97,13 @@ internal class UdpTracker(
         CancellationToken cancellationToken
     )
     {
+        var (_, request) = await BuildRequestAsync(iPEndPoint, @event, cancellationToken)
+            .ConfigureAwait(false);
+
         try
         {
-            var connectionId = udpTrackerHandler.GetConnectionIdOrNull(_trackerId);
-
-            if (connectionId is null || udpTrackerHandler.IsOutdated(connectionId.Value))
-            {
-                var response = await udpTrackerHandler
-                    .ConnectAsync(iPEndPoint, _trackerId, cancellationToken)
-                    .ConfigureAwait(false);
-
-                connectionId = response.ConnectionId;
-            }
-
-            var updRequest = new UdpTrackerRequest(
-                iPEndPoint,
-                infoHash,
-                peerId,
-                transfer.Downloaded.Bytes,
-                transfer.Uploaded.Bytes,
-                transfer.Left.Bytes,
-                @event,
-                (ushort)port,
-                ConnectionId: connectionId.Value,
-                TransactionId: udpTrackerHandler.MakeTransactionId(),
-                NumWant: 200
-            );
-
             return await udpTrackerHandler
-                .SendAndReceiveAsync<UdpTrackerResponse>(updRequest, _trackerId, cancellationToken)
+                .SendAndReceiveAsync<UdpTrackerResponse>(request, _trackerId, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -144,35 +122,13 @@ internal class UdpTracker(
         CancellationToken cancellationToken
     )
     {
+        var (_, request) = await BuildRequestAsync(iPEndPoint, @event, cancellationToken)
+            .ConfigureAwait(false);
+
         try
         {
-            var connectionId = udpTrackerHandler.GetConnectionIdOrNull(_trackerId);
-
-            if (connectionId is null || udpTrackerHandler.IsOutdated(connectionId.Value))
-            {
-                var response = await udpTrackerHandler
-                    .ConnectAsync(iPEndPoint, _trackerId, cancellationToken)
-                    .ConfigureAwait(false);
-
-                connectionId = response.ConnectionId;
-            }
-
-            var updRequest = new UdpTrackerRequest(
-                iPEndPoint,
-                infoHash,
-                peerId,
-                transfer.Downloaded.Bytes,
-                transfer.Uploaded.Bytes,
-                transfer.Left.Bytes,
-                @event,
-                (ushort)port,
-                ConnectionId: connectionId.Value,
-                TransactionId: udpTrackerHandler.MakeTransactionId(),
-                NumWant: 200
-            );
-
             await udpTrackerHandler
-                .SendAsync(updRequest, _trackerId, cancellationToken)
+                .SendAsync(request, _trackerId, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -183,6 +139,40 @@ internal class UdpTracker(
         {
             throw new AnnounceException(ex.Message);
         }
+    }
+
+    private async Task<(long ConnectionId, UdpTrackerRequest Request)> BuildRequestAsync(
+        IPEndPoint iPEndPoint,
+        string? @event,
+        CancellationToken cancellationToken
+    )
+    {
+        var connectionId = udpTrackerHandler.GetConnectionIdOrNull(_trackerId);
+
+        if (connectionId is null || udpTrackerHandler.IsOutdated(connectionId.Value))
+        {
+            var response = await udpTrackerHandler
+                .ConnectAsync(iPEndPoint, _trackerId, cancellationToken)
+                .ConfigureAwait(false);
+
+            connectionId = response.ConnectionId;
+        }
+
+        var updRequest = new UdpTrackerRequest(
+            iPEndPoint,
+            infoHash,
+            peerId,
+            transfer.Downloaded.Bytes,
+            transfer.Uploaded.Bytes,
+            transfer.Left.Bytes,
+            @event,
+            (ushort)port,
+            ConnectionId: connectionId.Value,
+            TransactionId: udpTrackerHandler.MakeTransactionId(),
+            NumWant: 200
+        );
+
+        return (connectionId.Value, updRequest);
     }
 
     public async ValueTask StopAsync(CancellationToken cancellationToken)
