@@ -13,7 +13,12 @@ namespace Netorrent.Tracker.Udp
         long? GetConnectionIdOrNull(Guid trackerId);
         bool IsOutdated(long connectionId);
         int MakeTransactionId();
-        Task<T> SendAsync<T>(
+        Task SendAsync(
+            IUdpTrackerSendPacket packet,
+            Guid trackerId,
+            CancellationToken cancellationToken
+        );
+        Task<T> SendAndReceiveAsync<T>(
             IUdpTrackerSendPacket packet,
             Guid trackerId,
             CancellationToken cancellationToken

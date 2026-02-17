@@ -74,7 +74,11 @@ public class UdpTrackerHandlerTests
             Random.Shared.Next()
         );
 
-        var sendTask = manager.SendAsync<UdpTrackerResponse>(request, trackerId, cancellationToken);
+        var sendTask = manager.SendAndReceiveAsync<UdpTrackerResponse>(
+            request,
+            trackerId,
+            cancellationToken
+        );
 
         var udpTrackerResponse = new UdpTrackerResponse(
             request.TransactionId,
@@ -140,7 +144,11 @@ public class UdpTrackerHandlerTests
             Random.Shared.Next()
         );
 
-        var sendTask = manager.SendAsync<UdpTrackerResponse>(request, trackerId, cancellationToken);
+        var sendTask = manager.SendAndReceiveAsync<UdpTrackerResponse>(
+            request,
+            trackerId,
+            cancellationToken
+        );
 
         var udpTrackerErrorResponse = new UdpTrackerErrorResponse(
             request.TransactionId,
@@ -197,7 +205,11 @@ public class UdpTrackerHandlerTests
             Random.Shared.Next()
         );
 
-        var sendTask = manager.SendAsync<UdpTrackerResponse>(request, trackerId, cancellationToken);
+        var sendTask = manager.SendAndReceiveAsync<UdpTrackerResponse>(
+            request,
+            trackerId,
+            cancellationToken
+        );
 
         conenctResult.TransactionId.ShouldBe(transactionId);
         conenctResult.ConnectionId.ShouldBe(connectionid);
@@ -253,7 +265,11 @@ public class UdpTrackerHandlerTests
 
         //Send a request that with no connection id (is outdated) and get the 2 first sent packets (udp request and udp connection request)
         var sentPacketsTask = fakeUdp.OnSent.Take(2).ToListAsync(cancellationToken);
-        var sendTask = manager.SendAsync<UdpTrackerResponse>(request, trackerId, cancellationToken);
+        var sendTask = manager.SendAndReceiveAsync<UdpTrackerResponse>(
+            request,
+            trackerId,
+            cancellationToken
+        );
         var sentPackets = await sentPacketsTask;
         var transactionId = BinaryPrimitives.ReadInt32BigEndian(sentPackets[1].Span[12..]);
         //Set the response to the udp connection request once its made

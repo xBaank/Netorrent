@@ -15,6 +15,7 @@ internal class UdpTrackerHandler : IUdpTrackerHandler
     private readonly ConcurrentDictionary<int, TrackerTransaction> _packetsByTransactionId = [];
     private readonly ConcurrentDictionary<long, DateTime> _connectionCreationById = [];
     private readonly ConcurrentDictionary<Guid, long> _connectionIdByTracker = [];
+    private readonly List<Task> _reconnectTasks = [];
     private readonly IUdpClient _udpClient;
     private readonly ILogger _logger;
     private readonly TimeSpan _retryDelay;
@@ -159,7 +160,13 @@ internal class UdpTrackerHandler : IUdpTrackerHandler
                     {
                         if (IsOutdated(udpTrackerRequest.ConnectionId))
                         {
-                            _ = ReconnectAsync(transaction, udpTrackerRequest, cancellationToken);
+                            if (_reconnectTasks.Count >= 100)
+                            {
+                                _reconnectTasks.RemoveAll(i => i.IsCompleted);
+                            }
+                            _reconnectTasks.Add(
+                                ReconnectAsync(transaction, udpTrackerRequest, cancellationToken)
+                            );
                             continue;
                         }
                     }
@@ -246,7 +253,20 @@ internal class UdpTrackerHandler : IUdpTrackerHandler
         return true;
     }
 
-    public async Task<T> SendAsync<T>(
+    public async Task SendAsync(
+        IUdpTrackerSendPacket packet,
+        Guid trackerId,
+        CancellationToken cancellationToken
+    )
+    {
+        using var payload = packet.ToMemoryRented();
+
+        await _udpClient
+            .SendAsync(payload.Memory, packet.IPEndPoint, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<T> SendAndReceiveAsync<T>(
         IUdpTrackerSendPacket packet,
         Guid trackerId,
         CancellationToken cancellationToken
@@ -302,7 +322,7 @@ internal class UdpTrackerHandler : IUdpTrackerHandler
         CancellationToken cancellationToken
     )
     {
-        var connectResponse = await SendAsync<UdpTrackerConnectResponse>(
+        var connectResponse = await SendAndReceiveAsync<UdpTrackerConnectResponse>(
                 new UdpTrackerConnectRequest(endPoint, MakeTransactionId()),
                 trackerId,
                 cancellationToken
@@ -319,7 +339,7 @@ internal class UdpTrackerHandler : IUdpTrackerHandler
             _cancellationTokenSource?.Cancel();
             try
             {
-                await _runTask.ConfigureAwait(false);
+                await Task.WhenAll([.. _reconnectTasks, _runTask]).ConfigureAwait(false);
             }
             catch { }
             _packetsByTransactionId.Clear();

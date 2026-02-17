@@ -47,7 +47,7 @@ internal sealed class FakeUdpTrackerTransactionManager(
         return Interlocked.Increment(ref _transactionId);
     }
 
-    public Task<T> SendAsync<T>(
+    public Task<T> SendAndReceiveAsync<T>(
         IUdpTrackerSendPacket packet,
         Guid trackerId,
         CancellationToken cancellationToken
@@ -74,4 +74,10 @@ internal sealed class FakeUdpTrackerTransactionManager(
         _connections.Clear();
         return ValueTask.CompletedTask;
     }
+
+    public Task SendAsync(
+        IUdpTrackerSendPacket packet,
+        Guid trackerId,
+        CancellationToken cancellationToken
+    ) => Task.CompletedTask;
 }

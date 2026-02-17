@@ -29,7 +29,7 @@ internal class UdpTracker(
     {
         await ConnectAsync(iPEndPoint, cancellationToken).ConfigureAwait(false);
 
-        _lastResponse = await AnnounceAsync(
+        _lastResponse = await AnnounceAndReceiveAsync(
                 iPEndPoint,
                 @event: myBitfield.IsComplete ? Events.Completed : Events.Started,
                 cancellationToken: cancellationToken
@@ -41,7 +41,7 @@ internal class UdpTracker(
             {
                 if (myBitfield.IsComplete)
                 {
-                    _lastResponse = await AnnounceAsync(
+                    _lastResponse = await AnnounceAndReceiveAsync(
                             iPEndPoint,
                             @event: Events.Completed,
                             cancellationToken: cancellationToken
@@ -62,7 +62,7 @@ internal class UdpTracker(
             var interval = _lastResponse.Interval.Seconds;
             await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
 
-            var newResponse = await AnnounceAsync(iPEndPoint, null, cancellationToken)
+            var newResponse = await AnnounceAndReceiveAsync(iPEndPoint, null, cancellationToken)
                 .ConfigureAwait(false);
 
             _lastResponse = newResponse;
@@ -91,7 +91,7 @@ internal class UdpTracker(
         }
     }
 
-    public async Task<UdpTrackerResponse> AnnounceAsync(
+    public async Task<UdpTrackerResponse> AnnounceAndReceiveAsync(
         IPEndPoint iPEndPoint,
         string? @event,
         CancellationToken cancellationToken
@@ -125,7 +125,54 @@ internal class UdpTracker(
             );
 
             return await udpTrackerHandler
-                .SendAsync<UdpTrackerResponse>(updRequest, _trackerId, cancellationToken)
+                .SendAndReceiveAsync<UdpTrackerResponse>(updRequest, _trackerId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new AnnounceException(ex.Message);
+        }
+    }
+
+    public async Task AnnounceAsync(
+        IPEndPoint iPEndPoint,
+        string? @event,
+        CancellationToken cancellationToken
+    )
+    {
+        try
+        {
+            var connectionId = udpTrackerHandler.GetConnectionIdOrNull(_trackerId);
+
+            if (connectionId is null || udpTrackerHandler.IsOutdated(connectionId.Value))
+            {
+                var response = await udpTrackerHandler
+                    .ConnectAsync(iPEndPoint, _trackerId, cancellationToken)
+                    .ConfigureAwait(false);
+
+                connectionId = response.ConnectionId;
+            }
+
+            var updRequest = new UdpTrackerRequest(
+                iPEndPoint,
+                infoHash,
+                peerId,
+                transfer.Downloaded.Bytes,
+                transfer.Uploaded.Bytes,
+                transfer.Left.Bytes,
+                @event,
+                (ushort)port,
+                ConnectionId: connectionId.Value,
+                TransactionId: udpTrackerHandler.MakeTransactionId(),
+                NumWant: 200
+            );
+
+            await udpTrackerHandler
+                .SendAsync(updRequest, _trackerId, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -142,8 +189,8 @@ internal class UdpTracker(
     {
         if (iPEndPoint is not null && _lastResponse is not null)
         {
-            //Udp tracker don't respond to stop so there is no point in awaiting as it will never complete
-            _ = AnnounceAsync(iPEndPoint, Events.Stopped, cancellationToken);
+            await AnnounceAsync(iPEndPoint, Events.Stopped, cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 }
