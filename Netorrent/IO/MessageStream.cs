@@ -1,4 +1,4 @@
-﻿using System.Buffers;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.IO.Pipelines;
 using System.Threading.Channels;
@@ -50,11 +50,6 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
         CancellationToken cancellationToken
     )
     {
-        var reader = PipeReader.Create(
-            stream,
-            new StreamPipeReaderOptions(bufferSize: 32 * 1024, leaveOpen: true)
-        );
-
         if (_receiveCts is null || !_receiveCts.TryReset())
         {
             _receiveCts?.Dispose();
@@ -67,40 +62,21 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
         {
             while (true)
             {
-                ReadResult result = await reader.ReadAsync(token).ConfigureAwait(false);
+                ReadResult result = await _reader.ReadAsync(token).ConfigureAwait(false);
                 ReadOnlySequence<byte> buffer = result.Buffer;
 
                 try
                 {
-                    var messageReceived = false;
-                    // Process all messages from the buffer, modifying the input buffer on each
-                    // iteration.
                     while (TryParseMessage(ref buffer, out var item))
                     {
                         using var message = item;
                         await messageHandler(message, cancellationToken).ConfigureAwait(false);
-                        messageReceived = true;
                     }
 
-                    if (messageReceived)
-                    {
-                        if (_receiveCts is null || !_receiveCts.TryReset())
-                        {
-                            _receiveCts?.Dispose();
-                            _receiveCts = CancellationTokenSource.CreateLinkedTokenSource(
-                                cancellationToken
-                            );
-                        }
-                        _receiveCts?.CancelAfter(timeout);
-                        token = _receiveCts?.Token ?? cancellationToken;
-                    }
-
-                    // There's no more data to be processed.
                     if (result.IsCompleted)
                     {
                         if (buffer.Length > 0)
                         {
-                            // The message is incomplete and there's no more data to process.
                             throw new EndOfStreamException("Incomplete message.");
                         }
                         break;
@@ -108,15 +84,23 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
                 }
                 finally
                 {
-                    // Since all messages in the buffer are being processed, you can use the
-                    // remaining buffer's Start and End position to determine consumed and examined.
-                    reader.AdvanceTo(buffer.Start, buffer.End);
+                    _reader.AdvanceTo(buffer.Start, buffer.End);
                 }
+
+                if (_receiveCts is null || !_receiveCts.TryReset())
+                {
+                    _receiveCts?.Dispose();
+                    _receiveCts = CancellationTokenSource.CreateLinkedTokenSource(
+                        cancellationToken
+                    );
+                }
+                _receiveCts?.CancelAfter(timeout);
+                token = _receiveCts?.Token ?? cancellationToken;
             }
         }
         finally
         {
-            await reader.CompleteAsync();
+            await _reader.CompleteAsync();
         }
     }
 
