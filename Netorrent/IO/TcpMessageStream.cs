@@ -1,5 +1,4 @@
 ﻿using System.Net.Sockets;
-using System.Threading.Channels;
 using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 
@@ -15,9 +14,6 @@ internal class TcpMessageStream(TcpClient tcpClient, Handshake handshake) : IMes
         PEER_TIMEOUT_SECONDS.Seconds
     );
 
-    public ChannelReader<Message> IncomingMessages => stream.IncomingMessages;
-
-    public ChannelWriter<Message> OutgoingMessages => stream.OutgoingMessages;
     public Handshake Handshake => stream.Handshake;
 
     public async ValueTask DisposeAsync()
@@ -26,6 +22,11 @@ internal class TcpMessageStream(TcpClient tcpClient, Handshake handshake) : IMes
         tcpClient.Dispose();
     }
 
-    public Task StartAsync(CancellationToken cancellationToken) =>
-        stream.StartAsync(cancellationToken);
+    public ValueTask SendAsync(Message message, CancellationToken cancellationToken) =>
+        stream.SendAsync(message, cancellationToken);
+
+    public Task StartAsync(MessageHandler messageHandler, CancellationToken cancellationToken) =>
+        stream.StartAsync(messageHandler, cancellationToken);
+
+    public bool TrySend(Message message) => stream.TrySend(message);
 }

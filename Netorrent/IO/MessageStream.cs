@@ -10,17 +10,16 @@ namespace Netorrent.IO;
 
 internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeout) : IMessageStream
 {
-    private readonly Channel<Message> _incomingMessages = Channel.CreateBounded<Message>(
-        new BoundedChannelOptions(128) { SingleWriter = true, SingleReader = true }
-    );
     private readonly Channel<Message> _outgoingMessages = Channel.CreateBounded<Message>(
         new BoundedChannelOptions(128) { SingleWriter = false, SingleReader = true }
     );
 
-    public Handshake Handshake => handshake;
+    private readonly PipeReader _reader = PipeReader.Create(
+        stream,
+        new StreamPipeReaderOptions(bufferSize: 32 * 1024, leaveOpen: true)
+    );
 
-    public ChannelReader<Message> IncomingMessages => _incomingMessages.Reader;
-    public ChannelWriter<Message> OutgoingMessages => _outgoingMessages.Writer;
+    public Handshake Handshake => handshake;
 
     private readonly byte[] _lengthBuffer = new byte[4];
     private readonly byte[] _idBuffer = new byte[1];
@@ -29,7 +28,7 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
     private CancellationTokenSource? _cancellationTokenSource;
     private Task? _runTask;
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public Task StartAsync(MessageHandler messageHandler, CancellationToken cancellationToken)
     {
         if (_runTask is not null)
         {
@@ -40,13 +39,16 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
             cancellationToken
         );
         _runTask = _cancellationTokenSource.CancelOnFirstCompletionAndAwaitAllAsync([
-            ReadLoopAsync(_cancellationTokenSource.Token),
+            ReadLoopAsync(messageHandler, _cancellationTokenSource.Token),
             WriteLoopAsync(_cancellationTokenSource.Token),
         ]);
         return _runTask;
     }
 
-    private async Task ReadLoopAsync(CancellationToken cancellationToken)
+    private async Task ReadLoopAsync(
+        MessageHandler messageHandler,
+        CancellationToken cancellationToken
+    )
     {
         var reader = PipeReader.Create(
             stream,
@@ -73,11 +75,10 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
                     var messageReceived = false;
                     // Process all messages from the buffer, modifying the input buffer on each
                     // iteration.
-                    while (TryParseMessage(ref buffer, out Message message))
+                    while (TryParseMessage(ref buffer, out var item))
                     {
-                        await _incomingMessages
-                            .Writer.WriteOrDisposeAsync(message, cancellationToken)
-                            .ConfigureAwait(false);
+                        using var message = item;
+                        await messageHandler(message, cancellationToken).ConfigureAwait(false);
                         messageReceived = true;
                     }
 
@@ -118,6 +119,13 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
             await reader.CompleteAsync();
         }
     }
+
+    public async ValueTask SendAsync(Message message, CancellationToken cancellationToken) =>
+        await _outgoingMessages
+            .Writer.WriteOrDisposeAsync(message, cancellationToken)
+            .ConfigureAwait(false);
+
+    public bool TrySend(Message message) => _outgoingMessages.Writer.TryWriteOrDispose(message);
 
     private bool TryParseMessage(ref ReadOnlySequence<byte> buffer, out Message message)
     {
@@ -206,10 +214,6 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
 
     private async ValueTask DrainChannelsAsync()
     {
-        await foreach (var item in _incomingMessages.Reader.ReadAllAsync().ConfigureAwait(false))
-        {
-            item.Dispose();
-        }
         await foreach (var item in _outgoingMessages.Reader.ReadAllAsync().ConfigureAwait(false))
         {
             item.Dispose();
@@ -220,7 +224,6 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
     {
         _cancellationTokenSource?.Cancel();
         await stream.DisposeAsync().ConfigureAwait(false);
-        _incomingMessages.Writer.TryComplete();
         _outgoingMessages.Writer.TryComplete();
         try
         {
@@ -231,7 +234,6 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
         }
         catch { }
         await DrainChannelsAsync().ConfigureAwait(false);
-        await _incomingMessages.Reader.Completion;
         await _outgoingMessages.Reader.Completion;
         _receiveCts?.Dispose();
         _sendCts?.Dispose();

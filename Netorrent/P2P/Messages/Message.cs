@@ -160,7 +160,8 @@ internal readonly record struct Message(byte Id, RentedArray<byte>? Payload) : I
         return new Message(Piece, new RentedArray<byte>(memoryOwner, buffer.Length));
     }
 
-    public static Message CreateBitfield(RentedArray<byte> bitfield) => new(Bitfield, bitfield);
+    public static Message CreateBitfield(RentedArray<byte> bitfieldArray) =>
+        new(Bitfield, bitfieldArray);
 
     public static Message CreateChoke() => new(Choke, null);
 

@@ -8,10 +8,8 @@ internal class FakeRequestScheduler : IRequestScheduler
 {
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-    public ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken)
-    {
-        throw new NotImplementedException();
-    }
+    public ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken) =>
+        ValueTask.CompletedTask;
 
     public Task StartAsync(CancellationToken cancellationToken) =>
         Task.Delay(-1, cancellationToken);

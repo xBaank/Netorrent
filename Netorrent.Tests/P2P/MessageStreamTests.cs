@@ -14,14 +14,32 @@ namespace Netorrent.Tests.P2P;
 [Timeout(5_000)]
 internal class MessageStreamTests
 {
+    static Message Clone(Message message)
+    {
+        if (message.Payload is null)
+        {
+            return message;
+        }
+
+        var array = ArrayPool<byte>.Shared.Rent(message.Payload.Length);
+        message.Payload.Memory.CopyTo(array);
+        return message with { Payload = new RentedArray<byte>(array, message.Payload.Length) };
+    }
+
     static PeerId PeerId => new();
     static byte[] InfoHash => new byte[20];
 
     [Test]
     public async Task Should_Receive_Choke(CancellationToken cancellationToken)
     {
+        Subject<Message> messages = new();
+        async ValueTask messageHandler(Message message, CancellationToken ct)
+        {
+            messages.OnNext(message);
+        }
         using var message = Message.CreateChoke();
         using var rawData = message.ToRentedArray();
+        var receviedTask = messages.FirstAsync(cancellationToken);
 
         await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
@@ -33,8 +51,9 @@ internal class MessageStreamTests
             120.Seconds
         );
 
-        _ = messageStream.StartAsync(cancellationToken);
-        using var received = await messageStream.IncomingMessages.ReadAsync(cancellationToken);
+        _ = messageStream.StartAsync(messageHandler, cancellationToken);
+        using var received = await receviedTask;
+
         received.Payload.ShouldBeNull();
         received.Id.ShouldBe(Message.Choke);
     }
@@ -42,6 +61,7 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Send_Choke(CancellationToken cancellationToken)
     {
+        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
         using var message = Message.CreateChoke();
         using var expectedData = message.ToRentedArray();
 
@@ -53,8 +73,8 @@ internal class MessageStreamTests
         );
 
         var itemTask = memoryStream.WrittenData.FirstAsync(cancellationToken);
-        await messageStream.OutgoingMessages.WriteAsync(message, cancellationToken);
-        _ = messageStream.StartAsync(cancellationToken);
+        await messageStream.SendAsync(message, cancellationToken);
+        _ = messageStream.StartAsync(messageHandler, cancellationToken);
 
         var item = await itemTask;
         item.Span.SequenceEqual(expectedData.Memory.Span).ShouldBeTrue();
@@ -63,8 +83,14 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Receive_Unchoke(CancellationToken cancellationToken)
     {
+        Subject<Message> messages = new();
+        async ValueTask messageHandler(Message message, CancellationToken ct)
+        {
+            messages.OnNext(message);
+        }
         using var message = Message.CreateUnchoke();
         using var rawData = message.ToRentedArray();
+        var messageTask = messages.FirstAsync(cancellationToken);
 
         await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
@@ -76,8 +102,9 @@ internal class MessageStreamTests
             120.Seconds
         );
 
-        _ = messageStream.StartAsync(cancellationToken);
-        using var received = await messageStream.IncomingMessages.ReadAsync(cancellationToken);
+        _ = messageStream.StartAsync(messageHandler, cancellationToken);
+        using var received = await messageTask;
+
         received.Payload.ShouldBeNull();
         received.Id.ShouldBe(Message.Unchoke);
     }
@@ -85,6 +112,7 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Send_Unchoke(CancellationToken cancellationToken)
     {
+        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
         using var message = Message.CreateUnchoke();
         using var expectedData = message.ToRentedArray();
 
@@ -96,8 +124,8 @@ internal class MessageStreamTests
         );
 
         var itemTask = memoryStream.WrittenData.FirstAsync(cancellationToken);
-        await messageStream.OutgoingMessages.WriteAsync(message, cancellationToken);
-        _ = messageStream.StartAsync(cancellationToken);
+        await messageStream.SendAsync(message, cancellationToken);
+        _ = messageStream.StartAsync(messageHandler, cancellationToken);
 
         var item = await itemTask;
         item.Span.SequenceEqual(expectedData.Memory.Span).ShouldBeTrue();
@@ -106,8 +134,14 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Receive_Interested(CancellationToken cancellationToken)
     {
+        Subject<Message> messages = new();
+        async ValueTask messageHandler(Message message, CancellationToken ct)
+        {
+            messages.OnNext(message);
+        }
         using var message = Message.CreateInterested();
         using var rawData = message.ToRentedArray();
+        var messageTask = messages.FirstAsync(cancellationToken);
 
         await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
@@ -119,8 +153,9 @@ internal class MessageStreamTests
             120.Seconds
         );
 
-        _ = messageStream.StartAsync(cancellationToken);
-        using var received = await messageStream.IncomingMessages.ReadAsync(cancellationToken);
+        _ = messageStream.StartAsync(messageHandler, cancellationToken);
+        using var received = await messageTask;
+
         received.Payload.ShouldBeNull();
         received.Id.ShouldBe(Message.Interested);
     }
@@ -128,6 +163,7 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Send_Interested(CancellationToken cancellationToken)
     {
+        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
         using var message = Message.CreateInterested();
         using var expectedData = message.ToRentedArray();
 
@@ -139,8 +175,8 @@ internal class MessageStreamTests
         );
 
         var itemTask = memoryStream.WrittenData.FirstAsync(cancellationToken);
-        await messageStream.OutgoingMessages.WriteAsync(message, cancellationToken);
-        _ = messageStream.StartAsync(cancellationToken);
+        await messageStream.SendAsync(message, cancellationToken);
+        _ = messageStream.StartAsync(messageHandler, cancellationToken);
 
         var item = await itemTask;
         item.Span.SequenceEqual(expectedData.Memory.Span).ShouldBeTrue();
@@ -149,8 +185,14 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Receive_NotInterested(CancellationToken cancellationToken)
     {
+        Subject<Message> messages = new();
+        async ValueTask messageHandler(Message message, CancellationToken ct)
+        {
+            messages.OnNext(message);
+        }
         using var message = Message.CreateNotInterested();
         using var rawData = message.ToRentedArray();
+        var messageTask = messages.FirstAsync(cancellationToken);
 
         await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
@@ -162,8 +204,9 @@ internal class MessageStreamTests
             120.Seconds
         );
 
-        _ = messageStream.StartAsync(cancellationToken);
-        using var received = await messageStream.IncomingMessages.ReadAsync(cancellationToken);
+        _ = messageStream.StartAsync(messageHandler, cancellationToken);
+        using var received = await messageTask;
+
         received.Payload.ShouldBeNull();
         received.Id.ShouldBe(Message.NotInterested);
     }
@@ -171,6 +214,7 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Send_NotInterested(CancellationToken cancellationToken)
     {
+        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
         using var message = Message.CreateNotInterested();
         using var expectedData = message.ToRentedArray();
 
@@ -182,8 +226,8 @@ internal class MessageStreamTests
         );
 
         var itemTask = memoryStream.WrittenData.FirstAsync(cancellationToken);
-        await messageStream.OutgoingMessages.WriteAsync(message, cancellationToken);
-        _ = messageStream.StartAsync(cancellationToken);
+        await messageStream.SendAsync(message, cancellationToken);
+        _ = messageStream.StartAsync(messageHandler, cancellationToken);
 
         var item = await itemTask;
         item.Span.SequenceEqual(expectedData.Memory.Span).ShouldBeTrue();
@@ -192,9 +236,15 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Receive_Have(CancellationToken cancellationToken)
     {
+        Subject<Message> messages = new();
+        async ValueTask messageHandler(Message message, CancellationToken ct)
+        {
+            messages.OnNext(Clone(message));
+        }
         const int pieceIndex = 42;
         using var message = Message.CreateHave(pieceIndex);
         using var rawData = message.ToRentedArray();
+        var messageTask = messages.FirstAsync(cancellationToken);
 
         await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
@@ -206,8 +256,8 @@ internal class MessageStreamTests
             120.Seconds
         );
 
-        _ = messageStream.StartAsync(cancellationToken);
-        using var received = await messageStream.IncomingMessages.ReadAsync(cancellationToken);
+        _ = messageStream.StartAsync(messageHandler, cancellationToken);
+        using var received = await messageTask;
         received.Payload.ShouldNotBeNull();
         received.Id.ShouldBe(Message.Have);
 
@@ -218,6 +268,7 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Send_Have(CancellationToken cancellationToken)
     {
+        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
         using var message = Message.CreateHave(1);
         using var expectedData = message.ToRentedArray();
 
@@ -229,8 +280,8 @@ internal class MessageStreamTests
         );
 
         var itemTask = memoryStream.WrittenData.FirstAsync(cancellationToken);
-        await messageStream.OutgoingMessages.WriteAsync(message, cancellationToken);
-        _ = messageStream.StartAsync(cancellationToken);
+        await messageStream.SendAsync(message, cancellationToken);
+        _ = messageStream.StartAsync(messageHandler, cancellationToken);
 
         var item = await itemTask;
         item.Span.SequenceEqual(expectedData.Memory.Span).ShouldBeTrue();
@@ -239,6 +290,11 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Receive_Bitfield(CancellationToken cancellationToken)
     {
+        Subject<Message> messages = new();
+        async ValueTask messageHandler(Message message, CancellationToken ct)
+        {
+            messages.OnNext(Clone(message));
+        }
         var bitfield = new Bitfield(5, true);
         using var bitfieldData = bitfield.ToRentedArray();
         using var message = Message.CreateBitfield(bitfieldData);
@@ -247,6 +303,7 @@ internal class MessageStreamTests
         await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
         await memoryStream.FlushAsync(cancellationToken);
+        var messageTask = messages.FirstAsync(cancellationToken);
 
         await using var messageStream = new MessageStream(
             memoryStream,
@@ -254,8 +311,8 @@ internal class MessageStreamTests
             120.Seconds
         );
 
-        _ = messageStream.StartAsync(cancellationToken);
-        using var received = await messageStream.IncomingMessages.ReadAsync(cancellationToken);
+        _ = messageStream.StartAsync(messageHandler, cancellationToken);
+        using var received = await messageTask;
         received.Payload.ShouldNotBeNull();
         received.Id.ShouldBe(Message.Bitfield);
 
@@ -266,6 +323,7 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Send_Bitfield(CancellationToken cancellationToken)
     {
+        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
         var bitfield = new Bitfield(5, true);
         using var bitfieldData = bitfield.ToRentedArray();
         using var message = Message.CreateBitfield(bitfieldData);
@@ -279,8 +337,8 @@ internal class MessageStreamTests
         );
 
         var itemTask = memoryStream.WrittenData.FirstAsync(cancellationToken);
-        await messageStream.OutgoingMessages.WriteAsync(message, cancellationToken);
-        _ = messageStream.StartAsync(cancellationToken);
+        await messageStream.SendAsync(message, cancellationToken);
+        _ = messageStream.StartAsync(messageHandler, cancellationToken);
 
         var item = await itemTask;
         item.Span.SequenceEqual(expectedData.Memory.Span).ShouldBeTrue();
@@ -289,11 +347,17 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Receive_Request(CancellationToken cancellationToken)
     {
+        Subject<Message> messages = new();
+        async ValueTask messageHandler(Message message, CancellationToken ct)
+        {
+            messages.OnNext(Clone(message));
+        }
         const int index = 1;
         const int begin = 16384;
         const int length = 16384;
         using var message = Message.CreateRequest(index, begin, length);
         using var rawData = message.ToRentedArray();
+        var messageTask = messages.FirstAsync(cancellationToken);
 
         await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
@@ -305,8 +369,8 @@ internal class MessageStreamTests
             120.Seconds
         );
 
-        _ = messageStream.StartAsync(cancellationToken);
-        using var received = await messageStream.IncomingMessages.ReadAsync(cancellationToken);
+        _ = messageStream.StartAsync(messageHandler, cancellationToken);
+        using var received = await messageTask;
         received.Payload.ShouldNotBeNull();
         received.Id.ShouldBe(Message.Request);
         received.Payload!.Length.ShouldBe(12);
@@ -320,6 +384,7 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Send_Request(CancellationToken cancellationToken)
     {
+        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
         const int index = 1;
         const int begin = 16384;
         const int length = 16384;
@@ -334,8 +399,8 @@ internal class MessageStreamTests
         );
 
         var itemTask = memoryStream.WrittenData.FirstAsync(cancellationToken);
-        await messageStream.OutgoingMessages.WriteAsync(message, cancellationToken);
-        _ = messageStream.StartAsync(cancellationToken);
+        await messageStream.SendAsync(message, cancellationToken);
+        _ = messageStream.StartAsync(messageHandler, cancellationToken);
 
         var item = await itemTask;
         item.Span.SequenceEqual(expectedData.Memory.Span).ShouldBeTrue();
@@ -344,11 +409,17 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Receive_Cancel(CancellationToken cancellationToken)
     {
+        Subject<Message> messages = new();
+        async ValueTask messageHandler(Message message, CancellationToken ct)
+        {
+            messages.OnNext(Clone(message));
+        }
         const int index = 2;
         const int begin = 32768;
         const int length = 8192;
         using var message = Message.CreateCancel(index, begin, length);
         using var rawData = message.ToRentedArray();
+        var messageTask = messages.FirstAsync(cancellationToken);
 
         await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
@@ -360,8 +431,8 @@ internal class MessageStreamTests
             120.Seconds
         );
 
-        _ = messageStream.StartAsync(cancellationToken);
-        using var received = await messageStream.IncomingMessages.ReadAsync(cancellationToken);
+        _ = messageStream.StartAsync(messageHandler, cancellationToken);
+        using var received = await messageTask;
         received.Payload.ShouldNotBeNull();
         received.Id.ShouldBe(Message.Cancel);
         received.Payload!.Length.ShouldBe(12);
@@ -375,6 +446,7 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Send_Cancel(CancellationToken cancellationToken)
     {
+        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
         const int index = 1;
         const int begin = 16384;
         const int length = 16384;
@@ -389,8 +461,8 @@ internal class MessageStreamTests
         );
 
         var itemTask = memoryStream.WrittenData.FirstAsync(cancellationToken);
-        await messageStream.OutgoingMessages.WriteAsync(message, cancellationToken);
-        _ = messageStream.StartAsync(cancellationToken);
+        await messageStream.SendAsync(message, cancellationToken);
+        _ = messageStream.StartAsync(messageHandler, cancellationToken);
 
         var item = await itemTask;
         item.Span.SequenceEqual(expectedData.Memory.Span).ShouldBeTrue();
@@ -399,6 +471,11 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Receive_Piece(CancellationToken cancellationToken)
     {
+        Subject<Message> messages = new();
+        async ValueTask messageHandler(Message message, CancellationToken ct)
+        {
+            messages.OnNext(Clone(message));
+        }
         const int index = 3;
         const int begin = 0;
         var blockData = new byte[16 * 1024];
@@ -411,6 +488,7 @@ internal class MessageStreamTests
 
         using var message = Message.CreatePiece(index, begin, rentedBlock);
         using var rawData = message.ToRentedArray();
+        var messageTask = messages.FirstAsync(cancellationToken);
 
         await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
@@ -422,8 +500,8 @@ internal class MessageStreamTests
             120.Seconds
         );
 
-        _ = messageStream.StartAsync(cancellationToken);
-        using var received = await messageStream.IncomingMessages.ReadAsync(cancellationToken);
+        _ = messageStream.StartAsync(messageHandler, cancellationToken);
+        using var received = await messageTask;
         received.Payload.ShouldNotBeNull();
         received.Id.ShouldBe(Message.Piece);
         received.Payload!.Length.ShouldBe(8 + blockData.Length);
@@ -437,6 +515,7 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Send_Piece(CancellationToken cancellationToken)
     {
+        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
         const int index = 1;
         const int begin = 16384;
         var blockData = new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05 };
@@ -458,8 +537,8 @@ internal class MessageStreamTests
         );
 
         var itemTask = memoryStream.WrittenData.FirstAsync(cancellationToken);
-        await messageStream.OutgoingMessages.WriteAsync(message, cancellationToken);
-        _ = messageStream.StartAsync(cancellationToken);
+        await messageStream.SendAsync(message, cancellationToken);
+        _ = messageStream.StartAsync(messageHandler, cancellationToken);
 
         var item = await itemTask;
         item.Span.SequenceEqual(expectedData.Memory.Span).ShouldBeTrue();
@@ -468,8 +547,15 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Receive_KeepAlive(CancellationToken cancellationToken)
     {
+        Subject<Message> messages = new();
+        async ValueTask messageHandler(Message message, CancellationToken ct)
+        {
+            messages.OnNext(message);
+            message.Dispose();
+        }
         using var message = Message.CreateKeepAlive();
         using var rawData = message.ToRentedArray();
+        var messageTask = messages.FirstAsync(cancellationToken);
 
         await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
@@ -481,8 +567,8 @@ internal class MessageStreamTests
             120.Seconds
         );
 
-        _ = messageStream.StartAsync(cancellationToken);
-        using var received = await messageStream.IncomingMessages.ReadAsync(cancellationToken);
+        _ = messageStream.StartAsync(messageHandler, cancellationToken);
+        using var received = await messageTask;
         received.Payload.ShouldBeNull();
         received.Id.ShouldBe(Message.KeepAlive.Id);
     }
@@ -490,6 +576,7 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Send_KeepAlive(CancellationToken cancellationToken)
     {
+        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
         using var message = Message.CreateKeepAlive();
         using var expectedData = message.ToRentedArray();
 
@@ -501,8 +588,8 @@ internal class MessageStreamTests
         );
 
         var itemTask = memoryStream.WrittenData.FirstAsync(cancellationToken);
-        await messageStream.OutgoingMessages.WriteAsync(message, cancellationToken);
-        _ = messageStream.StartAsync(cancellationToken);
+        await messageStream.SendAsync(message, cancellationToken);
+        _ = messageStream.StartAsync(messageHandler, cancellationToken);
 
         var item = await itemTask;
         item.Span.SequenceEqual(expectedData.Memory.Span).ShouldBeTrue();
@@ -511,6 +598,8 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Timeout(CancellationToken cancellationToken)
     {
+        Subject<Message> messages = new();
+        async ValueTask messageHandler(Message message, CancellationToken ct) => message.Dispose();
         await using var memoryStream = new FakeMemoryStream(true);
         await using var messageStream = new MessageStream(
             memoryStream,
@@ -518,10 +607,10 @@ internal class MessageStreamTests
             0.1.Seconds
         );
 
-        var streamTask = messageStream.StartAsync(cancellationToken);
+        var task = messageStream.StartAsync(messageHandler, cancellationToken);
         try
         {
-            await streamTask;
+            await task;
         }
         catch (OperationCanceledException ex)
         {
@@ -535,6 +624,7 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Cancel(CancellationToken cancellationToken)
     {
+        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
         await using var memoryStream = new FakeMemoryStream(true);
         await using var messageStream = new MessageStream(
             memoryStream,
@@ -543,7 +633,7 @@ internal class MessageStreamTests
         );
         var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.Cancel();
-        var streamTask = messageStream.StartAsync(cts.Token);
+        var streamTask = messageStream.StartAsync(messageHandler, cts.Token);
 
         try
         {
@@ -565,6 +655,12 @@ internal class MessageStreamTests
         CancellationToken cancellationToken
     )
     {
+        Subject<Message> messages = new();
+        async ValueTask messageHandler(Message message, CancellationToken ct)
+        {
+            messages.OnNext(message);
+            message.Dispose();
+        }
         await using var memoryStream = new FakeMemoryStream();
         await using var messageStream = new MessageStream(
             memoryStream,
@@ -574,11 +670,13 @@ internal class MessageStreamTests
         await memoryStream.WriteAsync(invalidData, cancellationToken);
         await memoryStream.FlushAsync(cancellationToken);
 
-        var streamTask = messageStream.StartAsync(cancellationToken);
+        var task = messageStream.StartAsync(messageHandler, cancellationToken);
+
+        var messageTask = messages.Take(4).ToListAsync(cancellationToken);
 
         try
         {
-            await streamTask;
+            await task;
         }
         catch (Exception ex)
             when (ex

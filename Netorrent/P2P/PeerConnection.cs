@@ -180,8 +180,7 @@ internal class PeerConnection(
         {
             await cancellationTokenSource
                 .CancelOnFirstCompletionAndAwaitAllAsync([
-                    messageStream.StartAsync(cancellationTokenSource.Token),
-                    ProcessIncomingMessagesAsync(cancellationTokenSource.Token),
+                    messageStream.StartAsync(ProcessMessageAsync, cancellationTokenSource.Token),
                     CheckTimeoutAsync(cancellationTokenSource.Token),
                 ])
                 .ConfigureAwait(false);
@@ -206,84 +205,79 @@ internal class PeerConnection(
         }
     }
 
-    private async Task ProcessIncomingMessagesAsync(CancellationToken cancellationToken)
+    private async ValueTask ProcessMessageAsync(
+        Message message,
+        CancellationToken cancellationToken
+    )
     {
-        await foreach (
-            var item in messageStream
-                .IncomingMessages.ReadAllAsync(cancellationToken)
-                .ConfigureAwait(false)
-        )
+        _lastReceivedMessageTime = DateTimeOffset.UtcNow;
+
+        if (message.Id == 255) //Keep-alive
         {
-            using var message = item;
-            _lastReceivedMessageTime = DateTimeOffset.UtcNow;
-
-            if (message.Id == 255) //Keep-alive
-            {
-                continue;
-            }
-
-            if (message.Id == Message.Bitfield)
-            {
-                ReceiveBitfield(message);
-                continue;
-            }
-
-            if (message.Id == Message.Interested)
-            {
-                ReceiveInterested();
-                continue;
-            }
-
-            if (message.Id == Message.NotInterested)
-            {
-                ReceiveNotInterested();
-                continue;
-            }
-
-            if (message.Id == Message.Choke)
-            {
-                ReceiveChoke();
-                continue;
-            }
-
-            if (message.Id == Message.Unchoke)
-            {
-                ReceiveUnchoke();
-                continue;
-            }
-
-            if (message.Id == Message.Have)
-            {
-                ReceiveHave(message);
-                continue;
-            }
-
-            if (message.Id == Message.Request)
-            {
-                await ReceiveRequestAsync(message, cancellationToken).ConfigureAwait(false);
-                continue;
-            }
-
-            if (message.Id == Message.Piece)
-            {
-                await ReceiveBlockAsync(message, cancellationToken).ConfigureAwait(false);
-                continue;
-            }
-
-            if (message.Id == Message.Cancel)
-            {
-                ReceiveCancel(message);
-                continue;
-            }
-
-            if (message.Id == Message.Port)
-            {
-                //TODO Implement DHT port message handling
-                continue;
-            }
-
-            throw new InvalidDataException($"Invalid id {message.Id}");
+            return;
         }
+
+        if (message.Id == Message.Bitfield)
+        {
+            ReceiveBitfield(message);
+            return;
+        }
+
+        if (message.Id == Message.Interested)
+        {
+            ReceiveInterested();
+            return;
+        }
+
+        if (message.Id == Message.NotInterested)
+        {
+            ReceiveNotInterested();
+            return;
+        }
+
+        if (message.Id == Message.Choke)
+        {
+            ReceiveChoke();
+            return;
+        }
+
+        if (message.Id == Message.Unchoke)
+        {
+            ReceiveUnchoke();
+            return;
+        }
+
+        if (message.Id == Message.Have)
+        {
+            ReceiveHave(message);
+            return;
+        }
+
+        if (message.Id == Message.Request)
+        {
+            await ReceiveRequestAsync(message, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (message.Id == Message.Piece)
+        {
+            await ReceiveBlockAsync(message, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (message.Id == Message.Cancel)
+        {
+            ReceiveCancel(message);
+            return;
+        }
+
+        if (message.Id == Message.Port)
+        {
+            //TODO Implement DHT port message handling
+            return;
+        }
+
+        throw new InvalidDataException($"Invalid id {message.Id}");
     }
 
     private void ReceiveBitfield(Message message)
@@ -439,7 +433,7 @@ internal class PeerConnection(
 
     private bool TryWriteMessage(Message message)
     {
-        if (messageStream.OutgoingMessages.TryWriteOrDispose(message))
+        if (messageStream.TrySend(message))
         {
             _lastSentMessageTime = DateTimeOffset.UtcNow;
             return true;
@@ -449,9 +443,7 @@ internal class PeerConnection(
 
     private async ValueTask WriteMessageAsync(Message message, CancellationToken cancellationToken)
     {
-        await messageStream
-            .OutgoingMessages.WriteOrDisposeAsync(message, cancellationToken)
-            .ConfigureAwait(false);
+        await messageStream.SendAsync(message, cancellationToken).ConfigureAwait(false);
         _lastSentMessageTime = DateTimeOffset.UtcNow;
     }
 

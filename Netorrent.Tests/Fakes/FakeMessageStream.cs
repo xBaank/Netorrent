@@ -1,4 +1,5 @@
-﻿using System.Threading.Channels;
+using System.Threading.Channels;
+using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.P2P.Messages;
 
@@ -10,10 +11,6 @@ internal class FakeMessageStream(
     Channel<Message> outgoingMessages
 ) : IMessageStream
 {
-    public ChannelReader<Message> IncomingMessages => incommingMessages;
-
-    public ChannelWriter<Message> OutgoingMessages => outgoingMessages;
-
     public Handshake Handshake => new(0, string.Empty, new byte[20], otherPeerId.ToBytes());
 
     public ValueTask<PeerId> PerformHandshakeAsync(
@@ -28,8 +25,18 @@ internal class FakeMessageStream(
         CancellationToken cancellationToken = default
     ) => ValueTask.FromResult(otherPeerId);
 
-    public Task StartAsync(CancellationToken cancellationToken) =>
-        Task.Delay(-1, cancellationToken);
+    public async Task StartAsync(MessageHandler messageHandler, CancellationToken cancellationToken)
+    {
+        await foreach (
+            var item in incommingMessages
+                .Reader.ReadAllAsync(cancellationToken)
+                .ConfigureAwait(false)
+        )
+        {
+            using var message = item;
+            await messageHandler(item, cancellationToken).ConfigureAwait(false);
+        }
+    }
 
     private async ValueTask DrainChannelsAsync()
     {
@@ -48,5 +55,12 @@ internal class FakeMessageStream(
         incommingMessages.Writer.TryComplete();
         outgoingMessages.Writer.TryComplete();
         await DrainChannelsAsync();
+        await incommingMessages.Reader.Completion;
+        await outgoingMessages.Reader.Completion;
     }
+
+    public ValueTask SendAsync(Message message, CancellationToken cancellationToken) =>
+        outgoingMessages.Writer.WriteOrDisposeAsync(message, cancellationToken);
+
+    public bool TrySend(Message message) => outgoingMessages.Writer.TryWriteOrDispose(message);
 }
