@@ -65,7 +65,7 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
         {
             while (true)
             {
-                ReadResult result = await reader.ReadAsync(token);
+                ReadResult result = await reader.ReadAsync(token).ConfigureAwait(false);
                 ReadOnlySequence<byte> buffer = result.Buffer;
 
                 try
