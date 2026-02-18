@@ -401,7 +401,7 @@ internal class MessageStreamTests
     {
         const int index = 3;
         const int begin = 0;
-        var blockData = new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05 };
+        var blockData = new byte[16 * 1024];
 
         using var rentedBlock = new RentedArray<byte>(
             ArrayPool<byte>.Shared.Rent(blockData.Length),

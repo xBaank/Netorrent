@@ -1,5 +1,6 @@
 ﻿using System.Buffers;
 using System.Buffers.Binary;
+using System.IO.Pipelines;
 using System.Threading.Channels;
 using Netorrent.Exceptions;
 using Netorrent.Extensions;
@@ -47,13 +48,132 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
 
     private async Task ReadLoopAsync(CancellationToken cancellationToken)
     {
-        while (true)
+        var reader = PipeReader.Create(
+            stream,
+            new StreamPipeReaderOptions(bufferSize: 32 * 1024, leaveOpen: true)
+        );
+
+        if (_receiveCts is null || !_receiveCts.TryReset())
         {
-            var message = await ReceiveMessageAsync(cancellationToken).ConfigureAwait(false);
-            await _incomingMessages
-                .Writer.WriteOrDisposeAsync(message, cancellationToken)
-                .ConfigureAwait(false);
+            _receiveCts?.Dispose();
+            _receiveCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         }
+        _receiveCts?.CancelAfter(timeout);
+        var token = _receiveCts?.Token ?? cancellationToken;
+
+        try
+        {
+            while (true)
+            {
+                ReadResult result = await reader.ReadAsync(token);
+                ReadOnlySequence<byte> buffer = result.Buffer;
+
+                try
+                {
+                    var messageReceived = false;
+                    // Process all messages from the buffer, modifying the input buffer on each
+                    // iteration.
+                    while (TryParseMessage(ref buffer, out Message message))
+                    {
+                        await _incomingMessages
+                            .Writer.WriteOrDisposeAsync(message, cancellationToken)
+                            .ConfigureAwait(false);
+                        messageReceived = true;
+                    }
+
+                    if (messageReceived)
+                    {
+                        if (_receiveCts is null || !_receiveCts.TryReset())
+                        {
+                            _receiveCts?.Dispose();
+                            _receiveCts = CancellationTokenSource.CreateLinkedTokenSource(
+                                cancellationToken
+                            );
+                        }
+                        _receiveCts?.CancelAfter(timeout);
+                        token = _receiveCts?.Token ?? cancellationToken;
+                    }
+
+                    // There's no more data to be processed.
+                    if (result.IsCompleted)
+                    {
+                        if (buffer.Length > 0)
+                        {
+                            // The message is incomplete and there's no more data to process.
+                            throw new EndOfStreamException("Incomplete message.");
+                        }
+                        break;
+                    }
+                }
+                finally
+                {
+                    // Since all messages in the buffer are being processed, you can use the
+                    // remaining buffer's Start and End position to determine consumed and examined.
+                    reader.AdvanceTo(buffer.Start, buffer.End);
+                }
+            }
+        }
+        finally
+        {
+            await reader.CompleteAsync();
+        }
+    }
+
+    private bool TryParseMessage(ref ReadOnlySequence<byte> buffer, out Message message)
+    {
+        message = default;
+
+        // Need at least 4 bytes for length prefix
+        if (buffer.Length < 4)
+        {
+            return false;
+        }
+
+        // Read length prefix (big endian)
+        int length;
+        if (buffer.First.Length >= 4)
+        {
+            length = BinaryPrimitives.ReadInt32BigEndian(buffer.First.Span.Slice(0, 4));
+        }
+        else
+        {
+            Span<byte> lengthSpan = stackalloc byte[4];
+            buffer.Slice(0, 4).CopyTo(lengthSpan);
+            length = BinaryPrimitives.ReadInt32BigEndian(lengthSpan);
+        }
+
+        if (length < 0 || length > 1024 * 1024)
+        {
+            throw new BitorrentProtocolViolationException("Invalid message length");
+        }
+
+        // Keep-alive message
+        if (length == 0)
+        {
+            message = Message.CreateKeepAlive();
+            buffer = buffer.Slice(4); // consume the 4-byte length
+            return true;
+        }
+
+        // Wait until full message is available
+        if (buffer.Length < 4 + length)
+        {
+            return false;
+        }
+
+        // First byte is message ID
+        byte messageId = buffer.Slice(4, 1).First.Span[0];
+
+        int payloadLength = length - 1;
+
+        var array = ArrayPool<byte>.Shared.Rent(payloadLength);
+        buffer.Slice(5, payloadLength).CopyTo(array);
+
+        message = Message.From(array, payloadLength, messageId);
+
+        // Consume the full message
+        buffer = buffer.Slice(4 + length);
+        return true;
     }
 
     private async Task WriteLoopAsync(CancellationToken cancellationToken)
@@ -84,51 +204,6 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
         await stream.FlushAsync(token).ConfigureAwait(false);
     }
 
-    private async ValueTask<Message> ReceiveMessageAsync(CancellationToken cancellationToken)
-    {
-        if (_receiveCts is null || !_receiveCts.TryReset())
-        {
-            _receiveCts?.Dispose();
-            _receiveCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        }
-        _receiveCts?.CancelAfter(timeout);
-        var token = _receiveCts?.Token ?? cancellationToken;
-
-        await stream.ReadExactlyAsync(_lengthBuffer, token).ConfigureAwait(false);
-        int messageLength = BinaryPrimitives.ReadInt32BigEndian(_lengthBuffer);
-        var payloadLength = messageLength - 1;
-
-        if (messageLength == 0)
-        {
-            return Message.CreateKeepAlive();
-        }
-
-        const int MaxLength = 1024 * 1024;
-
-        if (messageLength > MaxLength)
-        {
-            throw new BitorrentProtocolViolationException("Exceeded max message length");
-        }
-
-        if (messageLength < 0)
-        {
-            throw new BitorrentProtocolViolationException("Negative length not allowed");
-        }
-
-        var array = ArrayPool<byte>.Shared.Rent(messageLength);
-        try
-        {
-            await stream.ReadExactlyAsync(_idBuffer, token).ConfigureAwait(false);
-            await stream.ReadExactlyAsync(array, 0, payloadLength, token).ConfigureAwait(false);
-            return Message.From(array, payloadLength, _idBuffer[0]);
-        }
-        catch
-        {
-            ArrayPool<byte>.Shared.Return(array);
-            throw;
-        }
-    }
-
     private async ValueTask DrainChannelsAsync()
     {
         await foreach (var item in _incomingMessages.Reader.ReadAllAsync().ConfigureAwait(false))
@@ -144,7 +219,7 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
     public async ValueTask DisposeAsync()
     {
         _cancellationTokenSource?.Cancel();
-        stream.Dispose();
+        await stream.DisposeAsync().ConfigureAwait(false);
         _incomingMessages.Writer.TryComplete();
         _outgoingMessages.Writer.TryComplete();
         try

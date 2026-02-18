@@ -1,7 +1,6 @@
 ﻿using System.Buffers;
 using System.Buffers.Binary;
 using Netorrent.Exceptions;
-using Netorrent.Extensions;
 using Netorrent.Other;
 
 namespace Netorrent.P2P.Messages;
@@ -106,6 +105,11 @@ internal readonly record struct Message(byte Id, RentedArray<byte>? Payload) : I
         if (length == 0)
         {
             return new Message(id, null);
+        }
+
+        if (id == Piece && length < 16 * 1024)
+        {
+            throw new BitorrentProtocolViolationException("Piece request must be at least 16kb");
         }
 
         return new Message(id, new RentedArray<byte>(array, length));
