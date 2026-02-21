@@ -11,27 +11,19 @@ internal class FakeUploadScheduler : IUploadScheduler
         CancellationToken cancellationToken
     ) { }
 
-    public ValueTask AddRequestAsync(RequestBlock request, CancellationToken cancellationToken)
-    {
-        throw new NotImplementedException();
-    }
+    public ValueTask AddRequestAsync(RequestBlock request, CancellationToken cancellationToken) =>
+        ValueTask.CompletedTask;
 
-    public void CancelRequest(RequestBlock request)
-    {
-        throw new NotImplementedException();
-    }
+    public void CancelRequest(RequestBlock request) { }
 
-    public void TryRunRound(IPeerConnection peerConnection)
-    {
-        throw new NotImplementedException();
-    }
+    public void TryRunRound(IPeerConnection peerConnection) { }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-    public async ValueTask RemovePeerAsync(
+    public ValueTask RemovePeerAsync(
         IPeerConnection peerConnection,
         CancellationToken cancellationToken
-    ) { }
+    ) => ValueTask.CompletedTask;
 
     public Task StartAsync(CancellationToken cancellationToken) =>
         Task.Delay(-1, cancellationToken);

@@ -26,19 +26,28 @@ internal class PeersClientTests
     {
         var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var logger = NullLogger.Instance;
-        await using var peersClient = CreatePeersClient(new PeerId(), logger);
+        var peersClient = CreatePeersClient(new PeerId(), logger);
         var peersClients = CreatePeersClients(number, logger);
         var peerEndpointsObservable = peersClient.PeerConnected.Take(number);
-        var p2pTask = peersClient.StartAsync(cts.Token);
 
-        await StartAsync(peersClients, cts.Token);
-        await ConnectPeersAsync(peersClients, peersClient, cancellationToken);
-        var peerEndpointsCount = await peerEndpointsObservable.CountAsync(cts.Token);
-        cts.Cancel();
-        await DisposeP2pClients(peersClients);
+        try
+        {
+            var p2pTask = peersClient.StartAsync(cts.Token);
+            var startTask = StartAsync(peersClients, cts.Token);
 
-        peerEndpointsCount.ShouldBe(number);
-        await p2pTask.ShouldThrowAsync<OperationCanceledException>();
+            await ConnectPeersAsync(peersClients, peersClient, cancellationToken);
+            var peerEndpointsCount = await peerEndpointsObservable.CountAsync(cts.Token);
+            cts.Cancel();
+
+            peerEndpointsCount.ShouldBe(number);
+            await p2pTask.ShouldThrowAsync<OperationCanceledException>();
+            await startTask.ShouldThrowAsync<OperationCanceledException>();
+        }
+        finally
+        {
+            await peersClient.DisposeAsync();
+            await DisposeP2pClients(peersClients);
+        }
     }
 
     private static async Task ConnectPeersAsync(
@@ -84,10 +93,8 @@ internal class PeersClientTests
         CancellationToken cancellationToken
     )
     {
-        foreach (var item in p2pClients)
-        {
-            _ = item.StartAsync(cancellationToken);
-        }
+        var tasks = p2pClients.Select(i => i.StartAsync(cancellationToken));
+        await Task.WhenAll(tasks);
     }
 
     private static PeersClient CreatePeersClient(PeerId peerId, ILogger logger)

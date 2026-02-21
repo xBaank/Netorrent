@@ -1,5 +1,6 @@
-﻿using System.Buffers;
+using System.Buffers;
 using System.Buffers.Binary;
+using System.IO.Pipelines;
 using System.Threading.Channels;
 using Netorrent.Exceptions;
 using Netorrent.Extensions;
@@ -9,17 +10,16 @@ namespace Netorrent.IO;
 
 internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeout) : IMessageStream
 {
-    private readonly Channel<Message> _incomingMessages = Channel.CreateBounded<Message>(
-        new BoundedChannelOptions(128) { SingleWriter = true, SingleReader = true }
-    );
     private readonly Channel<Message> _outgoingMessages = Channel.CreateBounded<Message>(
         new BoundedChannelOptions(128) { SingleWriter = false, SingleReader = true }
     );
 
-    public Handshake Handshake => handshake;
+    private readonly PipeReader _reader = PipeReader.Create(
+        stream,
+        new StreamPipeReaderOptions(bufferSize: 32 * 1024, leaveOpen: true)
+    );
 
-    public ChannelReader<Message> IncomingMessages => _incomingMessages.Reader;
-    public ChannelWriter<Message> OutgoingMessages => _outgoingMessages.Writer;
+    public Handshake Handshake => handshake;
 
     private readonly byte[] _lengthBuffer = new byte[4];
     private readonly byte[] _idBuffer = new byte[1];
@@ -28,7 +28,7 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
     private CancellationTokenSource? _cancellationTokenSource;
     private Task? _runTask;
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public Task StartAsync(MessageHandler messageHandler, CancellationToken cancellationToken)
     {
         if (_runTask is not null)
         {
@@ -39,21 +39,133 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
             cancellationToken
         );
         _runTask = _cancellationTokenSource.CancelOnFirstCompletionAndAwaitAllAsync([
-            ReadLoopAsync(_cancellationTokenSource.Token),
+            ReadLoopAsync(messageHandler, _cancellationTokenSource.Token),
             WriteLoopAsync(_cancellationTokenSource.Token),
         ]);
         return _runTask;
     }
 
-    private async Task ReadLoopAsync(CancellationToken cancellationToken)
+    private async Task ReadLoopAsync(
+        MessageHandler messageHandler,
+        CancellationToken cancellationToken
+    )
     {
-        while (true)
+        if (_receiveCts is null || !_receiveCts.TryReset())
         {
-            var message = await ReceiveMessageAsync(cancellationToken).ConfigureAwait(false);
-            await _incomingMessages
-                .Writer.WriteOrDisposeAsync(message, cancellationToken)
-                .ConfigureAwait(false);
+            _receiveCts?.Dispose();
+            _receiveCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         }
+        _receiveCts?.CancelAfter(timeout);
+        var token = _receiveCts?.Token ?? cancellationToken;
+
+        try
+        {
+            while (true)
+            {
+                ReadResult result = await _reader.ReadAsync(token).ConfigureAwait(false);
+                ReadOnlySequence<byte> buffer = result.Buffer;
+
+                try
+                {
+                    while (TryParseMessage(ref buffer, out var item))
+                    {
+                        using var message = item;
+                        await messageHandler(message, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    if (result.IsCompleted)
+                    {
+                        if (buffer.Length > 0)
+                        {
+                            throw new EndOfStreamException("Incomplete message.");
+                        }
+                        break;
+                    }
+                }
+                finally
+                {
+                    _reader.AdvanceTo(buffer.Start, buffer.End);
+                }
+
+                if (_receiveCts is null || !_receiveCts.TryReset())
+                {
+                    _receiveCts?.Dispose();
+                    _receiveCts = CancellationTokenSource.CreateLinkedTokenSource(
+                        cancellationToken
+                    );
+                }
+                _receiveCts?.CancelAfter(timeout);
+                token = _receiveCts?.Token ?? cancellationToken;
+            }
+        }
+        finally
+        {
+            await _reader.CompleteAsync();
+        }
+    }
+
+    public async ValueTask SendAsync(Message message, CancellationToken cancellationToken) =>
+        await _outgoingMessages
+            .Writer.WriteOrDisposeAsync(message, cancellationToken)
+            .ConfigureAwait(false);
+
+    public bool TrySend(Message message) => _outgoingMessages.Writer.TryWriteOrDispose(message);
+
+    private bool TryParseMessage(ref ReadOnlySequence<byte> buffer, out Message message)
+    {
+        message = default;
+
+        // Need at least 4 bytes for length prefix
+        if (buffer.Length < 4)
+        {
+            return false;
+        }
+
+        // Read length prefix (big endian)
+        int length;
+        if (buffer.First.Length >= 4)
+        {
+            length = BinaryPrimitives.ReadInt32BigEndian(buffer.First.Span.Slice(0, 4));
+        }
+        else
+        {
+            Span<byte> lengthSpan = stackalloc byte[4];
+            buffer.Slice(0, 4).CopyTo(lengthSpan);
+            length = BinaryPrimitives.ReadInt32BigEndian(lengthSpan);
+        }
+
+        if (length < 0 || length > 1024 * 1024)
+        {
+            throw new BitorrentProtocolViolationException("Invalid message length");
+        }
+
+        // Keep-alive message
+        if (length == 0)
+        {
+            message = Message.CreateKeepAlive();
+            buffer = buffer.Slice(4); // consume the 4-byte length
+            return true;
+        }
+
+        // Wait until full message is available
+        if (buffer.Length < 4 + length)
+        {
+            return false;
+        }
+
+        // First byte is message ID
+        byte messageId = buffer.Slice(4, 1).First.Span[0];
+
+        int payloadLength = length - 1;
+
+        var array = ArrayPool<byte>.Shared.Rent(payloadLength);
+        buffer.Slice(5, payloadLength).CopyTo(array);
+
+        message = Message.From(array, payloadLength, messageId);
+
+        // Consume the full message
+        buffer = buffer.Slice(4 + length);
+        return true;
     }
 
     private async Task WriteLoopAsync(CancellationToken cancellationToken)
@@ -84,57 +196,8 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
         await stream.FlushAsync(token).ConfigureAwait(false);
     }
 
-    private async ValueTask<Message> ReceiveMessageAsync(CancellationToken cancellationToken)
-    {
-        if (_receiveCts is null || !_receiveCts.TryReset())
-        {
-            _receiveCts?.Dispose();
-            _receiveCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        }
-        _receiveCts?.CancelAfter(timeout);
-        var token = _receiveCts?.Token ?? cancellationToken;
-
-        await stream.ReadExactlyAsync(_lengthBuffer, token).ConfigureAwait(false);
-        int messageLength = BinaryPrimitives.ReadInt32BigEndian(_lengthBuffer);
-        var payloadLength = messageLength - 1;
-
-        if (messageLength == 0)
-        {
-            return Message.CreateKeepAlive();
-        }
-
-        const int MaxLength = 1024 * 1024;
-
-        if (messageLength > MaxLength)
-        {
-            throw new BitorrentProtocolViolationException("Exceeded max message length");
-        }
-
-        if (messageLength < 0)
-        {
-            throw new BitorrentProtocolViolationException("Negative length not allowed");
-        }
-
-        var array = ArrayPool<byte>.Shared.Rent(messageLength);
-        try
-        {
-            await stream.ReadExactlyAsync(_idBuffer, token).ConfigureAwait(false);
-            await stream.ReadExactlyAsync(array, 0, payloadLength, token).ConfigureAwait(false);
-            return Message.From(array, payloadLength, _idBuffer[0]);
-        }
-        catch
-        {
-            ArrayPool<byte>.Shared.Return(array);
-            throw;
-        }
-    }
-
     private async ValueTask DrainChannelsAsync()
     {
-        await foreach (var item in _incomingMessages.Reader.ReadAllAsync().ConfigureAwait(false))
-        {
-            item.Dispose();
-        }
         await foreach (var item in _outgoingMessages.Reader.ReadAllAsync().ConfigureAwait(false))
         {
             item.Dispose();
@@ -144,8 +207,7 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
     public async ValueTask DisposeAsync()
     {
         _cancellationTokenSource?.Cancel();
-        stream.Dispose();
-        _incomingMessages.Writer.TryComplete();
+        await stream.DisposeAsync().ConfigureAwait(false);
         _outgoingMessages.Writer.TryComplete();
         try
         {
@@ -156,7 +218,6 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
         }
         catch { }
         await DrainChannelsAsync().ConfigureAwait(false);
-        await _incomingMessages.Reader.Completion;
         await _outgoingMessages.Reader.Completion;
         _receiveCts?.Dispose();
         _sendCts?.Dispose();
