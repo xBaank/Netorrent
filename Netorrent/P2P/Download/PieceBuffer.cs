@@ -53,7 +53,7 @@ internal class PieceBuffer : IDisposable
     {
         while (_pendingBlocks.TryGetValue(_nextExpectedBlockIndex, out var block))
         {
-            using (block)
+            try
             {
                 var memory = block.Payload.Memory;
 
@@ -62,10 +62,12 @@ internal class PieceBuffer : IDisposable
                 await _pieceWriter
                     .WriteAsync(_index, _nextExpectedBlockIndex * _blockSize, memory, ct)
                     .ConfigureAwait(false);
-
+            }
+            finally
+            {
                 _pendingBlocks.Remove(_nextExpectedBlockIndex);
-
                 _nextExpectedBlockIndex++;
+                block.Dispose();
             }
         }
     }
