@@ -28,4 +28,7 @@ internal class FakePieceStorage() : IPieceStorage
         var array = ArrayPool<byte>.Shared.Rent(length);
         return ValueTask.FromResult(new RentedArray<byte>(array, length));
     }
+
+    public bool VerifyPieceHash(int pieceIndex, ref readonly ReadOnlySpan<byte> computedHash) =>
+        true;
 }

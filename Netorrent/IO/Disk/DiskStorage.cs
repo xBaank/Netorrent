@@ -75,6 +75,12 @@ internal class DiskStorage : IPieceStorage
         return false;
     }
 
+    public bool VerifyPieceHash(int pieceIndex, ref readonly ReadOnlySpan<byte> computedHash)
+    {
+        var expectedHash = _pieceHashes[pieceIndex];
+        return expectedHash.SequenceEqual(computedHash);
+    }
+
     private async ValueTask WriteAsync(
         long globalOffset,
         ReadOnlyMemory<byte> data,
