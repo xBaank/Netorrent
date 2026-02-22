@@ -139,39 +139,51 @@ internal class DiskStorage : IPieceStorage
         CancellationToken ct
     )
     {
-        var array = ArrayPool<byte>.Shared.Rent(length);
-        var buffer = array.AsMemory()[..length];
-        int totalRead = 0;
-
-        foreach (var file in _files)
+        var rentedArray = new RentedArray<byte>(length);
+        try
         {
-            if (globalOffset >= file.EndOffset)
+            int totalRead = 0;
+
+            foreach (var file in _files)
             {
-                continue;
+                if (globalOffset >= file.EndOffset)
+                {
+                    continue;
+                }
+
+                long fileOffset = Math.Max(0, globalOffset - file.StartOffset);
+                long readable = Math.Min(length - totalRead, file.Length - fileOffset);
+
+                int bytesRead = await RandomAccess
+                    .ReadAsync(
+                        file.SafeHandle,
+                        rentedArray.Memory.Slice(totalRead, (int)readable),
+                        fileOffset,
+                        ct
+                    )
+                    .ConfigureAwait(false);
+
+                totalRead += bytesRead;
+                globalOffset += bytesRead;
+
+                if (totalRead >= length || bytesRead == 0)
+                {
+                    break;
+                }
             }
 
-            long fileOffset = Math.Max(0, globalOffset - file.StartOffset);
-            long readable = Math.Min(length - totalRead, file.Length - fileOffset);
-
-            int bytesRead = await RandomAccess
-                .ReadAsync(file.SafeHandle, buffer.Slice(totalRead, (int)readable), fileOffset, ct)
-                .ConfigureAwait(false);
-
-            totalRead += bytesRead;
-            globalOffset += bytesRead;
-
-            if (totalRead >= length || bytesRead == 0)
+            if (totalRead < length)
             {
-                break;
+                length = totalRead;
             }
-        }
 
-        if (totalRead < length)
+            return rentedArray;
+        }
+        catch
         {
-            length = totalRead;
+            rentedArray.Dispose();
+            throw;
         }
-
-        return new RentedArray<byte>(array, length);
     }
 
     public void Dispose()

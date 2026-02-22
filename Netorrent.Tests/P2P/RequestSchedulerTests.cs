@@ -64,12 +64,19 @@ public class RequestSchedulerTests
             .SubscribeAwait(
                 async (request, ct) =>
                 {
-                    var array = ArrayPool<byte>.Shared.Rent(request.Length);
-                    var rentedArray = new RentedArray<byte>(array, request.Length);
-                    await scheduler.ReceiveBlockAsync(
-                        new Block(request.Index, request.Begin, rentedArray, peer),
-                        ct
-                    );
+                    var rentedArray = new RentedArray<byte>(request.Length);
+                    try
+                    {
+                        await scheduler.ReceiveBlockAsync(
+                            new Block(request.Index, request.Begin, rentedArray, peer),
+                            ct
+                        );
+                    }
+                    catch
+                    {
+                        rentedArray.Dispose();
+                        throw;
+                    }
                 }
             );
     }

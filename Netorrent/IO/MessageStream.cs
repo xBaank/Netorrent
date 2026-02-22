@@ -4,6 +4,7 @@ using System.IO.Pipelines;
 using System.Threading.Channels;
 using Netorrent.Exceptions;
 using Netorrent.Extensions;
+using Netorrent.Other;
 using Netorrent.P2P.Messages;
 
 namespace Netorrent.IO;
@@ -158,14 +159,22 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
 
         int payloadLength = length - 1;
 
-        var array = ArrayPool<byte>.Shared.Rent(payloadLength);
-        buffer.Slice(5, payloadLength).CopyTo(array);
+        var rentedArray = new RentedArray<byte>(payloadLength);
+        try
+        {
+            buffer.Slice(5, payloadLength).CopyTo(rentedArray.Memory.Span);
 
-        message = Message.From(array, payloadLength, messageId);
+            message = Message.From(rentedArray, messageId);
 
-        // Consume the full message
-        buffer = buffer.Slice(4 + length);
-        return true;
+            // Consume the full message
+            buffer = buffer.Slice(4 + length);
+            return true;
+        }
+        catch
+        {
+            rentedArray.Dispose();
+            throw;
+        }
     }
 
     private async Task WriteLoopAsync(CancellationToken cancellationToken)

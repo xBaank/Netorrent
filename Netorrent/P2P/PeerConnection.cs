@@ -359,15 +359,22 @@ internal class PeerConnection(
         int index = BinaryPrimitives.ReadInt32BigEndian(span[..4]);
         int begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
         int payloadLength = span.Length - 8;
-        var rented = new RentedArray<byte>(
-            ArrayPool<byte>.Shared.Rent(payloadLength),
-            payloadLength
-        );
-        span[8..].CopyTo(rented.Memory.Span);
-        var block = new Block(index, begin, rented, this);
-        await requestScheduler.ReceiveBlockAsync(block, cancellationToken).ConfigureAwait(false);
-        DownloadTracker.AddBytes(payloadLength);
-        _lastReceivedBlock = DateTimeOffset.UtcNow;
+        var rentedArray = new RentedArray<byte>(payloadLength);
+        try
+        {
+            span[8..].CopyTo(rentedArray.Memory.Span);
+            var block = new Block(index, begin, rentedArray, this);
+            await requestScheduler
+                .ReceiveBlockAsync(block, cancellationToken)
+                .ConfigureAwait(false);
+            DownloadTracker.AddBytes(payloadLength);
+            _lastReceivedBlock = DateTimeOffset.UtcNow;
+        }
+        catch
+        {
+            rentedArray.Dispose();
+            throw;
+        }
     }
 
     private void ReceiveCancel(Message message)

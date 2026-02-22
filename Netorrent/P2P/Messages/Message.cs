@@ -34,16 +34,16 @@ internal readonly record struct Message(byte Id, RentedArray<byte>? Payload) : I
     {
         if (Id == 255) // keep-alive
         {
-            var arr = ArrayPool<byte>.Shared.Rent(4);
+            var keepAliverentedArray = new RentedArray<byte>(4);
             try
             {
                 // keep-alive = 4 zero bytes
-                arr.AsSpan(0, 4).Clear();
-                return new RentedArray<byte>(arr, 4);
+                keepAliverentedArray.Memory.Span[..4].Clear();
+                return keepAliverentedArray;
             }
             catch
             {
-                ArrayPool<byte>.Shared.Return(arr);
+                keepAliverentedArray.Dispose();
                 throw;
             }
         }
@@ -51,12 +51,13 @@ internal readonly record struct Message(byte Id, RentedArray<byte>? Payload) : I
         int payloadLength = Payload?.Length ?? 0;
         int length = payloadLength + 5; // 4 bytes length + 1 id byte + payload
 
-        var buffer = ArrayPool<byte>.Shared.Rent(length);
+        var rentedArray = new RentedArray<byte>(length);
 
         try
         {
+            var buffer = rentedArray.Memory.Span;
             // write message length (big endian)
-            BinaryPrimitives.WriteInt32BigEndian(buffer.AsSpan(0, 4), 1 + payloadLength);
+            BinaryPrimitives.WriteInt32BigEndian(buffer.Slice(0, 4), 1 + payloadLength);
 
             // message id
             buffer[4] = Id;
@@ -64,14 +65,14 @@ internal readonly record struct Message(byte Id, RentedArray<byte>? Payload) : I
             // payload (if any)
             if (payloadLength > 0)
             {
-                Payload!.Memory.CopyTo(buffer.AsMemory(5, payloadLength));
+                Payload!.Memory.Span.CopyTo(buffer.Slice(5, payloadLength));
             }
 
-            return new RentedArray<byte>(buffer, length);
+            return rentedArray;
         }
         catch
         {
-            ArrayPool<byte>.Shared.Return(buffer);
+            rentedArray.Dispose();
             throw;
         }
     }
@@ -79,7 +80,7 @@ internal readonly record struct Message(byte Id, RentedArray<byte>? Payload) : I
     /// <summary>
     /// Deserializes a message from a span.
     /// </summary>
-    public static Message From(byte[] array, int length, byte id)
+    public static Message From(RentedArray<byte> rentedArray, byte id)
     {
         if (
             id != Choke
@@ -97,67 +98,100 @@ internal readonly record struct Message(byte Id, RentedArray<byte>? Payload) : I
             throw new BitorrentProtocolViolationException("Invalid Id");
         }
 
-        if (array.Length < length)
+        if (rentedArray.Length < rentedArray.Length)
         {
             throw new BitorrentProtocolViolationException("Incomplete message");
         }
 
-        if (length == 0)
+        if (rentedArray.Length == 0)
         {
+            rentedArray.Dispose();
             return new Message(id, null);
         }
 
-        if (id == Piece && length < 16 * 1024)
+        if (id == Piece && rentedArray.Length < 16 * 1024)
         {
             throw new BitorrentProtocolViolationException("Piece request must be at least 16kb");
         }
 
-        return new Message(id, new RentedArray<byte>(array, length));
+        return new Message(id, rentedArray);
     }
 
     // ---- Helpers to create specific messages ----
 
     public static Message CreateHave(int pieceIndex)
     {
-        var memoryOwner = ArrayPool<byte>.Shared.Rent(4);
-        var buffer = memoryOwner.AsMemory()[..4];
+        var rentedArray = new RentedArray<byte>(4);
+        try
+        {
+            var buffer = rentedArray.Memory;
 
-        BinaryPrimitives.WriteInt32BigEndian(buffer.Span, pieceIndex);
-        return new Message(Have, new RentedArray<byte>(memoryOwner, buffer.Length));
+            BinaryPrimitives.WriteInt32BigEndian(buffer.Span, pieceIndex);
+            return new Message(Have, rentedArray);
+        }
+        catch
+        {
+            rentedArray.Dispose();
+            throw;
+        }
     }
 
     public static Message CreateRequest(int index, int begin, int length)
     {
-        var array = ArrayPool<byte>.Shared.Rent(12);
-        var buffer = array.AsMemory()[..12];
+        var rentedArray = new RentedArray<byte>(12);
+        try
+        {
+            var buffer = rentedArray.Memory;
 
-        BinaryPrimitives.WriteInt32BigEndian(buffer.Span[..4], index);
-        BinaryPrimitives.WriteInt32BigEndian(buffer.Span.Slice(4, 4), begin);
-        BinaryPrimitives.WriteInt32BigEndian(buffer.Span.Slice(8, 4), length);
-        return new Message(Request, new RentedArray<byte>(array, buffer.Length));
+            BinaryPrimitives.WriteInt32BigEndian(buffer.Span[..4], index);
+            BinaryPrimitives.WriteInt32BigEndian(buffer.Span.Slice(4, 4), begin);
+            BinaryPrimitives.WriteInt32BigEndian(buffer.Span.Slice(8, 4), length);
+            return new Message(Request, rentedArray);
+        }
+        catch
+        {
+            rentedArray.Dispose();
+            throw;
+        }
     }
 
     public static Message CreateCancel(int index, int begin, int length)
     {
-        var array = ArrayPool<byte>.Shared.Rent(12);
-        var buffer = array.AsMemory()[..12];
+        var rentedArray = new RentedArray<byte>(12);
+        try
+        {
+            var buffer = rentedArray.Memory;
 
-        BinaryPrimitives.WriteInt32BigEndian(buffer.Span[..4], index);
-        BinaryPrimitives.WriteInt32BigEndian(buffer.Span.Slice(4, 4), begin);
-        BinaryPrimitives.WriteInt32BigEndian(buffer.Span.Slice(8, 4), length);
-        return new Message(Cancel, new RentedArray<byte>(array, buffer.Length));
+            BinaryPrimitives.WriteInt32BigEndian(buffer.Span[..4], index);
+            BinaryPrimitives.WriteInt32BigEndian(buffer.Span.Slice(4, 4), begin);
+            BinaryPrimitives.WriteInt32BigEndian(buffer.Span.Slice(8, 4), length);
+            return new Message(Cancel, rentedArray);
+        }
+        catch
+        {
+            rentedArray.Dispose();
+            throw;
+        }
     }
 
     public static Message CreatePiece(int index, int begin, RentedArray<byte> block)
     {
         var memory = block.Memory;
-        var memoryOwner = ArrayPool<byte>.Shared.Rent(8 + memory.Length);
-        var buffer = memoryOwner.AsMemory()[..(8 + memory.Length)];
+        var rentedArray = new RentedArray<byte>(8 + memory.Length);
+        try
+        {
+            var buffer = rentedArray.Memory;
 
-        BinaryPrimitives.WriteInt32BigEndian(buffer.Span[..4], index);
-        BinaryPrimitives.WriteInt32BigEndian(buffer.Span.Slice(4, 4), begin);
-        memory.Span.CopyTo(buffer.Span[8..]);
-        return new Message(Piece, new RentedArray<byte>(memoryOwner, buffer.Length));
+            BinaryPrimitives.WriteInt32BigEndian(buffer.Span[..4], index);
+            BinaryPrimitives.WriteInt32BigEndian(buffer.Span.Slice(4, 4), begin);
+            memory.Span.CopyTo(buffer.Span[8..]);
+            return new Message(Piece, rentedArray);
+        }
+        catch
+        {
+            rentedArray.Dispose();
+            throw;
+        }
     }
 
     public static Message CreateBitfield(RentedArray<byte> bitfieldArray) =>

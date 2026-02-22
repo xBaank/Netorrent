@@ -21,9 +21,9 @@ internal class MessageStreamTests
             return message;
         }
 
-        var array = ArrayPool<byte>.Shared.Rent(message.Payload.Length);
-        message.Payload.Memory.CopyTo(array);
-        return message with { Payload = new RentedArray<byte>(array, message.Payload.Length) };
+        var rentedArray = new RentedArray<byte>(message.Payload.Length);
+        message.Payload.Memory.CopyTo(rentedArray.Memory);
+        return message with { Payload = rentedArray };
     }
 
     static PeerId PeerId => new();
@@ -480,10 +480,7 @@ internal class MessageStreamTests
         const int begin = 0;
         var blockData = new byte[16 * 1024];
 
-        using var rentedBlock = new RentedArray<byte>(
-            ArrayPool<byte>.Shared.Rent(blockData.Length),
-            blockData.Length
-        );
+        using var rentedBlock = new RentedArray<byte>(blockData.Length);
         blockData.AsMemory().CopyTo(rentedBlock.Memory);
 
         using var message = Message.CreatePiece(index, begin, rentedBlock);
@@ -520,10 +517,7 @@ internal class MessageStreamTests
         const int begin = 16384;
         var blockData = new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05 };
 
-        using var rentedBlock = new RentedArray<byte>(
-            ArrayPool<byte>.Shared.Rent(blockData.Length),
-            blockData.Length
-        );
+        using var rentedBlock = new RentedArray<byte>(blockData.Length);
         blockData.AsMemory().CopyTo(rentedBlock.Memory);
 
         using var message = Message.CreatePiece(index, begin, rentedBlock);
