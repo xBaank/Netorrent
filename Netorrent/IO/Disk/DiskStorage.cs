@@ -1,6 +1,4 @@
-﻿using System.Buffers;
-using System.Security.Cryptography;
-using Netorrent.Extensions;
+﻿using System.Security.Cryptography;
 using Netorrent.Other;
 using Netorrent.TorrentFile.FileStructure;
 using ZLinq;

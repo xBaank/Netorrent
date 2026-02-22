@@ -23,7 +23,7 @@ internal class MessageStreamTests
 
         var rentedArray = new RentedArray<byte>(message.Payload.Length);
         message.Payload.Memory.CopyTo(rentedArray.Memory);
-        return message with { Payload = rentedArray };
+        return new Message(message.Id, rentedArray);
     }
 
     static PeerId PeerId => new();

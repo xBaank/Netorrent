@@ -5,7 +5,6 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
-using Netorrent.Extensions;
 using Netorrent.Other;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;

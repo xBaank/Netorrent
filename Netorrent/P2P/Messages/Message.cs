@@ -1,5 +1,4 @@
-﻿using System.Buffers;
-using System.Buffers.Binary;
+﻿using System.Buffers.Binary;
 using Netorrent.Exceptions;
 using Netorrent.Other;
 
@@ -8,7 +7,7 @@ namespace Netorrent.P2P.Messages;
 /// <summary>
 /// Represents a BitTorrent protocol message.
 /// </summary>
-internal readonly record struct Message(byte Id, RentedArray<byte>? Payload) : IDisposable
+internal readonly struct Message(byte id, RentedArray<byte>? payload) : IDisposable
 {
     // Standard message IDs
     public const byte Choke = 0;
@@ -26,6 +25,9 @@ internal readonly record struct Message(byte Id, RentedArray<byte>? Payload) : I
     /// Keep-alive has no ID and zero length prefix.
     /// </summary>
     public static readonly Message KeepAlive = new(255, null);
+
+    public byte Id { get; } = id;
+    public RentedArray<byte>? Payload { get; } = payload;
 
     /// <summary>
     /// Serializes this message to bytes.

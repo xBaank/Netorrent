@@ -1,6 +1,4 @@
-﻿using System.Buffers;
-using System.Text;
-using Netorrent.Extensions;
+﻿using System.Text;
 using Netorrent.Other;
 using Netorrent.TorrentFile.FileStructure;
 

@@ -1,7 +1,6 @@
 ﻿using System.Net;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
-using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
 
