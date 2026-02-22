@@ -22,7 +22,7 @@ try
     cts.Token.Register(torrent.Stop);
     var statusTask = RunStatusUI(torrent, cts.Token);
 
-    await torrent.CheckAsync(cts.Token);
+    // await torrent.CheckAsync(cts.Token);
     await torrent.StartAsync();
 
     await Task.WhenAll(Task.Delay(-1, cts.Token), torrent.Completion.AsTask());
