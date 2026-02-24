@@ -52,7 +52,7 @@ public class UploadSchedulerTests
 
         var chokeState = await amChokingTask;
         await scheduler.AddRequestAsync(requestBlock, cancellationToken);
-        var block = await blockTask;
+        using var block = await blockTask;
 
         block.Index.ShouldBe(0);
         block.Begin.ShouldBe(0);

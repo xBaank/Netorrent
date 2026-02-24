@@ -33,7 +33,6 @@ internal class FakeMessageStream(
                 .ConfigureAwait(false)
         )
         {
-            using var message = item;
             await messageHandler(item, cancellationToken).ConfigureAwait(false);
         }
     }
@@ -42,11 +41,11 @@ internal class FakeMessageStream(
     {
         await foreach (var item in incommingMessages.Reader.ReadAllAsync().ConfigureAwait(false))
         {
-            item.Dispose();
+            item.MatchBlockMessage(i => i.Payload.Dispose(), () => { });
         }
         await foreach (var item in outgoingMessages.Reader.ReadAllAsync().ConfigureAwait(false))
         {
-            item.Dispose();
+            item.MatchBlockMessage(i => i.Payload.Dispose(), () => { });
         }
     }
 
@@ -60,7 +59,7 @@ internal class FakeMessageStream(
     }
 
     public ValueTask SendAsync(Message message, CancellationToken cancellationToken) =>
-        outgoingMessages.Writer.WriteOrDisposeAsync(message, cancellationToken);
+        outgoingMessages.Writer.WriteAsync(message, cancellationToken);
 
-    public bool TrySend(Message message) => outgoingMessages.Writer.TryWriteOrDispose(message);
+    public bool TrySend(Message message) => outgoingMessages.Writer.TryWrite(message);
 }

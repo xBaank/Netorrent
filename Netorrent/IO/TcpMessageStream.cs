@@ -4,14 +4,16 @@ using Netorrent.P2P.Messages;
 
 namespace Netorrent.IO;
 
-internal class TcpMessageStream(TcpClient tcpClient, Handshake handshake) : IMessageStream
+internal class TcpMessageStream(TcpClient tcpClient, Handshake handshake, Bitfield bitfield)
+    : IMessageStream
 {
     const int PEER_TIMEOUT_SECONDS = 120;
 
     private readonly MessageStream stream = new(
         tcpClient.GetStream(),
         handshake,
-        PEER_TIMEOUT_SECONDS.Seconds
+        PEER_TIMEOUT_SECONDS.Seconds,
+        bitfield
     );
 
     public Handshake Handshake => stream.Handshake;

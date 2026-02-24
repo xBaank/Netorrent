@@ -1,15 +1,22 @@
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Pipelines;
 using System.Threading.Channels;
 using Netorrent.Exceptions;
 using Netorrent.Extensions;
 using Netorrent.Other;
 using Netorrent.P2P.Messages;
+using static Netorrent.P2P.Messages.Message;
 
 namespace Netorrent.IO;
 
-internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeout) : IMessageStream
+internal class MessageStream(
+    Stream stream,
+    Handshake handshake,
+    TimeSpan timeout,
+    Bitfield myBitfield
+) : IMessageStream
 {
     private readonly Channel<Message> _outgoingMessages = Channel.CreateBounded<Message>(
         new BoundedChannelOptions(128) { SingleWriter = false, SingleReader = true }
@@ -68,9 +75,8 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
 
                 try
                 {
-                    while (TryParseMessage(ref buffer, out var item))
+                    while (TryParseMessage(ref buffer, out var message))
                     {
-                        using var message = item;
                         await messageHandler(message, cancellationToken).ConfigureAwait(false);
                     }
 
@@ -106,13 +112,14 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
     }
 
     public async ValueTask SendAsync(Message message, CancellationToken cancellationToken) =>
-        await _outgoingMessages
-            .Writer.WriteOrDisposeAsync(message, cancellationToken)
-            .ConfigureAwait(false);
+        await _outgoingMessages.Writer.WriteAsync(message, cancellationToken).ConfigureAwait(false);
 
-    public bool TrySend(Message message) => _outgoingMessages.Writer.TryWriteOrDispose(message);
+    public bool TrySend(Message message) => _outgoingMessages.Writer.TryWrite(message);
 
-    private bool TryParseMessage(ref ReadOnlySequence<byte> buffer, out Message message)
+    private bool TryParseMessage(
+        ref ReadOnlySequence<byte> buffer,
+        [NotNullWhen(true)] out Message? message
+    )
     {
         message = default;
 
@@ -143,7 +150,7 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
         // Keep-alive message
         if (length == 0)
         {
-            message = Message.CreateKeepAlive();
+            message = KeepAlive.Value;
             buffer = buffer.Slice(4); // consume the 4-byte length
             return true;
         }
@@ -157,35 +164,159 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
         // First byte is message ID
         byte messageId = buffer.Slice(4, 1).First.Span[0];
 
-        int payloadLength = length - 1;
-
-        var rentedArray = new RentedArray<byte>(payloadLength);
-        try
+        if (messageId == IdChoke)
         {
-            buffer.Slice(5, payloadLength).CopyTo(rentedArray.Memory.Span);
+            message = Choke.Value;
+            buffer = buffer.Slice(4 + length);
 
-            message = Message.From(rentedArray, messageId);
+            return true;
+        }
+
+        if (messageId == IdUnchoke)
+        {
+            message = Unchoke.Value;
+            buffer = buffer.Slice(4 + length);
+
+            return true;
+        }
+        if (messageId == IdInterested)
+        {
+            message = Interested.Value;
+            buffer = buffer.Slice(4 + length);
+
+            return true;
+        }
+        if (messageId == IdNotInterested)
+        {
+            message = NotInterested.Value;
+            buffer = buffer.Slice(4 + length);
+            return true;
+        }
+
+        if (messageId == IdHave)
+        {
+            int payloadLength = length - 1;
+
+            if (payloadLength < 4)
+            {
+                return false;
+            }
+
+            Span<byte> span = stackalloc byte[payloadLength];
+            buffer.Slice(5, payloadLength).CopyTo(span);
+
+            var index = BinaryPrimitives.ReadInt32BigEndian(span);
+
+            message = new Have(index);
 
             // Consume the full message
             buffer = buffer.Slice(4 + length);
             return true;
         }
-        catch
+
+        if (messageId == IdBitfield)
         {
-            rentedArray.Dispose();
-            throw;
+            int payloadLength = length - 1;
+            using var memoryOwner = MemoryPool<byte>.Shared.Rent(payloadLength);
+
+            Span<byte> span = memoryOwner.Memory.Span[..payloadLength];
+            buffer.Slice(5, payloadLength).CopyTo(span);
+
+            message = new BitfieldMessage(new Bitfield(span, myBitfield.Length));
+
+            // Consume the full message
+            buffer = buffer.Slice(4 + length);
+            return true;
         }
+
+        if (messageId == IdRequest)
+        {
+            int payloadLength = length - 1;
+
+            if (payloadLength < 12)
+            {
+                return false;
+            }
+
+            using var memoryOwner = MemoryPool<byte>.Shared.Rent(payloadLength);
+
+            Span<byte> span = memoryOwner.Memory.Span[..payloadLength];
+            buffer.Slice(5, payloadLength).CopyTo(span);
+
+            var index = BinaryPrimitives.ReadInt32BigEndian(span[..4]);
+            var begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
+            var rlength = BinaryPrimitives.ReadInt32BigEndian(span[8..12]);
+
+            message = new RequestBlockMessage(index, begin, rlength);
+
+            // Consume the full message
+            buffer = buffer.Slice(4 + length);
+            return true;
+        }
+
+        if (messageId == IdCancel)
+        {
+            int payloadLength = length - 1;
+
+            if (payloadLength < 12)
+            {
+                return false;
+            }
+
+            using var memoryOwner = MemoryPool<byte>.Shared.Rent(payloadLength);
+
+            Span<byte> span = memoryOwner.Memory.Span[..payloadLength];
+            buffer.Slice(5, payloadLength).CopyTo(span);
+
+            var index = BinaryPrimitives.ReadInt32BigEndian(span[..4]);
+            var begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
+            var rlength = BinaryPrimitives.ReadInt32BigEndian(span[8..12]);
+
+            message = new CancelMessage(index, begin, rlength);
+
+            // Consume the full message
+            buffer = buffer.Slice(4 + length);
+            return true;
+        }
+
+        if (messageId == IdPiece)
+        {
+            int payloadLength = length - 1;
+
+            if (payloadLength < 8)
+            {
+                return false;
+            }
+
+            using var memoryOwner = MemoryPool<byte>.Shared.Rent(8);
+
+            Span<byte> span = memoryOwner.Memory.Span[..8];
+            buffer.Slice(5, 8).CopyTo(span);
+
+            int index = BinaryPrimitives.ReadInt32BigEndian(span[..4]);
+            int begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
+            payloadLength = payloadLength - 8;
+            var rentedArray = new RentedArray<byte>(payloadLength);
+            buffer.Slice(13, payloadLength).CopyTo(rentedArray.Memory.Span);
+
+            message = new BlockMessage(index, begin, rentedArray);
+
+            // Consume the full message
+            buffer = buffer.Slice(4 + length);
+            return true;
+        }
+
+        return false;
     }
 
     private async Task WriteLoopAsync(CancellationToken cancellationToken)
     {
         await foreach (
-            var item in _outgoingMessages
+            var message in _outgoingMessages
                 .Reader.ReadAllAsync(cancellationToken)
                 .ConfigureAwait(false)
         )
         {
-            using var message = item;
             await SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
         }
     }
@@ -200,8 +331,21 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
         _sendCts.CancelAfter(timeout);
         var token = _sendCts?.Token ?? cancellationToken;
 
-        using var messageBytes = message.ToRentedArray();
-        await stream.WriteAsync(messageBytes.Memory, token).ConfigureAwait(false);
+        using var rentedArray = message.Match(
+            choke: SerializeChoke,
+            unchoke: SerializeUnChoke,
+            interested: SerializeInterested,
+            notInterested: SerializeNotInterested,
+            keepAlive: SerializeKeepAlive,
+            have: SerializeHave,
+            cancelMessage: SerializeCancel,
+            blockMessage: SerializeBlock,
+            requestBlockMessage: SerializeRequest,
+            bitfieldMessage: SerializeBitfield,
+            port: SerializePort
+        );
+
+        await stream.WriteAsync(rentedArray.Memory, token).ConfigureAwait(false);
         await stream.FlushAsync(token).ConfigureAwait(false);
     }
 
@@ -209,7 +353,7 @@ internal class MessageStream(Stream stream, Handshake handshake, TimeSpan timeou
     {
         await foreach (var item in _outgoingMessages.Reader.ReadAllAsync().ConfigureAwait(false))
         {
-            item.Dispose();
+            item.MatchBlockMessage(i => i.Payload.Dispose(), () => { });
         }
     }
 

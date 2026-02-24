@@ -130,17 +130,21 @@ internal class UploadScheduler(
             )
             .ConfigureAwait(false);
 
+        var block = new Block(requestBlock.Index, requestBlock.Begin, pieceData, peer);
         try
         {
-            using var block = new Block(requestBlock.Index, requestBlock.Begin, pieceData, peer);
-
             if (peer.TrySendBlock(block))
             {
                 data.AddUploadedBytes(block.Payload.Length); //TODO Move this to message stream after data if flushed ?
             }
+            else
+            {
+                block.Dispose();
+            }
         }
         catch (Exception ex)
         {
+            block.Dispose();
             if (logger.IsEnabled(LogLevel.Error))
             {
                 logger.LogError(

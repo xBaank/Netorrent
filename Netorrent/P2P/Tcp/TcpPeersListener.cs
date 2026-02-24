@@ -78,10 +78,11 @@ internal class TcpPeersListeners(
                 await selectedPeersClient
                     .AddPeerAsync(
                         new TcpPeer(
-                            tcpClient.GetMessageStream(handShake),
+                            tcpClient.GetMessageStream(handShake, selectedPeersClient.BitField),
                             (IPEndPoint)tcpClient.Client.RemoteEndPoint!,
                             peerId,
-                            handShake.InfoHash
+                            handShake.InfoHash,
+                            selectedPeersClient.BitField
                         ),
                         cancellationToken
                     )

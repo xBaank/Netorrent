@@ -61,7 +61,7 @@ public class PeerConectionTests
 
         _ = peerConnection.StartAsync(cancellationToken);
         var statesTask = peerConnection.PeerChoking.Take(2).ToListAsync(cancellationToken);
-        await incoming.Writer.WriteAsync(Message.CreateUnchoke(), cancellationToken);
+        await incoming.Writer.WriteAsync(Message.Unchoke.Value, cancellationToken);
         var states = await statesTask;
 
         states.First().ShouldBeTrue();
@@ -92,7 +92,7 @@ public class PeerConectionTests
 
         _ = peerConnection.StartAsync(cancellationToken);
         var statesTask = peerConnection.PeerInterested.Take(2).ToListAsync(cancellationToken);
-        await incoming.Writer.WriteAsync(Message.CreateInterested(), cancellationToken);
+        await incoming.Writer.WriteAsync(Message.Interested.Value, cancellationToken);
         var states = await statesTask;
 
         states.First().ShouldBeFalse();
@@ -107,7 +107,7 @@ public class PeerConectionTests
 
         _ = peerConnection.StartAsync(cancellationToken);
         var statesTask = peerConnection.AmInterested.Take(2).ToListAsync(cancellationToken);
-        await incoming.Writer.WriteAsync(Message.CreateHave(5), cancellationToken);
+        await incoming.Writer.WriteAsync(new Message.Have(5), cancellationToken);
         var states = await statesTask;
 
         states.First().ShouldBeFalse();

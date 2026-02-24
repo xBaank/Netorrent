@@ -33,6 +33,8 @@ internal class PeersClient(
     public Observable<PeerEndpoint> PeerConnected => _peerConnected;
     public IReadOnlyDictionary<PeerEndpoint, IPeerConnection> ActivePeers => activePeers;
 
+    public Bitfield BitField { get; } = bitField;
+
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -75,7 +77,7 @@ internal class PeersClient(
         var messageStream = await peer.ConnectAsync(cancellationToken).ConfigureAwait(false);
         var peerConnection = new PeerConnection(
             new(peer.PeerEndPoint, messageStream.Handshake.PeerId),
-            bitField,
+            BitField,
             uploadScheduler,
             requestScheduler,
             messageStream,

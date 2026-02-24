@@ -1,75 +1,67 @@
 ﻿using System.Buffers.Binary;
-using Netorrent.Exceptions;
+using Dunet;
 using Netorrent.Other;
 
 namespace Netorrent.P2P.Messages;
 
-/// <summary>
-/// Represents a BitTorrent protocol message.
-/// </summary>
-internal readonly struct Message(byte id, RentedArray<byte>? payload) : IDisposable
+[Union]
+internal partial record Message
 {
-    // Standard message IDs
-    public const byte Choke = 0;
-    public const byte Unchoke = 1;
-    public const byte Interested = 2;
-    public const byte NotInterested = 3;
-    public const byte Have = 4;
-    public const byte Bitfield = 5;
-    public const byte Request = 6;
-    public const byte Piece = 7;
-    public const byte Cancel = 8;
-    public const byte Port = 9;
+    public const byte IdChoke = 0;
+    public const byte IdUnchoke = 1;
+    public const byte IdInterested = 2;
+    public const byte IdNotInterested = 3;
+    public const byte IdHave = 4;
+    public const byte IdBitfield = 5;
+    public const byte IdRequest = 6;
+    public const byte IdPiece = 7;
+    public const byte IdCancel = 8;
+    public const byte IdPort = 9;
 
-    /// <summary>
-    /// Keep-alive has no ID and zero length prefix.
-    /// </summary>
-    public static readonly Message KeepAlive = new(255, null);
-
-    public byte Id { get; } = id;
-    public RentedArray<byte>? Payload { get; } = payload;
-
-    /// <summary>
-    /// Serializes this message to bytes.
-    /// </summary>
-    public RentedArray<byte> ToRentedArray()
+    partial record Choke
     {
-        if (Id == 255) // keep-alive
-        {
-            var keepAliverentedArray = new RentedArray<byte>(4);
-            try
-            {
-                // keep-alive = 4 zero bytes
-                keepAliverentedArray.Memory.Span[..4].Clear();
-                return keepAliverentedArray;
-            }
-            catch
-            {
-                keepAliverentedArray.Dispose();
-                throw;
-            }
-        }
+        public static Choke Value { get; } = new Choke();
+    };
 
-        int payloadLength = Payload?.Length ?? 0;
-        int length = payloadLength + 5; // 4 bytes length + 1 id byte + payload
+    partial record Unchoke
+    {
+        public static Unchoke Value { get; } = new Unchoke();
+    };
 
-        var rentedArray = new RentedArray<byte>(length);
+    partial record Interested
+    {
+        public static Interested Value { get; } = new Interested();
+    };
 
+    partial record NotInterested
+    {
+        public static NotInterested Value { get; } = new NotInterested();
+    };
+
+    partial record KeepAlive
+    {
+        public static KeepAlive Value { get; } = new KeepAlive();
+    };
+
+    partial record Port(ushort Value);
+
+    partial record Have(int Index);
+
+    partial record BitfieldMessage(Bitfield Bitfield);
+
+    partial record BlockMessage(int Index, int Begin, RentedArray<byte> Payload);
+
+    partial record RequestBlockMessage(int Index, int Begin, int Length);
+
+    partial record CancelMessage(int Index, int Begin, int Length);
+
+    internal static RentedArray<byte> SerializeChoke(Choke _)
+    {
+        var rentedArray = new RentedArray<byte>(5);
         try
         {
-            var buffer = rentedArray.Memory.Span;
-            // write message length (big endian)
-            BinaryPrimitives.WriteInt32BigEndian(buffer.Slice(0, 4), 1 + payloadLength);
-
-            // message id
-            buffer[4] = Id;
-
-            // payload (if any)
-            if (payloadLength > 0)
-            {
-                Payload!.Memory.Span.CopyTo(buffer.Slice(5, payloadLength));
-            }
-
+            BinaryPrimitives.WriteInt32BigEndian(rentedArray.Memory.Span[..4], 1);
+            rentedArray.Memory.Span[4] = IdChoke;
             return rentedArray;
         }
         catch
@@ -79,57 +71,61 @@ internal readonly struct Message(byte id, RentedArray<byte>? payload) : IDisposa
         }
     }
 
-    /// <summary>
-    /// Deserializes a message from a span.
-    /// </summary>
-    public static Message From(RentedArray<byte> rentedArray, byte id)
+    internal static RentedArray<byte> SerializeUnChoke(Unchoke _)
     {
-        if (
-            id != Choke
-            && id != Unchoke
-            && id != Interested
-            && id != NotInterested
-            && id != Have
-            && id != Bitfield
-            && id != Request
-            && id != Piece
-            && id != Cancel
-            && id != Port
-        )
+        var rentedArray = new RentedArray<byte>(5);
+        try
         {
-            throw new BitorrentProtocolViolationException("Invalid Id");
+            BinaryPrimitives.WriteInt32BigEndian(rentedArray.Memory.Span[..4], 1);
+            rentedArray.Memory.Span[4] = IdUnchoke;
+            return rentedArray;
         }
-
-        if (rentedArray.Length < rentedArray.Length)
-        {
-            throw new BitorrentProtocolViolationException("Incomplete message");
-        }
-
-        if (rentedArray.Length == 0)
+        catch
         {
             rentedArray.Dispose();
-            return new Message(id, null);
+            throw;
         }
-
-        if (id == Piece && rentedArray.Length < 16 * 1024)
-        {
-            throw new BitorrentProtocolViolationException("Piece request must be at least 16kb");
-        }
-
-        return new Message(id, rentedArray);
     }
 
-    // ---- Helpers to create specific messages ----
+    internal static RentedArray<byte> SerializeInterested(Interested _)
+    {
+        var rentedArray = new RentedArray<byte>(5);
+        try
+        {
+            BinaryPrimitives.WriteInt32BigEndian(rentedArray.Memory.Span[..4], 1);
+            rentedArray.Memory.Span[4] = IdInterested;
+            return rentedArray;
+        }
+        catch
+        {
+            rentedArray.Dispose();
+            throw;
+        }
+    }
 
-    public static Message CreateHave(int pieceIndex)
+    internal static RentedArray<byte> SerializeNotInterested(NotInterested _)
+    {
+        var rentedArray = new RentedArray<byte>(5);
+        try
+        {
+            BinaryPrimitives.WriteInt32BigEndian(rentedArray.Memory.Span[..4], 1);
+            rentedArray.Memory.Span[4] = IdNotInterested;
+            return rentedArray;
+        }
+        catch
+        {
+            rentedArray.Dispose();
+            throw;
+        }
+    }
+
+    internal static RentedArray<byte> SerializeKeepAlive(KeepAlive _)
     {
         var rentedArray = new RentedArray<byte>(4);
         try
         {
-            var buffer = rentedArray.Memory;
-
-            BinaryPrimitives.WriteInt32BigEndian(buffer.Span, pieceIndex);
-            return new Message(Have, rentedArray);
+            BinaryPrimitives.WriteInt32BigEndian(rentedArray.Memory.Span[..4], 0);
+            return rentedArray;
         }
         catch
         {
@@ -138,17 +134,15 @@ internal readonly struct Message(byte id, RentedArray<byte>? payload) : IDisposa
         }
     }
 
-    public static Message CreateRequest(int index, int begin, int length)
+    internal static RentedArray<byte> SerializeHave(Have have)
     {
-        var rentedArray = new RentedArray<byte>(12);
+        var rentedArray = new RentedArray<byte>(9);
         try
         {
-            var buffer = rentedArray.Memory;
-
-            BinaryPrimitives.WriteInt32BigEndian(buffer.Span[..4], index);
-            BinaryPrimitives.WriteInt32BigEndian(buffer.Span.Slice(4, 4), begin);
-            BinaryPrimitives.WriteInt32BigEndian(buffer.Span.Slice(8, 4), length);
-            return new Message(Request, rentedArray);
+            BinaryPrimitives.WriteInt32BigEndian(rentedArray.Memory.Span[..4], 5);
+            rentedArray.Memory.Span[4] = IdHave;
+            BinaryPrimitives.WriteInt32BigEndian(rentedArray.Memory.Span[5..], have.Index);
+            return rentedArray;
         }
         catch
         {
@@ -157,17 +151,15 @@ internal readonly struct Message(byte id, RentedArray<byte>? payload) : IDisposa
         }
     }
 
-    public static Message CreateCancel(int index, int begin, int length)
+    internal static RentedArray<byte> SerializePort(Port port)
     {
-        var rentedArray = new RentedArray<byte>(12);
+        var rentedArray = new RentedArray<byte>(7);
         try
         {
-            var buffer = rentedArray.Memory;
-
-            BinaryPrimitives.WriteInt32BigEndian(buffer.Span[..4], index);
-            BinaryPrimitives.WriteInt32BigEndian(buffer.Span.Slice(4, 4), begin);
-            BinaryPrimitives.WriteInt32BigEndian(buffer.Span.Slice(8, 4), length);
-            return new Message(Cancel, rentedArray);
+            BinaryPrimitives.WriteInt32BigEndian(rentedArray.Memory.Span[..4], 5);
+            rentedArray.Memory.Span[4] = IdPort;
+            BinaryPrimitives.WriteUInt16BigEndian(rentedArray.Memory.Span[5..], port.Value);
+            return rentedArray;
         }
         catch
         {
@@ -176,18 +168,19 @@ internal readonly struct Message(byte id, RentedArray<byte>? payload) : IDisposa
         }
     }
 
-    public static Message CreatePiece(int index, int begin, RentedArray<byte> block)
+    internal static RentedArray<byte> SerializeBitfield(BitfieldMessage bitfieldMessage)
     {
-        var memory = block.Memory;
-        var rentedArray = new RentedArray<byte>(8 + memory.Length);
+        using var bitfieldPayload = bitfieldMessage.Bitfield.ToRentedArray();
+        var rentedArray = new RentedArray<byte>(5 + bitfieldPayload.Length);
         try
         {
-            var buffer = rentedArray.Memory;
-
-            BinaryPrimitives.WriteInt32BigEndian(buffer.Span[..4], index);
-            BinaryPrimitives.WriteInt32BigEndian(buffer.Span.Slice(4, 4), begin);
-            memory.Span.CopyTo(buffer.Span[8..]);
-            return new Message(Piece, rentedArray);
+            BinaryPrimitives.WriteInt32BigEndian(
+                rentedArray.Memory.Span[..4],
+                1 + bitfieldPayload.Length
+            );
+            rentedArray.Memory.Span[4] = IdBitfield;
+            bitfieldPayload.Memory.CopyTo(rentedArray.Memory[5..]);
+            return rentedArray;
         }
         catch
         {
@@ -196,21 +189,82 @@ internal readonly struct Message(byte id, RentedArray<byte>? payload) : IDisposa
         }
     }
 
-    public static Message CreateBitfield(RentedArray<byte> bitfieldArray) =>
-        new(Bitfield, bitfieldArray);
-
-    public static Message CreateChoke() => new(Choke, null);
-
-    public static Message CreateUnchoke() => new(Unchoke, null);
-
-    public static Message CreateInterested() => new(Interested, null);
-
-    public static Message CreateNotInterested() => new(NotInterested, null);
-
-    public static Message CreateKeepAlive() => KeepAlive;
-
-    public void Dispose()
+    internal static RentedArray<byte> SerializeRequest(RequestBlockMessage requestBlockMessage)
     {
-        Payload?.Dispose();
+        var rentedArray = new RentedArray<byte>(17);
+        try
+        {
+            BinaryPrimitives.WriteInt32BigEndian(rentedArray.Memory.Span[..4], 13);
+            rentedArray.Memory.Span[4] = IdRequest;
+            BinaryPrimitives.WriteInt32BigEndian(
+                rentedArray.Memory.Span[5..9],
+                requestBlockMessage.Index
+            );
+            BinaryPrimitives.WriteInt32BigEndian(
+                rentedArray.Memory.Span[9..13],
+                requestBlockMessage.Begin
+            );
+            BinaryPrimitives.WriteInt32BigEndian(
+                rentedArray.Memory.Span[13..17],
+                requestBlockMessage.Length
+            );
+            return rentedArray;
+        }
+        catch
+        {
+            rentedArray.Dispose();
+            throw;
+        }
+    }
+
+    internal static RentedArray<byte> SerializeCancel(CancelMessage cancelMessage)
+    {
+        var rentedArray = new RentedArray<byte>(17);
+        try
+        {
+            BinaryPrimitives.WriteInt32BigEndian(rentedArray.Memory.Span[..4], 13);
+            rentedArray.Memory.Span[4] = IdCancel;
+            BinaryPrimitives.WriteInt32BigEndian(
+                rentedArray.Memory.Span[5..9],
+                cancelMessage.Index
+            );
+            BinaryPrimitives.WriteInt32BigEndian(
+                rentedArray.Memory.Span[9..13],
+                cancelMessage.Begin
+            );
+            BinaryPrimitives.WriteInt32BigEndian(
+                rentedArray.Memory.Span[13..17],
+                cancelMessage.Length
+            );
+            return rentedArray;
+        }
+        catch
+        {
+            rentedArray.Dispose();
+            throw;
+        }
+    }
+
+    internal static RentedArray<byte> SerializeBlock(BlockMessage blockMessage)
+    {
+        using var payload = blockMessage.Payload;
+        var rentedArray = new RentedArray<byte>(13 + payload.Length);
+        try
+        {
+            BinaryPrimitives.WriteInt32BigEndian(rentedArray.Memory.Span[..4], 9 + payload.Length);
+            rentedArray.Memory.Span[4] = IdPiece;
+            BinaryPrimitives.WriteInt32BigEndian(rentedArray.Memory.Span[5..9], blockMessage.Index);
+            BinaryPrimitives.WriteInt32BigEndian(
+                rentedArray.Memory.Span[9..13],
+                blockMessage.Begin
+            );
+            payload.Memory.CopyTo(rentedArray.Memory[13..]);
+            return rentedArray;
+        }
+        catch
+        {
+            rentedArray.Dispose();
+            throw;
+        }
     }
 }
