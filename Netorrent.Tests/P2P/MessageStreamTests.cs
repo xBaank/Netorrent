@@ -8,6 +8,7 @@ using Netorrent.P2P.Messages;
 using Netorrent.Tests.Fakes;
 using R3;
 using Shouldly;
+using static Netorrent.P2P.Messages.IMessage;
 
 namespace Netorrent.Tests.P2P;
 
@@ -20,13 +21,13 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Receive_Choke(CancellationToken cancellationToken)
     {
-        Subject<Message> messages = new();
-        async ValueTask messageHandler(Message message, CancellationToken ct)
+        Subject<IMessage> messages = new();
+        async ValueTask messageHandler(IMessage message, CancellationToken ct)
         {
             messages.OnNext(message);
         }
-        var message = Message.Choke.Value;
-        using var rawData = Message.SerializeChoke(message);
+        var message = IMessage.Choke.Value;
+        using var rawData = IMessage.SerializeChoke(message);
         var receviedTask = messages.FirstAsync(cancellationToken);
 
         await using var memoryStream = new FakeMemoryStream();
@@ -49,9 +50,9 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Send_Choke(CancellationToken cancellationToken)
     {
-        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
-        var message = new Message.Choke();
-        using var expectedData = Message.SerializeChoke(message);
+        ValueTask messageHandler(IMessage message, CancellationToken ct) => ValueTask.CompletedTask;
+        var message = new IMessage.Choke();
+        using var expectedData = IMessage.SerializeChoke(message);
 
         await using var memoryStream = new FakeMemoryStream();
         await using var messageStream = new MessageStream(
@@ -72,13 +73,13 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Receive_Unchoke(CancellationToken cancellationToken)
     {
-        Subject<Message> messages = new();
-        async ValueTask messageHandler(Message message, CancellationToken ct)
+        Subject<IMessage> messages = new();
+        async ValueTask messageHandler(IMessage message, CancellationToken ct)
         {
             messages.OnNext(message);
         }
-        var message = Message.Unchoke.Value;
-        using var rawData = Message.SerializeUnChoke(message);
+        var message = IMessage.Unchoke.Value;
+        using var rawData = IMessage.SerializeUnChoke(message);
         var messageTask = messages.FirstAsync(cancellationToken);
 
         await using var memoryStream = new FakeMemoryStream();
@@ -101,9 +102,9 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Send_Unchoke(CancellationToken cancellationToken)
     {
-        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
-        var message = new Message.Unchoke();
-        using var expectedData = Message.SerializeUnChoke(message);
+        ValueTask messageHandler(IMessage message, CancellationToken ct) => ValueTask.CompletedTask;
+        var message = new IMessage.Unchoke();
+        using var expectedData = IMessage.SerializeUnChoke(message);
 
         await using var memoryStream = new FakeMemoryStream();
         await using var messageStream = new MessageStream(
@@ -124,13 +125,13 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Receive_Interested(CancellationToken cancellationToken)
     {
-        Subject<Message> messages = new();
-        async ValueTask messageHandler(Message message, CancellationToken ct)
+        Subject<IMessage> messages = new();
+        async ValueTask messageHandler(IMessage message, CancellationToken ct)
         {
             messages.OnNext(message);
         }
-        var message = Message.Interested.Value;
-        using var rawData = Message.SerializeInterested(message);
+        var message = IMessage.Interested.Value;
+        using var rawData = IMessage.SerializeInterested(message);
         var messageTask = messages.FirstAsync(cancellationToken);
 
         await using var memoryStream = new FakeMemoryStream();
@@ -153,9 +154,9 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Send_Interested(CancellationToken cancellationToken)
     {
-        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
-        var message = new Message.Interested();
-        using var expectedData = Message.SerializeInterested(message);
+        ValueTask messageHandler(IMessage message, CancellationToken ct) => ValueTask.CompletedTask;
+        var message = new IMessage.Interested();
+        using var expectedData = IMessage.SerializeInterested(message);
 
         await using var memoryStream = new FakeMemoryStream();
         await using var messageStream = new MessageStream(
@@ -176,13 +177,13 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Receive_NotInterested(CancellationToken cancellationToken)
     {
-        Subject<Message> messages = new();
-        async ValueTask messageHandler(Message message, CancellationToken ct)
+        Subject<IMessage> messages = new();
+        async ValueTask messageHandler(IMessage message, CancellationToken ct)
         {
             messages.OnNext(message);
         }
-        var message = Message.NotInterested.Value;
-        using var rawData = Message.SerializeNotInterested(message);
+        var message = IMessage.NotInterested.Value;
+        using var rawData = IMessage.SerializeNotInterested(message);
         var messageTask = messages.FirstAsync(cancellationToken);
 
         await using var memoryStream = new FakeMemoryStream();
@@ -205,9 +206,9 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Send_NotInterested(CancellationToken cancellationToken)
     {
-        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
-        var message = new Message.NotInterested();
-        using var expectedData = Message.SerializeNotInterested(message);
+        ValueTask messageHandler(IMessage message, CancellationToken ct) => ValueTask.CompletedTask;
+        var message = new IMessage.NotInterested();
+        using var expectedData = IMessage.SerializeNotInterested(message);
 
         await using var memoryStream = new FakeMemoryStream();
         await using var messageStream = new MessageStream(
@@ -228,14 +229,14 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Receive_Have(CancellationToken cancellationToken)
     {
-        Subject<Message> messages = new();
-        async ValueTask messageHandler(Message message, CancellationToken ct)
+        Subject<IMessage> messages = new();
+        async ValueTask messageHandler(IMessage message, CancellationToken ct)
         {
             messages.OnNext(message);
         }
         const int pieceIndex = 42;
-        var message = new Message.Have(pieceIndex);
-        using var rawData = Message.SerializeHave(message);
+        var message = new IMessage.Have(pieceIndex);
+        using var rawData = IMessage.SerializeHave(message);
         var messageTask = messages.FirstAsync(cancellationToken);
 
         await using var memoryStream = new FakeMemoryStream();
@@ -258,9 +259,9 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Send_Have(CancellationToken cancellationToken)
     {
-        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
-        var message = new Message.Have(1);
-        using var expectedData = Message.SerializeHave(message);
+        ValueTask messageHandler(IMessage message, CancellationToken ct) => ValueTask.CompletedTask;
+        var message = new IMessage.Have(1);
+        using var expectedData = IMessage.SerializeHave(message);
 
         await using var memoryStream = new FakeMemoryStream();
         await using var messageStream = new MessageStream(
@@ -281,15 +282,15 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Receive_Bitfield(CancellationToken cancellationToken)
     {
-        Subject<Message> messages = new();
-        async ValueTask messageHandler(Message message, CancellationToken ct)
+        Subject<IMessage> messages = new();
+        async ValueTask messageHandler(IMessage message, CancellationToken ct)
         {
             messages.OnNext(message);
         }
         var bitfield = new Bitfield(5, true);
         using var bitfieldData = bitfield.ToRentedArray();
-        var message = new Message.BitfieldMessage(bitfield);
-        using var rawData = Message.SerializeBitfield(message);
+        var message = new IMessage.BitfieldMessage(bitfield);
+        using var rawData = IMessage.SerializeBitfield(message);
 
         await using var memoryStream = new FakeMemoryStream();
         await memoryStream.WriteAsync(rawData.Memory, cancellationToken);
@@ -306,20 +307,24 @@ internal class MessageStreamTests
         _ = messageStream.StartAsync(messageHandler, cancellationToken);
         var received = await messageTask;
 
-        received.MatchBitfieldMessage(
-            i => i.Bitfield.Length.ShouldBe(message.Bitfield.Length),
-            () => throw new InvalidOperationException()
-        );
+        if (received is BitfieldMessage bitfieldMessage)
+        {
+            bitfieldMessage.Bitfield.Length.ShouldBe(message.Bitfield.Length);
+        }
+        else
+        {
+            throw new InvalidOperationException();
+        }
     }
 
     [Test]
     public async Task Should_Send_Bitfield(CancellationToken cancellationToken)
     {
-        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
+        ValueTask messageHandler(IMessage message, CancellationToken ct) => ValueTask.CompletedTask;
         var bitfield = new Bitfield(5, true);
         using var bitfieldData = bitfield.ToRentedArray();
-        var message = new Message.BitfieldMessage(bitfield);
-        using var expectedData = Message.SerializeBitfield(message);
+        var message = new IMessage.BitfieldMessage(bitfield);
+        using var expectedData = IMessage.SerializeBitfield(message);
 
         await using var memoryStream = new FakeMemoryStream();
         await using var messageStream = new MessageStream(
@@ -340,16 +345,16 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Receive_Request(CancellationToken cancellationToken)
     {
-        Subject<Message> messages = new();
-        async ValueTask messageHandler(Message message, CancellationToken ct)
+        Subject<IMessage> messages = new();
+        async ValueTask messageHandler(IMessage message, CancellationToken ct)
         {
             messages.OnNext(message);
         }
         const int index = 1;
         const int begin = 16384;
         const int length = 16384;
-        var message = new Message.RequestBlockMessage(index, begin, length);
-        using var rawData = Message.SerializeRequest(message);
+        var message = new IMessage.RequestBlockMessage(index, begin, length);
+        using var rawData = IMessage.SerializeRequest(message);
         var messageTask = messages.FirstAsync(cancellationToken);
 
         await using var memoryStream = new FakeMemoryStream();
@@ -372,12 +377,12 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Send_Request(CancellationToken cancellationToken)
     {
-        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
+        ValueTask messageHandler(IMessage message, CancellationToken ct) => ValueTask.CompletedTask;
         const int index = 1;
         const int begin = 16384;
         const int length = 16384;
-        var message = new Message.RequestBlockMessage(index, begin, length);
-        using var expectedData = Message.SerializeRequest(message);
+        var message = new IMessage.RequestBlockMessage(index, begin, length);
+        using var expectedData = IMessage.SerializeRequest(message);
 
         await using var memoryStream = new FakeMemoryStream();
         await using var messageStream = new MessageStream(
@@ -398,16 +403,16 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Receive_Cancel(CancellationToken cancellationToken)
     {
-        Subject<Message> messages = new();
-        async ValueTask messageHandler(Message message, CancellationToken ct)
+        Subject<IMessage> messages = new();
+        async ValueTask messageHandler(IMessage message, CancellationToken ct)
         {
             messages.OnNext(message);
         }
         const int index = 2;
         const int begin = 32768;
         const int length = 8192;
-        var message = new Message.CancelMessage(index, begin, length);
-        using var rawData = Message.SerializeCancel(message);
+        var message = new IMessage.CancelMessage(index, begin, length);
+        using var rawData = IMessage.SerializeCancel(message);
         var messageTask = messages.FirstAsync(cancellationToken);
 
         await using var memoryStream = new FakeMemoryStream();
@@ -430,12 +435,12 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Send_Cancel(CancellationToken cancellationToken)
     {
-        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
+        ValueTask messageHandler(IMessage message, CancellationToken ct) => ValueTask.CompletedTask;
         const int index = 1;
         const int begin = 16384;
         const int length = 16384;
-        var message = new Message.CancelMessage(index, begin, length);
-        using var expectedData = Message.SerializeCancel(message);
+        var message = new IMessage.CancelMessage(index, begin, length);
+        using var expectedData = IMessage.SerializeCancel(message);
 
         await using var memoryStream = new FakeMemoryStream();
         await using var messageStream = new MessageStream(
@@ -456,8 +461,8 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Receive_Piece(CancellationToken cancellationToken)
     {
-        Subject<Message> messages = new();
-        async ValueTask messageHandler(Message message, CancellationToken ct)
+        Subject<IMessage> messages = new();
+        async ValueTask messageHandler(IMessage message, CancellationToken ct)
         {
             messages.OnNext(message);
         }
@@ -468,8 +473,8 @@ internal class MessageStreamTests
         using var rentedBlock = new RentedArray<byte>(blockData.Length);
         blockData.AsMemory().CopyTo(rentedBlock.Memory);
 
-        var message = new Message.BlockMessage(index, begin, rentedBlock);
-        using var rawData = Message.SerializeBlock(message);
+        var message = new IMessage.BlockMessage(index, begin, rentedBlock);
+        using var rawData = IMessage.SerializeBlock(message);
         var messageTask = messages.FirstAsync(cancellationToken);
 
         await using var memoryStream = new FakeMemoryStream();
@@ -486,22 +491,23 @@ internal class MessageStreamTests
         _ = messageStream.StartAsync(messageHandler, cancellationToken);
         var received = await messageTask;
 
-        received.MatchBlockMessage(
-            i =>
-            {
-                using var _ = i.Payload;
-                i.Begin.ShouldBe(message.Begin);
-                i.Index.ShouldBe(message.Index);
-                i.Payload.Memory.Span.SequenceEqual(blockData);
-            },
-            () => throw new InvalidOperationException()
-        );
+        if (received is BlockMessage blockMessage)
+        {
+            using var _ = blockMessage.Payload;
+            blockMessage.Begin.ShouldBe(message.Begin);
+            blockMessage.Index.ShouldBe(message.Index);
+            blockMessage.Payload.Memory.Span.SequenceEqual(blockData);
+        }
+        else
+        {
+            throw new InvalidOperationException();
+        }
     }
 
     [Test]
     public async Task Should_Send_Piece(CancellationToken cancellationToken)
     {
-        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
+        ValueTask messageHandler(IMessage message, CancellationToken ct) => ValueTask.CompletedTask;
         const int index = 1;
         const int begin = 16384;
         var blockData = new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05 };
@@ -511,9 +517,9 @@ internal class MessageStreamTests
         blockData.AsMemory().CopyTo(rentedBlock.Memory);
         blockData.AsMemory().CopyTo(rentedBlock2.Memory);
 
-        var message = new Message.BlockMessage(index, begin, rentedBlock);
+        var message = new IMessage.BlockMessage(index, begin, rentedBlock);
         var expectedmessage = message with { Payload = rentedBlock2 };
-        using var expectedData = Message.SerializeBlock(message);
+        using var expectedData = IMessage.SerializeBlock(message);
 
         await using var memoryStream = new FakeMemoryStream();
         await using var messageStream = new MessageStream(
@@ -534,13 +540,13 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Receive_KeepAlive(CancellationToken cancellationToken)
     {
-        Subject<Message> messages = new();
-        async ValueTask messageHandler(Message message, CancellationToken ct)
+        Subject<IMessage> messages = new();
+        async ValueTask messageHandler(IMessage message, CancellationToken ct)
         {
             messages.OnNext(message);
         }
-        var message = Message.KeepAlive.Value;
-        using var rawData = Message.SerializeKeepAlive(message);
+        var message = IMessage.KeepAlive.Value;
+        using var rawData = IMessage.SerializeKeepAlive(message);
         var messageTask = messages.FirstAsync(cancellationToken);
 
         await using var memoryStream = new FakeMemoryStream();
@@ -563,9 +569,9 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Send_KeepAlive(CancellationToken cancellationToken)
     {
-        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
-        var message = Message.KeepAlive.Value;
-        using var expectedData = Message.SerializeKeepAlive(message);
+        ValueTask messageHandler(IMessage message, CancellationToken ct) => ValueTask.CompletedTask;
+        var message = IMessage.KeepAlive.Value;
+        using var expectedData = IMessage.SerializeKeepAlive(message);
 
         await using var memoryStream = new FakeMemoryStream();
         await using var messageStream = new MessageStream(
@@ -586,8 +592,8 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Timeout(CancellationToken cancellationToken)
     {
-        Subject<Message> messages = new();
-        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
+        Subject<IMessage> messages = new();
+        ValueTask messageHandler(IMessage message, CancellationToken ct) => ValueTask.CompletedTask;
         await using var memoryStream = new FakeMemoryStream(true);
         await using var messageStream = new MessageStream(
             memoryStream,
@@ -613,7 +619,7 @@ internal class MessageStreamTests
     [Test]
     public async Task Should_Cancel(CancellationToken cancellationToken)
     {
-        ValueTask messageHandler(Message message, CancellationToken ct) => ValueTask.CompletedTask;
+        ValueTask messageHandler(IMessage message, CancellationToken ct) => ValueTask.CompletedTask;
         await using var memoryStream = new FakeMemoryStream(true);
         await using var messageStream = new MessageStream(
             memoryStream,
@@ -645,8 +651,8 @@ internal class MessageStreamTests
         CancellationToken cancellationToken
     )
     {
-        Subject<Message> messages = new();
-        async ValueTask messageHandler(Message message, CancellationToken ct)
+        Subject<IMessage> messages = new();
+        async ValueTask messageHandler(IMessage message, CancellationToken ct)
         {
             messages.OnNext(message);
         }

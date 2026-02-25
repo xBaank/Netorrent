@@ -9,8 +9,8 @@ namespace Netorrent.Tests.Fakes;
 internal class FakePeer(
     PeerId otherPeerId,
     IPEndPoint iPEndPoint,
-    Channel<Message> incomming,
-    Channel<Message> outgoing
+    Channel<IMessage> incomming,
+    Channel<IMessage> outgoing
 ) : IPeer
 {
     public FakeMessageStream FakeMessageStream { get; } = new(otherPeerId, incomming, outgoing);

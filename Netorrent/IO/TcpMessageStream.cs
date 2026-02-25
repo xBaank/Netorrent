@@ -24,11 +24,11 @@ internal class TcpMessageStream(TcpClient tcpClient, Handshake handshake, Bitfie
         tcpClient.Dispose();
     }
 
-    public ValueTask SendAsync(Message message, CancellationToken cancellationToken) =>
+    public ValueTask SendAsync(IMessage message, CancellationToken cancellationToken) =>
         stream.SendAsync(message, cancellationToken);
 
     public Task StartAsync(MessageHandler messageHandler, CancellationToken cancellationToken) =>
         stream.StartAsync(messageHandler, cancellationToken);
 
-    public bool TrySend(Message message) => stream.TrySend(message);
+    public bool TrySend(IMessage message) => stream.TrySend(message);
 }

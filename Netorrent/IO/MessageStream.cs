@@ -7,7 +7,7 @@ using Netorrent.Exceptions;
 using Netorrent.Extensions;
 using Netorrent.Other;
 using Netorrent.P2P.Messages;
-using static Netorrent.P2P.Messages.Message;
+using static Netorrent.P2P.Messages.IMessage;
 
 namespace Netorrent.IO;
 
@@ -18,7 +18,7 @@ internal class MessageStream(
     Bitfield myBitfield
 ) : IMessageStream
 {
-    private readonly Channel<Message> _outgoingMessages = Channel.CreateBounded<Message>(
+    private readonly Channel<IMessage> _outgoingMessages = Channel.CreateBounded<IMessage>(
         new BoundedChannelOptions(128) { SingleWriter = false, SingleReader = true }
     );
 
@@ -111,14 +111,14 @@ internal class MessageStream(
         }
     }
 
-    public async ValueTask SendAsync(Message message, CancellationToken cancellationToken) =>
+    public async ValueTask SendAsync(IMessage message, CancellationToken cancellationToken) =>
         await _outgoingMessages.Writer.WriteAsync(message, cancellationToken).ConfigureAwait(false);
 
-    public bool TrySend(Message message) => _outgoingMessages.Writer.TryWrite(message);
+    public bool TrySend(IMessage message) => _outgoingMessages.Writer.TryWrite(message);
 
     private bool TryParseMessage(
         ref ReadOnlySequence<byte> buffer,
-        [NotNullWhen(true)] out Message? message
+        [NotNullWhen(true)] out IMessage? message
     )
     {
         message = default;
@@ -321,7 +321,7 @@ internal class MessageStream(
         }
     }
 
-    private async ValueTask SendMessageAsync(Message message, CancellationToken cancellationToken)
+    private async ValueTask SendMessageAsync(IMessage message, CancellationToken cancellationToken)
     {
         if (_sendCts is null || !_sendCts.TryReset())
         {
@@ -331,19 +331,21 @@ internal class MessageStream(
         _sendCts.CancelAfter(timeout);
         var token = _sendCts?.Token ?? cancellationToken;
 
-        using var rentedArray = message.Match(
-            choke: SerializeChoke,
-            unchoke: SerializeUnChoke,
-            interested: SerializeInterested,
-            notInterested: SerializeNotInterested,
-            keepAlive: SerializeKeepAlive,
-            have: SerializeHave,
-            cancelMessage: SerializeCancel,
-            blockMessage: SerializeBlock,
-            requestBlockMessage: SerializeRequest,
-            bitfieldMessage: SerializeBitfield,
-            port: SerializePort
-        );
+        using var rentedArray = message switch
+        {
+            Choke choke => SerializeChoke(choke),
+            Unchoke unchoke => SerializeUnChoke(unchoke),
+            Interested interested => SerializeInterested(interested),
+            NotInterested notInterested => SerializeNotInterested(notInterested),
+            KeepAlive keepAlive => SerializeKeepAlive(keepAlive),
+            Have have => SerializeHave(have),
+            CancelMessage cancelMessage => SerializeCancel(cancelMessage),
+            BlockMessage blockMessage => SerializeBlock(blockMessage),
+            RequestBlockMessage requestBlockMessage => SerializeRequest(requestBlockMessage),
+            BitfieldMessage bitfieldMessage => SerializeBitfield(bitfieldMessage),
+            Port port => SerializePort(port),
+            _ => throw new InvalidOperationException(),
+        };
 
         await stream.WriteAsync(rentedArray.Memory, token).ConfigureAwait(false);
         await stream.FlushAsync(token).ConfigureAwait(false);
@@ -353,7 +355,10 @@ internal class MessageStream(
     {
         await foreach (var item in _outgoingMessages.Reader.ReadAllAsync().ConfigureAwait(false))
         {
-            item.MatchBlockMessage(i => i.Payload.Dispose(), () => { });
+            if (item is BlockMessage blockMessage)
+            {
+                blockMessage.Dispose();
+            }
         }
     }
 

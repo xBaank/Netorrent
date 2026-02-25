@@ -2,13 +2,14 @@ using System.Threading.Channels;
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.P2P.Messages;
+using static Netorrent.P2P.Messages.IMessage;
 
 namespace Netorrent.Tests.Fakes;
 
 internal class FakeMessageStream(
     PeerId otherPeerId,
-    Channel<Message> incommingMessages,
-    Channel<Message> outgoingMessages
+    Channel<IMessage> incommingMessages,
+    Channel<IMessage> outgoingMessages
 ) : IMessageStream
 {
     public Handshake Handshake => new(0, string.Empty, new byte[20], otherPeerId.ToBytes());
@@ -41,11 +42,17 @@ internal class FakeMessageStream(
     {
         await foreach (var item in incommingMessages.Reader.ReadAllAsync().ConfigureAwait(false))
         {
-            item.MatchBlockMessage(i => i.Payload.Dispose(), () => { });
+            if (item is BlockMessage blockMessage)
+            {
+                blockMessage.Dispose();
+            }
         }
         await foreach (var item in outgoingMessages.Reader.ReadAllAsync().ConfigureAwait(false))
         {
-            item.MatchBlockMessage(i => i.Payload.Dispose(), () => { });
+            if (item is BlockMessage blockMessage)
+            {
+                blockMessage.Dispose();
+            }
         }
     }
 
@@ -58,8 +65,8 @@ internal class FakeMessageStream(
         await outgoingMessages.Reader.Completion;
     }
 
-    public ValueTask SendAsync(Message message, CancellationToken cancellationToken) =>
+    public ValueTask SendAsync(IMessage message, CancellationToken cancellationToken) =>
         outgoingMessages.Writer.WriteAsync(message, cancellationToken);
 
-    public bool TrySend(Message message) => outgoingMessages.Writer.TryWrite(message);
+    public bool TrySend(IMessage message) => outgoingMessages.Writer.TryWrite(message);
 }

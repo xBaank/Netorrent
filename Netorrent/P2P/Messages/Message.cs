@@ -1,11 +1,9 @@
 ﻿using System.Buffers.Binary;
-using Dunet;
 using Netorrent.Other;
 
 namespace Netorrent.P2P.Messages;
 
-[Union]
-internal partial record Message
+internal interface IMessage
 {
     public const byte IdChoke = 0;
     public const byte IdUnchoke = 1;
@@ -18,44 +16,49 @@ internal partial record Message
     public const byte IdCancel = 8;
     public const byte IdPort = 9;
 
-    partial record Choke
+    public record Choke : IMessage
     {
         public static Choke Value { get; } = new Choke();
     };
 
-    partial record Unchoke
+    public record Unchoke : IMessage
     {
         public static Unchoke Value { get; } = new Unchoke();
     };
 
-    partial record Interested
+    public record Interested : IMessage
     {
         public static Interested Value { get; } = new Interested();
     };
 
-    partial record NotInterested
+    public record NotInterested : IMessage
     {
         public static NotInterested Value { get; } = new NotInterested();
     };
 
-    partial record KeepAlive
+    public record KeepAlive : IMessage
     {
         public static KeepAlive Value { get; } = new KeepAlive();
     };
 
-    partial record Port(ushort Value);
+    public record Port(ushort Value) : IMessage;
 
-    partial record Have(int Index);
+    public record Have(int Index) : IMessage;
 
-    partial record BitfieldMessage(Bitfield Bitfield);
+    public record BitfieldMessage(Bitfield Bitfield) : IMessage;
 
-    partial record BlockMessage(int Index, int Begin, RentedArray<byte> Payload);
+    public record BlockMessage(int Index, int Begin, RentedArray<byte> Payload)
+        : IMessage,
+            IDisposable
+    {
+        public void Dispose() => Payload.Dispose();
+    }
 
-    partial record RequestBlockMessage(int Index, int Begin, int Length);
+    public record RequestBlockMessage(int Index, int Begin, int Length) : IMessage;
 
-    partial record CancelMessage(int Index, int Begin, int Length);
+    public record CancelMessage(int Index, int Begin, int Length) : IMessage;
 
-    internal static RentedArray<byte> SerializeChoke(Choke _)
+    public static RentedArray<byte> SerializeChoke(Choke _)
     {
         var rentedArray = new RentedArray<byte>(5);
         try
@@ -71,7 +74,7 @@ internal partial record Message
         }
     }
 
-    internal static RentedArray<byte> SerializeUnChoke(Unchoke _)
+    public static RentedArray<byte> SerializeUnChoke(Unchoke _)
     {
         var rentedArray = new RentedArray<byte>(5);
         try
@@ -87,7 +90,7 @@ internal partial record Message
         }
     }
 
-    internal static RentedArray<byte> SerializeInterested(Interested _)
+    public static RentedArray<byte> SerializeInterested(Interested _)
     {
         var rentedArray = new RentedArray<byte>(5);
         try
@@ -103,7 +106,7 @@ internal partial record Message
         }
     }
 
-    internal static RentedArray<byte> SerializeNotInterested(NotInterested _)
+    public static RentedArray<byte> SerializeNotInterested(NotInterested _)
     {
         var rentedArray = new RentedArray<byte>(5);
         try
@@ -119,7 +122,7 @@ internal partial record Message
         }
     }
 
-    internal static RentedArray<byte> SerializeKeepAlive(KeepAlive _)
+    public static RentedArray<byte> SerializeKeepAlive(KeepAlive _)
     {
         var rentedArray = new RentedArray<byte>(4);
         try
@@ -134,7 +137,7 @@ internal partial record Message
         }
     }
 
-    internal static RentedArray<byte> SerializeHave(Have have)
+    public static RentedArray<byte> SerializeHave(Have have)
     {
         var rentedArray = new RentedArray<byte>(9);
         try
@@ -151,7 +154,7 @@ internal partial record Message
         }
     }
 
-    internal static RentedArray<byte> SerializePort(Port port)
+    public static RentedArray<byte> SerializePort(Port port)
     {
         var rentedArray = new RentedArray<byte>(7);
         try
@@ -168,7 +171,7 @@ internal partial record Message
         }
     }
 
-    internal static RentedArray<byte> SerializeBitfield(BitfieldMessage bitfieldMessage)
+    public static RentedArray<byte> SerializeBitfield(BitfieldMessage bitfieldMessage)
     {
         using var bitfieldPayload = bitfieldMessage.Bitfield.ToRentedArray();
         var rentedArray = new RentedArray<byte>(5 + bitfieldPayload.Length);
@@ -189,7 +192,7 @@ internal partial record Message
         }
     }
 
-    internal static RentedArray<byte> SerializeRequest(RequestBlockMessage requestBlockMessage)
+    public static RentedArray<byte> SerializeRequest(RequestBlockMessage requestBlockMessage)
     {
         var rentedArray = new RentedArray<byte>(17);
         try
@@ -217,7 +220,7 @@ internal partial record Message
         }
     }
 
-    internal static RentedArray<byte> SerializeCancel(CancelMessage cancelMessage)
+    public static RentedArray<byte> SerializeCancel(CancelMessage cancelMessage)
     {
         var rentedArray = new RentedArray<byte>(17);
         try
@@ -245,7 +248,7 @@ internal partial record Message
         }
     }
 
-    internal static RentedArray<byte> SerializeBlock(BlockMessage blockMessage)
+    public static RentedArray<byte> SerializeBlock(BlockMessage blockMessage)
     {
         using var payload = blockMessage.Payload;
         var rentedArray = new RentedArray<byte>(13 + payload.Length);

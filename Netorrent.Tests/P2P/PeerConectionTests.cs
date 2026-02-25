@@ -19,12 +19,12 @@ public class PeerConectionTests
 
     static async Task<(
         PeerConnection PeerConnection,
-        Channel<Message> Incoming,
-        Channel<Message> Outgoing
+        Channel<IMessage> Incoming,
+        Channel<IMessage> Outgoing
     )> CreateTestContextAsync(bool bitfieldFull)
     {
-        var incoming = Channel.CreateUnbounded<Message>();
-        var outgoing = Channel.CreateUnbounded<Message>();
+        var incoming = Channel.CreateUnbounded<IMessage>();
+        var outgoing = Channel.CreateUnbounded<IMessage>();
         var bitfield = new Bitfield(10, bitfieldFull);
         var peerConnection = CreatePeerConnection(
             Endpoint,
@@ -39,8 +39,8 @@ public class PeerConectionTests
     private static PeerConnection CreatePeerConnection(
         IPEndPoint ipEndpoint,
         PeerId otherPeerId,
-        Channel<Message> incommingMessages,
-        Channel<Message> outgoingMessages,
+        Channel<IMessage> incommingMessages,
+        Channel<IMessage> outgoingMessages,
         Bitfield bitfield
     ) =>
         new(
@@ -61,7 +61,7 @@ public class PeerConectionTests
 
         _ = peerConnection.StartAsync(cancellationToken);
         var statesTask = peerConnection.PeerChoking.Take(2).ToListAsync(cancellationToken);
-        await incoming.Writer.WriteAsync(Message.Unchoke.Value, cancellationToken);
+        await incoming.Writer.WriteAsync(IMessage.Unchoke.Value, cancellationToken);
         var states = await statesTask;
 
         states.First().ShouldBeTrue();
@@ -92,7 +92,7 @@ public class PeerConectionTests
 
         _ = peerConnection.StartAsync(cancellationToken);
         var statesTask = peerConnection.PeerInterested.Take(2).ToListAsync(cancellationToken);
-        await incoming.Writer.WriteAsync(Message.Interested.Value, cancellationToken);
+        await incoming.Writer.WriteAsync(IMessage.Interested.Value, cancellationToken);
         var states = await statesTask;
 
         states.First().ShouldBeFalse();
@@ -107,7 +107,7 @@ public class PeerConectionTests
 
         _ = peerConnection.StartAsync(cancellationToken);
         var statesTask = peerConnection.AmInterested.Take(2).ToListAsync(cancellationToken);
-        await incoming.Writer.WriteAsync(new Message.Have(5), cancellationToken);
+        await incoming.Writer.WriteAsync(new IMessage.Have(5), cancellationToken);
         var states = await statesTask;
 
         states.First().ShouldBeFalse();

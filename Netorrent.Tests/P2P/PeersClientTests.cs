@@ -58,8 +58,8 @@ internal class PeersClientTests
     {
         foreach (var peersClient in peersClients)
         {
-            var incoming = Channel.CreateUnbounded<Message>();
-            var outgoing = Channel.CreateUnbounded<Message>();
+            var incoming = Channel.CreateUnbounded<IMessage>();
+            var outgoing = Channel.CreateUnbounded<IMessage>();
             var listenerPeer = new FakePeer(
                 listenerPeersClient.PeerId,
                 new IPEndPoint(IPAddress.Loopback, Random.Shared.Next(1024, 65535)),
