@@ -11,6 +11,8 @@ internal interface IPieceStorage : IDisposable
         CancellationToken ct
     );
     bool VerifyPiece(int pieceIndex, ReadOnlyMemory<byte> pieceData);
+    bool VerifyPieceHash(int pieceIndex, ref readonly ReadOnlySpan<byte> computedHash);
+
     ValueTask WriteAsync(
         int pieceIndex,
         int begin,

@@ -5,7 +5,6 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
-using Netorrent.Extensions;
 using Netorrent.Other;
 using Netorrent.P2P.Messages;
 using Netorrent.TorrentFile.FileStructure;
@@ -30,84 +29,92 @@ internal record UdpTrackerRequest(
 
     public RentedArray<byte> ToMemoryRented()
     {
-        var array = ArrayPool<byte>.Shared.Rent(SIZE);
-        var memory = array.AsMemory()[..SIZE];
-        var span = memory.Span;
-
-        int offset = 0;
-
-        BinaryPrimitives.WriteInt64BigEndian(span[offset..], ConnectionId);
-        offset += 8;
-
-        BinaryPrimitives.WriteInt32BigEndian(span[offset..], 1);
-        offset += 4;
-
-        BinaryPrimitives.WriteInt32BigEndian(span[offset..], TransactionId);
-        offset += 4;
-
-        if (InfoHash.Data.Length != 20)
+        var rentedArray = new RentedArray<byte>(SIZE);
+        try
         {
-            throw new ArgumentException("InfoHash must be 20 bytes", nameof(InfoHash));
-        }
+            var memory = rentedArray.Memory;
+            var span = memory.Span;
 
-        InfoHash.Data.Span.CopyTo(span[offset..]);
-        offset += 20;
+            int offset = 0;
 
-        var peerBytes = PeerId.ToBytes();
-        if (peerBytes.Length != 20)
-        {
-            throw new ArgumentException("PeerId must be 20 bytes", nameof(PeerId));
-        }
+            BinaryPrimitives.WriteInt64BigEndian(span[offset..], ConnectionId);
+            offset += 8;
 
-        peerBytes.CopyTo(span[offset..]);
-        offset += 20;
+            BinaryPrimitives.WriteInt32BigEndian(span[offset..], 1);
+            offset += 4;
 
-        BinaryPrimitives.WriteInt64BigEndian(span[offset..], Downloaded);
-        offset += 8;
+            BinaryPrimitives.WriteInt32BigEndian(span[offset..], TransactionId);
+            offset += 4;
 
-        BinaryPrimitives.WriteInt64BigEndian(span[offset..], Left);
-        offset += 8;
-
-        BinaryPrimitives.WriteInt64BigEndian(span[offset..], Uploaded);
-        offset += 8;
-
-        BinaryPrimitives.WriteInt32BigEndian(
-            span[offset..],
-            Event switch
+            if (InfoHash.Data.Length != 20)
             {
-                Events.Completed => 1,
-                Events.Started => 2,
-                Events.Stopped => 3,
-                _ => 0,
+                throw new ArgumentException("InfoHash must be 20 bytes", nameof(InfoHash));
             }
-        );
-        offset += 4;
 
-        if (
-            IpAddress is not null
-            && (
-                IpAddress.IsIPv4MappedToIPv6 == true
-                || IpAddress.AddressFamily == AddressFamily.InterNetwork
+            InfoHash.Data.Span.CopyTo(span[offset..]);
+            offset += 20;
+
+            var peerBytes = PeerId.ToBytes();
+            if (peerBytes.Length != 20)
+            {
+                throw new ArgumentException("PeerId must be 20 bytes", nameof(PeerId));
+            }
+
+            peerBytes.CopyTo(span[offset..]);
+            offset += 20;
+
+            BinaryPrimitives.WriteInt64BigEndian(span[offset..], Downloaded);
+            offset += 8;
+
+            BinaryPrimitives.WriteInt64BigEndian(span[offset..], Left);
+            offset += 8;
+
+            BinaryPrimitives.WriteInt64BigEndian(span[offset..], Uploaded);
+            offset += 8;
+
+            BinaryPrimitives.WriteInt32BigEndian(
+                span[offset..],
+                Event switch
+                {
+                    Events.Completed => 1,
+                    Events.Started => 2,
+                    Events.Stopped => 3,
+                    _ => 0,
+                }
+            );
+            offset += 4;
+
+            if (
+                IpAddress is not null
+                && (
+                    IpAddress.IsIPv4MappedToIPv6 == true
+                    || IpAddress.AddressFamily == AddressFamily.InterNetwork
+                )
             )
-        )
-        {
-            var ipv4Bytes = IpAddress.MapToIPv4().GetAddressBytes();
-            ipv4Bytes.CopyTo(span[offset..]);
+            {
+                var ipv4Bytes = IpAddress.MapToIPv4().GetAddressBytes();
+                ipv4Bytes.CopyTo(span[offset..]);
+            }
+            else
+            {
+                BinaryPrimitives.WriteInt32BigEndian(span[offset..], 0);
+            }
+            offset += 4;
+
+            BinaryPrimitives.WriteInt32BigEndian(span[offset..], Key);
+            offset += 4;
+
+            BinaryPrimitives.WriteInt32BigEndian(span[offset..], NumWant);
+            offset += 4;
+
+            BinaryPrimitives.WriteUInt16BigEndian(span[offset..], Port);
+
+            return rentedArray;
         }
-        else
+        catch
         {
-            BinaryPrimitives.WriteInt32BigEndian(span[offset..], 0);
+            rentedArray.Dispose();
+            throw;
         }
-        offset += 4;
-
-        BinaryPrimitives.WriteInt32BigEndian(span[offset..], Key);
-        offset += 4;
-
-        BinaryPrimitives.WriteInt32BigEndian(span[offset..], NumWant);
-        offset += 4;
-
-        BinaryPrimitives.WriteUInt16BigEndian(span[offset..], Port);
-
-        return new RentedArray<byte>(array, SIZE);
     }
 }

@@ -65,8 +65,8 @@ internal class RequestScheduler(
         {
             if (downloadMessage is DownloadMessage.BlockMessage blockMessage)
             {
-                using var block = blockMessage.Block;
-                await ProcessBlockAsync(block, cancellationToken).ConfigureAwait(false);
+                await ProcessBlockAsync(blockMessage.Block, cancellationToken)
+                    .ConfigureAwait(false);
                 continue;
             }
 
@@ -93,6 +93,7 @@ internal class RequestScheduler(
         //TODO penalize?
         if (!piecePicker.TryGetRequestedBlock(block, out var requestedBlock))
         {
+            block.Dispose();
             return;
         }
 
@@ -112,7 +113,7 @@ internal class RequestScheduler(
         }
 
         block.FromPeer.PeerRequestWindow.ReceivedBlock(block.FromPeer.DownloadTracker.Speed.Bps);
-        pieceBuffer.AddBlock(block);
+        await pieceBuffer.AddBlockAsync(block, cancellationToken).ConfigureAwait(false);
         requestedBlock.State = RequestBlockState.Completed;
         requestedBlock.TimeoutAt = null;
         requestedBlock.RequestedFrom.Clear();
@@ -126,7 +127,7 @@ internal class RequestScheduler(
         var isWritten = false;
         try
         {
-            isWritten = await pieceBuffer.WritePieceAsync(cancellationToken).ConfigureAwait(false);
+            isWritten = pieceBuffer.VerifyPiece();
         }
         finally
         {
@@ -268,20 +269,10 @@ internal class RequestScheduler(
         return DateTimeOffset.UtcNow + Math.Min(timeoutSeconds, 60).Seconds;
     }
 
-    public async ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await _downloadMessageChannel
-                .Writer.WriteAsync(new DownloadMessage.BlockMessage(block), cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch
-        {
-            block.Dispose();
-            throw;
-        }
-    }
+    public async ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken) =>
+        await _downloadMessageChannel
+            .Writer.WriteOrDisposeAsync(new DownloadMessage.BlockMessage(block), cancellationToken)
+            .ConfigureAwait(false);
 
     private async ValueTask DrainChannelsAsync()
     {
@@ -291,7 +282,7 @@ internal class RequestScheduler(
         {
             if (item is DownloadMessage.BlockMessage blockMessage)
             {
-                blockMessage.Block.Dispose();
+                blockMessage.Dispose();
             }
         }
 

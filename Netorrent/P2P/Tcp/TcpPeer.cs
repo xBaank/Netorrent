@@ -11,7 +11,8 @@ internal class TcpPeer(
     TcpMessageStream? tcpMessageStream,
     IPEndPoint iPEndPoint,
     PeerId peerId,
-    InfoHash infoHash
+    InfoHash infoHash,
+    Bitfield myBitfield
 ) : IPeer
 {
     public IPEndPoint PeerEndPoint => iPEndPoint;
@@ -32,7 +33,7 @@ internal class TcpPeer(
             .PerformHandshakeAsync(tcpClient.GetStream(), infoHash, peerId, cts.Token)
             .ConfigureAwait(false);
 
-        return _tcpMessageStream = tcpClient.GetMessageStream(handshake);
+        return _tcpMessageStream = tcpClient.GetMessageStream(handshake, myBitfield);
     }
 
     public async ValueTask DisconnectAsync(CancellationToken cancellationToken)

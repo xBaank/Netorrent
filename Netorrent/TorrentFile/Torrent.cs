@@ -349,17 +349,22 @@ public sealed class Torrent : IAsyncDisposable
                     // If buffer is full, verify piece
                     if (bufferPos == pieceLength)
                     {
-                        var rentedArray = new RentedArray<byte>(
-                            ArrayPool<byte>.Shared.Rent(pieceBuffer.Length),
-                            pieceBuffer.Length
-                        );
-                        pieceBuffer.CopyTo(rentedArray.Memory);
-                        await piecesChannel
-                            .Writer.WriteAsync((pieceIndex, rentedArray), cancellationToken)
-                            .ConfigureAwait(false);
-                        pieceBuffer.Span.Clear();
-                        pieceIndex++;
-                        bufferPos = 0;
+                        var rentedArray = new RentedArray<byte>(pieceBuffer.Length);
+                        try
+                        {
+                            pieceBuffer.CopyTo(rentedArray.Memory);
+                            await piecesChannel
+                                .Writer.WriteAsync((pieceIndex, rentedArray), cancellationToken)
+                                .ConfigureAwait(false);
+                            pieceBuffer.Span.Clear();
+                            pieceIndex++;
+                            bufferPos = 0;
+                        }
+                        catch
+                        {
+                            rentedArray.Dispose();
+                            throw;
+                        }
                     }
                 }
             }
@@ -367,15 +372,20 @@ public sealed class Torrent : IAsyncDisposable
             if (bufferPos > 0)
             {
                 var lastPiece = pieceBuffer[..bufferPos];
-                var rentedArray = new RentedArray<byte>(
-                    ArrayPool<byte>.Shared.Rent(lastPiece.Length),
-                    lastPiece.Length
-                );
-                lastPiece.CopyTo(rentedArray.Memory);
-                await piecesChannel
-                    .Writer.WriteAsync((pieceIndex, rentedArray), cancellationToken)
-                    .ConfigureAwait(false);
-                pieceIndex++;
+                var rentedArray = new RentedArray<byte>(lastPiece.Length);
+                try
+                {
+                    lastPiece.CopyTo(rentedArray.Memory);
+                    await piecesChannel
+                        .Writer.WriteAsync((pieceIndex, rentedArray), cancellationToken)
+                        .ConfigureAwait(false);
+                    pieceIndex++;
+                }
+                catch
+                {
+                    rentedArray.Dispose();
+                    throw;
+                }
             }
 
             piecesChannel.Writer.TryComplete();

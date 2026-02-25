@@ -1,37 +1,43 @@
 ﻿using System.Buffers;
-using System.Diagnostics;
-using Netorrent.Extensions;
 
 namespace Netorrent.Other;
 
-internal class RentedArray<T>(T[] array, int length, int start = 0) : IDisposable
+internal class RentedArray<T> : IDisposable
 {
-    private readonly Memory<T> _memory = array.AsMemory(start, length);
+    private readonly Memory<T> _memory;
+    private readonly T[] _array;
     private bool _disposed;
+
     public Memory<T> Memory =>
         _disposed ? throw new ObjectDisposedException(nameof(RentedArray<>)) : _memory;
     public int Length => _memory.Length;
 
+    public RentedArray(int length, int start = 0)
+    {
+        _array = ArrayPool<T>.Shared.Rent(length);
+        _memory = _array.AsMemory(start, length);
+    }
+
+#if DEBUG
     ~RentedArray()
     {
         if (!_disposed)
         {
-#if DEBUG
-            Debug.Fail($"Rented array was not diposed!");
-#else
-            Debug.WriteLine("Rented array was not diposed!");
-#endif
+            Debug.Fail($"Rented array was not disposed!");
             Dispose();
         }
     }
+#endif
 
     public void Dispose()
     {
         if (!_disposed)
         {
             _disposed = true;
-            ArrayPool<T>.Shared.Return(array);
+            ArrayPool<T>.Shared.Return(_array);
+#if DEBUG
             GC.SuppressFinalize(this);
+#endif
         }
     }
 }

@@ -5,7 +5,6 @@ namespace Netorrent.Extensions;
 internal static class ChannelExtensions
 {
     extension<T>(ChannelWriter<T> source)
-        where T : IDisposable
     {
         public async ValueTask WriteOrDisposeAsync(
             T item,
@@ -18,7 +17,11 @@ internal static class ChannelExtensions
             }
             catch
             {
-                item.Dispose();
+                if (item is IDisposable disposable)
+                {
+                    disposable.Dispose();
+                }
+
                 throw;
             }
         }
@@ -29,8 +32,10 @@ internal static class ChannelExtensions
             {
                 return true;
             }
-
-            item.Dispose();
+            if (item is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
             return false;
         }
     }

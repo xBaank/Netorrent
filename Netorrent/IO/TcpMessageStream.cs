@@ -4,14 +4,16 @@ using Netorrent.P2P.Messages;
 
 namespace Netorrent.IO;
 
-internal class TcpMessageStream(TcpClient tcpClient, Handshake handshake) : IMessageStream
+internal class TcpMessageStream(TcpClient tcpClient, Handshake handshake, Bitfield bitfield)
+    : IMessageStream
 {
     const int PEER_TIMEOUT_SECONDS = 120;
 
     private readonly MessageStream stream = new(
         tcpClient.GetStream(),
         handshake,
-        PEER_TIMEOUT_SECONDS.Seconds
+        PEER_TIMEOUT_SECONDS.Seconds,
+        bitfield
     );
 
     public Handshake Handshake => stream.Handshake;
@@ -22,11 +24,11 @@ internal class TcpMessageStream(TcpClient tcpClient, Handshake handshake) : IMes
         tcpClient.Dispose();
     }
 
-    public ValueTask SendAsync(Message message, CancellationToken cancellationToken) =>
+    public ValueTask SendAsync(IMessage message, CancellationToken cancellationToken) =>
         stream.SendAsync(message, cancellationToken);
 
     public Task StartAsync(MessageHandler messageHandler, CancellationToken cancellationToken) =>
         stream.StartAsync(messageHandler, cancellationToken);
 
-    public bool TrySend(Message message) => stream.TrySend(message);
+    public bool TrySend(IMessage message) => stream.TrySend(message);
 }

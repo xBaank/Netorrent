@@ -1,6 +1,4 @@
-﻿using System.Buffers;
-using System.Collections;
-using Netorrent.Extensions;
+﻿using System.Collections;
 using Netorrent.Other;
 using R3;
 
@@ -91,17 +89,16 @@ public class Bitfield
     internal RentedArray<byte> ToRentedArray()
     {
         int byteCount = (_bits.Length + 7) / 8;
-        var array = ArrayPool<byte>.Shared.Rent(byteCount);
+        var rentedArray = new RentedArray<byte>(byteCount);
         try
         {
-            var memory = array.AsSpan()[..byteCount];
-            PackBitsBigEndian(memory);
+            PackBitsBigEndian(rentedArray.Memory.Span);
 
-            return new RentedArray<byte>(array, byteCount);
+            return rentedArray;
         }
         catch
         {
-            ArrayPool<byte>.Shared.Return(array);
+            rentedArray.Dispose();
             throw;
         }
     }

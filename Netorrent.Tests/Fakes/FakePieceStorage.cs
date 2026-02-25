@@ -25,7 +25,9 @@ internal class FakePieceStorage() : IPieceStorage
         CancellationToken ct
     )
     {
-        var array = ArrayPool<byte>.Shared.Rent(length);
-        return ValueTask.FromResult(new RentedArray<byte>(array, length));
+        return ValueTask.FromResult(new RentedArray<byte>(length));
     }
+
+    public bool VerifyPieceHash(int pieceIndex, ref readonly ReadOnlySpan<byte> computedHash) =>
+        true;
 }

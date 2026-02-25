@@ -1,7 +1,5 @@
-﻿using System.Buffers;
-using Netorrent.Extensions;
+﻿using System.Security.Cryptography;
 using Netorrent.IO;
-using Netorrent.Other;
 using Netorrent.P2P.Messages;
 using ZLinq;
 
@@ -9,14 +7,20 @@ namespace Netorrent.P2P.Download;
 
 internal class PieceBuffer : IDisposable
 {
-    private readonly RentedArray<byte> _buffer;
+    private readonly IncrementalHash _incrementalHash = IncrementalHash.CreateHash(
+        HashAlgorithmName.SHA1
+    );
     private readonly bool[] _blockReceivedFlags; //TODO use bitarray or bitmask (long)?
     private readonly int _blocksCount;
     private readonly int _index;
     private readonly IPieceStorage _pieceWriter;
     private readonly int _blockSize;
+    private readonly Dictionary<int, Block> _pendingBlocks = [];
+    private int _nextExpectedBlockIndex = 0;
 
     public int Size { get; }
+
+    public bool IsComplete => _blockReceivedFlags.AsValueEnumerable().All(x => x);
 
     public PieceBuffer(int index, IPieceStorage pieceWriter, IPiecePicker piecePicker)
     {
@@ -25,41 +29,73 @@ internal class PieceBuffer : IDisposable
         _blockSize = piecePicker.BlockSize;
         _blocksCount = piecePicker.GetBlockCountByPieceIndex(index);
         var pieceSize = piecePicker.GetPieceSize(index);
-        _buffer = new RentedArray<byte>(ArrayPool<byte>.Shared.Rent(pieceSize), pieceSize);
         _blockReceivedFlags = new bool[_blocksCount];
         Size = pieceSize;
     }
 
-    public void AddBlock(Block block)
+    public async ValueTask AddBlockAsync(Block block, CancellationToken ct)
     {
         var blockIndex = block.Begin / _blockSize;
+
         if (_blockReceivedFlags[blockIndex])
         {
             block.Dispose();
             return;
         }
-        block.Payload.Memory.CopyTo(_buffer.Memory[block.Begin..]);
+
+        _pendingBlocks[blockIndex] = block;
         _blockReceivedFlags[blockIndex] = true;
+
+        await FlushSequentialBlocksAsync(ct).ConfigureAwait(false);
     }
 
-    public bool IsComplete => _blockReceivedFlags.AsValueEnumerable().All(x => x);
-
-    public async ValueTask<bool> WritePieceAsync(CancellationToken cancellationToken)
+    private async ValueTask FlushSequentialBlocksAsync(CancellationToken ct)
     {
-        var isOK = _pieceWriter.VerifyPiece(_index, _buffer.Memory);
-
-        if (isOK)
+        while (_pendingBlocks.TryGetValue(_nextExpectedBlockIndex, out var block))
         {
-            await _pieceWriter
-                .WriteAsync(_index, 0, _buffer.Memory, cancellationToken)
-                .ConfigureAwait(false);
+            try
+            {
+                var memory = block.Payload.Memory;
+
+                _incrementalHash.AppendData(memory.Span);
+
+                await _pieceWriter
+                    .WriteAsync(_index, _nextExpectedBlockIndex * _blockSize, memory, ct)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                _pendingBlocks.Remove(_nextExpectedBlockIndex);
+                _nextExpectedBlockIndex++;
+                block.Dispose();
+            }
+        }
+    }
+
+    public bool VerifyPiece()
+    {
+        if (!IsComplete)
+        {
+            return false;
         }
 
-        return isOK;
+        Span<byte> hash = stackalloc byte[20];
+
+        if (_incrementalHash.TryGetHashAndReset(hash, out _))
+        {
+            ReadOnlySpan<byte> readHash = hash;
+            return _pieceWriter.VerifyPieceHash(_index, ref readHash);
+        }
+
+        return false;
     }
 
     public void Dispose()
     {
-        _buffer.Dispose();
+        foreach (var item in _pendingBlocks)
+        {
+            item.Value.Dispose();
+        }
+        _incrementalHash.Dispose();
     }
 }

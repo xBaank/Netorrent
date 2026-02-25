@@ -1,6 +1,4 @@
-﻿using System.Buffers;
-using System.Text;
-using Netorrent.Extensions;
+﻿using System.Text;
 using Netorrent.Other;
 using Netorrent.TorrentFile.FileStructure;
 
@@ -54,27 +52,34 @@ internal readonly record struct Handshake(
     /// </summary>
     public RentedArray<byte> ToBytes()
     {
-        var array = ArrayPool<byte>.Shared.Rent(TotalLength);
+        var rentedArray = new RentedArray<byte>(TotalLength);
+        try
+        {
+            var buffer = rentedArray.Memory.Span;
+            int offset = 0;
 
-        var buffer = array.AsSpan()[..TotalLength];
-        int offset = 0;
+            buffer[offset] = Pstrlen;
+            offset += 1;
 
-        buffer[offset] = Pstrlen;
-        offset += 1;
+            var bytes = Encoding.ASCII.GetBytes(Pstr);
+            bytes.AsSpan().CopyTo(buffer[offset..]);
+            offset += Pstr.Length;
 
-        var bytes = Encoding.ASCII.GetBytes(Pstr);
-        bytes.AsSpan().CopyTo(buffer[offset..]);
-        offset += Pstr.Length;
+            reserved.AsSpan().CopyTo(buffer[offset..]);
+            offset += reserved.Length;
 
-        reserved.AsSpan().CopyTo(buffer[offset..]);
-        offset += reserved.Length;
+            InfoHash.Data.Span.CopyTo(buffer[offset..]);
+            offset += InfoHash.Data.Length;
 
-        InfoHash.Data.Span.CopyTo(buffer[offset..]);
-        offset += InfoHash.Data.Length;
+            PeerIdBytes.AsSpan().CopyTo(buffer[offset..]);
 
-        PeerIdBytes.AsSpan().CopyTo(buffer[offset..]);
-
-        return new RentedArray<byte>(array, buffer.Length);
+            return rentedArray;
+        }
+        catch
+        {
+            rentedArray.Dispose();
+            throw;
+        }
     }
 
     /// <summary>

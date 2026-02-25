@@ -8,6 +8,7 @@ internal static class TcpClientExtensions
 {
     extension(TcpClient tcpClient)
     {
-        public TcpMessageStream GetMessageStream(Handshake handshake) => new(tcpClient, handshake);
+        public TcpMessageStream GetMessageStream(Handshake handshake, Bitfield bitfield) =>
+            new(tcpClient, handshake, bitfield);
     }
 }

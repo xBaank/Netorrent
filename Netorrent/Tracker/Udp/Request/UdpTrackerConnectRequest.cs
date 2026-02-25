@@ -1,7 +1,5 @@
-﻿using System.Buffers;
-using System.Buffers.Binary;
+﻿using System.Buffers.Binary;
 using System.Net;
-using Netorrent.Extensions;
 using Netorrent.Other;
 
 namespace Netorrent.Tracker.Udp.Request;
@@ -17,18 +15,26 @@ internal record UdpTrackerConnectRequest(
 
     public RentedArray<byte> ToMemoryRented()
     {
-        var array = ArrayPool<byte>.Shared.Rent(SIZE);
-        var memory = array.AsMemory()[..SIZE];
-        int offset = 0;
+        var rentedArray = new RentedArray<byte>(SIZE);
+        try
+        {
+            var memory = rentedArray.Memory;
+            int offset = 0;
 
-        BinaryPrimitives.WriteInt64BigEndian(memory.Span[offset..], ProtocolId);
-        offset += 8;
+            BinaryPrimitives.WriteInt64BigEndian(memory.Span[offset..], ProtocolId);
+            offset += 8;
 
-        BinaryPrimitives.WriteInt32BigEndian(memory.Span[offset..], Action);
-        offset += 4;
+            BinaryPrimitives.WriteInt32BigEndian(memory.Span[offset..], Action);
+            offset += 4;
 
-        BinaryPrimitives.WriteInt32BigEndian(memory.Span[offset..], TransactionId);
+            BinaryPrimitives.WriteInt32BigEndian(memory.Span[offset..], TransactionId);
 
-        return new RentedArray<byte>(array, SIZE);
+            return rentedArray;
+        }
+        catch
+        {
+            rentedArray.Dispose();
+            throw;
+        }
     }
 }
