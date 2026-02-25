@@ -112,9 +112,11 @@ internal class MessageStream(
     }
 
     public async ValueTask SendAsync(IMessage message, CancellationToken cancellationToken) =>
-        await _outgoingMessages.Writer.WriteAsync(message, cancellationToken).ConfigureAwait(false);
+        await _outgoingMessages
+            .Writer.WriteOrDisposeAsync(message, cancellationToken)
+            .ConfigureAwait(false);
 
-    public bool TrySend(IMessage message) => _outgoingMessages.Writer.TryWrite(message);
+    public bool TrySend(IMessage message) => _outgoingMessages.Writer.TryWriteOrDispose(message);
 
     private bool TryParseMessage(
         ref ReadOnlySequence<byte> buffer,
