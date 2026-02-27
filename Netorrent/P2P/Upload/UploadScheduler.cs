@@ -40,10 +40,10 @@ internal class UploadScheduler(
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _runningTask = _cts.CancelOnFirstCompletionAndAwaitAllAsync([
-            ScheduleRoundsAsync(_cts.Token),
-            ProcessUploadMessagesAsync(_cts.Token),
-        ]);
+        _runningTask = Task.RunUntilFirstCompletesAsync(
+            [ScheduleRoundsAsync, ProcessUploadMessagesAsync],
+            _cts
+        );
         return _runningTask;
     }
 

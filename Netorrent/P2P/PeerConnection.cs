@@ -170,16 +170,14 @@ internal class PeerConnection(
             .StartSampling(100.Milliseconds, DownloadTracker)
             .ConfigureAwait(false);
 
-        try
-        {
-            await cancellationTokenSource
-                .CancelOnFirstCompletionAndAwaitAllAsync([
-                    messageStream.StartAsync(ProcessMessageAsync, cancellationTokenSource.Token),
-                    CheckTimeoutAsync(cancellationTokenSource.Token),
-                ])
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) { }
+        await Task.RunUntilFirstCompletesAsync(
+                [
+                    ct => messageStream.StartAsync(ProcessMessageAsync, ct),
+                    ct => CheckTimeoutAsync(ct),
+                ],
+                cancellationTokenSource
+            )
+            .ConfigureAwait(false);
     }
 
     private async Task CheckTimeoutAsync(CancellationToken cancellationToken)
