@@ -35,6 +35,8 @@ public sealed class Torrent : IAsyncDisposable
     private readonly DiskStorage _pieceStorage;
     private readonly Bitfield _myBitfield;
     private readonly PiecePicker _piecePicker;
+    private readonly IRequestScheduler _requestScheduler;
+    private readonly IUploadScheduler _uploadScheduler;
     private Task? _runTask;
     private CancellationTokenSource? _cancellationTokenSource;
     private bool _disposed;
@@ -80,7 +82,7 @@ public sealed class Torrent : IAsyncDisposable
         dataStatistics.SetVerifiedBytes(_piecePicker.GetBitfieldSize());
 
         var activePeers = new ConcurrentDictionary<PeerEndpoint, IPeerConnection>();
-        var requestScheduler = new RequestScheduler(
+        _requestScheduler = new RequestScheduler(
             activePeers,
             _piecePicker,
             _myBitfield,
@@ -90,7 +92,7 @@ public sealed class Torrent : IAsyncDisposable
             _pieceStorage,
             torrentClientOptions.Logger
         );
-        var uploadScheduler = new UploadScheduler(
+        _uploadScheduler = new UploadScheduler(
             activePeers,
             _pieceStorage,
             _myBitfield,
@@ -101,8 +103,8 @@ public sealed class Torrent : IAsyncDisposable
         _peersClient = new PeersClient(
             activePeers,
             peerId,
-            requestScheduler,
-            uploadScheduler,
+            _requestScheduler,
+            _uploadScheduler,
             _piecePicker,
             _myBitfield,
             torrentClientOptions.Logger
@@ -190,12 +192,10 @@ public sealed class Torrent : IAsyncDisposable
     {
         try
         {
-            await cancellationTokenSource
-                .CancelOnFirstCompletionAndAwaitAllAsync([
-                    _peersClient.StartAsync(cancellationTokenSource.Token),
-                    _trackerClient.StartAsync(cancellationTokenSource.Token),
-                    _peerConnector.StartAsync(cancellationTokenSource.Token),
-                ])
+            await Task.RunUntilFirstCompletesAsync(
+                    [_peersClient.StartAsync, _trackerClient.StartAsync, _peerConnector.StartAsync],
+                    cancellationTokenSource
+                )
                 .ConfigureAwait(false);
         }
         catch (Exception ex)

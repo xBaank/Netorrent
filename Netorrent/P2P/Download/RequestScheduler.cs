@@ -36,10 +36,10 @@ internal class RequestScheduler(
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _runningTask = _cts.CancelOnFirstCompletionAndAwaitAllAsync([
-            ScheduleTimeoutsBlocksAsync(_cts.Token),
-            ProcessDownloadMessagesAsync(_cts.Token),
-        ]);
+        _runningTask = Task.RunUntilFirstCompletesAsync(
+            [ScheduleTimeoutsBlocksAsync, ProcessDownloadMessagesAsync],
+            _cts
+        );
         return _runningTask;
     }
 

@@ -46,10 +46,12 @@ internal class MessageStream(
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
-        _runTask = _cancellationTokenSource.CancelOnFirstCompletionAndAwaitAllAsync([
-            ReadLoopAsync(messageHandler, _cancellationTokenSource.Token),
-            WriteLoopAsync(_cancellationTokenSource.Token),
-        ]);
+
+        _runTask = Task.RunUntilFirstCompletesAsync(
+            [ct => ReadLoopAsync(messageHandler, ct), WriteLoopAsync],
+            _cancellationTokenSource
+        );
+
         return _runTask;
     }
 

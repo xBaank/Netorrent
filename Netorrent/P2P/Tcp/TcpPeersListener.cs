@@ -31,10 +31,10 @@ internal class TcpPeersListeners(
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _cancellationTokenSource = new();
-        _runTask = _cancellationTokenSource.CancelOnFirstCompletionAndAwaitAllAsync([
-            ListenAllAsync(_cancellationTokenSource.Token),
-            ProcessIncomingConnectionsAsync(_cancellationTokenSource.Token),
-        ]);
+        _runTask = Task.RunUntilFirstCompletesAsync(
+            [ListenAllAsync, ProcessIncomingConnectionsAsync],
+            _cancellationTokenSource
+        );
     }
 
     private async Task ListenAllAsync(CancellationToken cancellationToken)

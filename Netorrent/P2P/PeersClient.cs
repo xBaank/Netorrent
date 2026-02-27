@@ -41,11 +41,10 @@ internal class PeersClient(
 
         try
         {
-            await cts.CancelOnFirstCompletionAndAwaitAllAsync([
-                    requestScheduler.StartAsync(cts.Token),
-                    uploadScheduler.StartAsync(cts.Token),
-                    ProcessPeersAsync(cts.Token),
-                ])
+            await Task.RunUntilFirstCompletesAsync(
+                    [requestScheduler.StartAsync, uploadScheduler.StartAsync, ProcessPeersAsync],
+                    cts
+                )
                 .ConfigureAwait(false);
         }
         catch
