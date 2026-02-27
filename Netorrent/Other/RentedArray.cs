@@ -1,5 +1,7 @@
 ﻿using System.Buffers;
+#if DEBUG
 using System.Diagnostics;
+#endif
 
 namespace Netorrent.Other;
 
