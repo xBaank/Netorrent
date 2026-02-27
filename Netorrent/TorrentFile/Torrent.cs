@@ -193,7 +193,13 @@ public sealed class Torrent : IAsyncDisposable
         try
         {
             await Task.RunUntilFirstCompletesAsync(
-                    [_peersClient.StartAsync, _trackerClient.StartAsync, _peerConnector.StartAsync],
+                    [
+                        _peersClient.StartAsync,
+                        _trackerClient.StartAsync,
+                        _peerConnector.StartAsync,
+                        _requestScheduler.StartAsync,
+                        _uploadScheduler.StartAsync,
+                    ],
                     cancellationTokenSource
                 )
                 .ConfigureAwait(false);
@@ -423,6 +429,8 @@ public sealed class Torrent : IAsyncDisposable
             await StopAndWaitToFinishAsync().ConfigureAwait(false);
             await _peersClient.DisposeAsync().ConfigureAwait(false);
             await _trackerClient.DisposeAsync().ConfigureAwait(false);
+            await _uploadScheduler.DisposeAsync().ConfigureAwait(false);
+            await _requestScheduler.DisposeAsync().ConfigureAwait(false);
             _pieceStorage.Dispose();
             Completion.Dispose();
             _cancellationTokenSource?.Dispose();

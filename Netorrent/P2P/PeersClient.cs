@@ -37,15 +37,9 @@ internal class PeersClient(
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
         try
         {
-            await Task.RunUntilFirstCompletesAsync(
-                    [requestScheduler.StartAsync, uploadScheduler.StartAsync, ProcessPeersAsync],
-                    cts
-                )
-                .ConfigureAwait(false);
+            await ProcessPeersAsync(cancellationToken).ConfigureAwait(false);
         }
         catch
         {
@@ -183,8 +177,6 @@ internal class PeersClient(
     {
         var peersDisposeTasks = activePeers.Values.Select(i => i.DisposeAsync().AsTask());
         await Task.WhenAll(peersDisposeTasks).ConfigureAwait(false);
-        await requestScheduler.DisposeAsync().ConfigureAwait(false);
-        await uploadScheduler.DisposeAsync().ConfigureAwait(false);
         _peerConnected.OnCompleted();
     }
 }

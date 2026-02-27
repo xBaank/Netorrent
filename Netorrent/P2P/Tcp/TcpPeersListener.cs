@@ -106,7 +106,6 @@ internal class TcpPeersListeners(
     private async Task ListenAsync(TcpListener tcpListener, CancellationToken cancellationToken)
     {
         tcpListener.Start();
-        _cancellationTokenSource = new();
 
         while (!cancellationToken.IsCancellationRequested)
         {
