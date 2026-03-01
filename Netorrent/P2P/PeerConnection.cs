@@ -205,69 +205,39 @@ internal class PeerConnection(
     {
         _lastReceivedMessageTime = DateTimeOffset.UtcNow;
 
-        if (message is IMessage.KeepAlive) //Keep-alive
+        switch (message)
         {
-            return;
-        }
-
-        if (message is IMessage.BitfieldMessage bitfield)
-        {
-            ReceiveBitfield(bitfield);
-            return;
-        }
-
-        if (message is IMessage.Interested)
-        {
-            ReceiveInterested();
-            return;
-        }
-
-        if (message is IMessage.NotInterested)
-        {
-            ReceiveNotInterested();
-            return;
-        }
-
-        if (message is IMessage.Choke)
-        {
-            ReceiveChoke();
-            return;
-        }
-
-        if (message is IMessage.Unchoke)
-        {
-            ReceiveUnchoke();
-            return;
-        }
-
-        if (message is IMessage.Have have)
-        {
-            ReceiveHave(have);
-            return;
-        }
-
-        if (message is IMessage.RequestBlockMessage request)
-        {
-            await ReceiveRequestAsync(request, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        if (message is IMessage.BlockMessage block)
-        {
-            await ReceiveBlockAsync(block, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        if (message is IMessage.CancelMessage cancel)
-        {
-            ReceiveCancel(cancel);
-            return;
-        }
-
-        if (message is IMessage.Port)
-        {
-            //TODO Implement DHT port message handling
-            return;
+            case IMessage.KeepAlive:
+                return;
+            case IMessage.BitfieldMessage bitfield:
+                ReceiveBitfield(bitfield);
+                return;
+            case IMessage.Interested:
+                ReceiveInterested();
+                return;
+            case IMessage.NotInterested:
+                ReceiveNotInterested();
+                return;
+            case IMessage.Choke:
+                ReceiveChoke();
+                return;
+            case IMessage.Unchoke:
+                ReceiveUnchoke();
+                return;
+            case IMessage.Have have:
+                ReceiveHave(have);
+                return;
+            case IMessage.RequestBlockMessage request:
+                await ReceiveRequestAsync(request, cancellationToken).ConfigureAwait(false);
+                return;
+            case IMessage.BlockMessage block:
+                await ReceiveBlockAsync(block, cancellationToken).ConfigureAwait(false);
+                return;
+            case IMessage.CancelMessage cancel:
+                ReceiveCancel(cancel);
+                return;
+            case IMessage.Port:
+                return;
         }
     }
 

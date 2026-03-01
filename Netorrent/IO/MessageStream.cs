@@ -60,13 +60,8 @@ internal class MessageStream(
         CancellationToken cancellationToken
     )
     {
-        if (_receiveCts is null || !_receiveCts.TryReset())
-        {
-            _receiveCts?.Dispose();
-            _receiveCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        }
-        _receiveCts?.CancelAfter(timeout);
-        var token = _receiveCts?.Token ?? cancellationToken;
+        ResetReceiveCts(cancellationToken);
+        var token = _receiveCts!.Token;
 
         try
         {
@@ -96,21 +91,24 @@ internal class MessageStream(
                     _reader.AdvanceTo(buffer.Start, buffer.End);
                 }
 
-                if (_receiveCts is null || !_receiveCts.TryReset())
-                {
-                    _receiveCts?.Dispose();
-                    _receiveCts = CancellationTokenSource.CreateLinkedTokenSource(
-                        cancellationToken
-                    );
-                }
-                _receiveCts?.CancelAfter(timeout);
-                token = _receiveCts?.Token ?? cancellationToken;
+                ResetReceiveCts(cancellationToken);
+                token = _receiveCts!.Token;
             }
         }
         finally
         {
             await _reader.CompleteAsync();
         }
+    }
+
+    private void ResetReceiveCts(CancellationToken cancellationToken)
+    {
+        if (_receiveCts is null || !_receiveCts.TryReset())
+        {
+            _receiveCts?.Dispose();
+            _receiveCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        }
+        _receiveCts!.CancelAfter(timeout);
     }
 
     public async ValueTask SendAsync(IMessage message, CancellationToken cancellationToken) =>
@@ -168,149 +166,137 @@ internal class MessageStream(
         // First byte is message ID
         byte messageId = buffer.Slice(4, 1).First.Span[0];
 
-        if (messageId == IdChoke)
+        switch (messageId)
         {
-            message = Choke.Value;
-            buffer = buffer.Slice(4 + length);
+            case IdChoke:
+                message = Choke.Value;
+                buffer = buffer.Slice(4 + length);
+                return true;
 
-            return true;
-        }
+            case IdUnchoke:
+                message = Unchoke.Value;
+                buffer = buffer.Slice(4 + length);
+                return true;
 
-        if (messageId == IdUnchoke)
-        {
-            message = Unchoke.Value;
-            buffer = buffer.Slice(4 + length);
+            case IdInterested:
+                message = Interested.Value;
+                buffer = buffer.Slice(4 + length);
+                return true;
 
-            return true;
-        }
-        if (messageId == IdInterested)
-        {
-            message = Interested.Value;
-            buffer = buffer.Slice(4 + length);
+            case IdNotInterested:
+                message = NotInterested.Value;
+                buffer = buffer.Slice(4 + length);
+                return true;
 
-            return true;
-        }
-        if (messageId == IdNotInterested)
-        {
-            message = NotInterested.Value;
-            buffer = buffer.Slice(4 + length);
-            return true;
-        }
+            case IdHave:
+                int havePayloadLength = length - 1;
 
-        if (messageId == IdHave)
-        {
-            int payloadLength = length - 1;
+                if (havePayloadLength < 4)
+                {
+                    return false;
+                }
 
-            if (payloadLength < 4)
+                Span<byte> haveSpan = stackalloc byte[havePayloadLength];
+                buffer.Slice(5, havePayloadLength).CopyTo(haveSpan);
+
+                var index = BinaryPrimitives.ReadInt32BigEndian(haveSpan);
+
+                message = new Have(index);
+
+                buffer = buffer.Slice(4 + length);
+                return true;
+
+            case IdBitfield:
             {
-                return false;
+                int bitfieldPayloadLength = length - 1;
+                using var bitfieldMemoryOwner = MemoryPool<byte>.Shared.Rent(bitfieldPayloadLength);
+
+                Span<byte> bitfieldSpan = bitfieldMemoryOwner.Memory.Span[..bitfieldPayloadLength];
+                buffer.Slice(5, bitfieldPayloadLength).CopyTo(bitfieldSpan);
+
+                message = new BitfieldMessage(new Bitfield(bitfieldSpan, myBitfield.Length));
+
+                buffer = buffer.Slice(4 + length);
+                return true;
             }
 
-            Span<byte> span = stackalloc byte[payloadLength];
-            buffer.Slice(5, payloadLength).CopyTo(span);
-
-            var index = BinaryPrimitives.ReadInt32BigEndian(span);
-
-            message = new Have(index);
-
-            // Consume the full message
-            buffer = buffer.Slice(4 + length);
-            return true;
-        }
-
-        if (messageId == IdBitfield)
-        {
-            int payloadLength = length - 1;
-            using var memoryOwner = MemoryPool<byte>.Shared.Rent(payloadLength);
-
-            Span<byte> span = memoryOwner.Memory.Span[..payloadLength];
-            buffer.Slice(5, payloadLength).CopyTo(span);
-
-            message = new BitfieldMessage(new Bitfield(span, myBitfield.Length));
-
-            // Consume the full message
-            buffer = buffer.Slice(4 + length);
-            return true;
-        }
-
-        if (messageId == IdRequest)
-        {
-            int payloadLength = length - 1;
-
-            if (payloadLength < 12)
+            case IdRequest:
             {
-                return false;
+                int requestPayloadLength = length - 1;
+
+                if (requestPayloadLength < 12)
+                {
+                    return false;
+                }
+
+                using var requestMemoryOwner = MemoryPool<byte>.Shared.Rent(requestPayloadLength);
+
+                Span<byte> requestSpan = requestMemoryOwner.Memory.Span[..requestPayloadLength];
+                buffer.Slice(5, requestPayloadLength).CopyTo(requestSpan);
+
+                var reqIndex = BinaryPrimitives.ReadInt32BigEndian(requestSpan[..4]);
+                var reqBegin = BinaryPrimitives.ReadInt32BigEndian(requestSpan[4..8]);
+                var reqLength = BinaryPrimitives.ReadInt32BigEndian(requestSpan[8..12]);
+
+                message = new RequestBlockMessage(reqIndex, reqBegin, reqLength);
+
+                buffer = buffer.Slice(4 + length);
+                return true;
             }
 
-            using var memoryOwner = MemoryPool<byte>.Shared.Rent(payloadLength);
-
-            Span<byte> span = memoryOwner.Memory.Span[..payloadLength];
-            buffer.Slice(5, payloadLength).CopyTo(span);
-
-            var index = BinaryPrimitives.ReadInt32BigEndian(span[..4]);
-            var begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
-            var rlength = BinaryPrimitives.ReadInt32BigEndian(span[8..12]);
-
-            message = new RequestBlockMessage(index, begin, rlength);
-
-            // Consume the full message
-            buffer = buffer.Slice(4 + length);
-            return true;
-        }
-
-        if (messageId == IdCancel)
-        {
-            int payloadLength = length - 1;
-
-            if (payloadLength < 12)
+            case IdCancel:
             {
-                return false;
+                int cancelPayloadLength = length - 1;
+
+                if (cancelPayloadLength < 12)
+                {
+                    return false;
+                }
+
+                using var cancelMemoryOwner = MemoryPool<byte>.Shared.Rent(cancelPayloadLength);
+
+                Span<byte> cancelSpan = cancelMemoryOwner.Memory.Span[..cancelPayloadLength];
+                buffer.Slice(5, cancelPayloadLength).CopyTo(cancelSpan);
+
+                var cancelIndex = BinaryPrimitives.ReadInt32BigEndian(cancelSpan[..4]);
+                var cancelBegin = BinaryPrimitives.ReadInt32BigEndian(cancelSpan[4..8]);
+                var cancelLength = BinaryPrimitives.ReadInt32BigEndian(cancelSpan[8..12]);
+
+                message = new CancelMessage(cancelIndex, cancelBegin, cancelLength);
+
+                buffer = buffer.Slice(4 + length);
+                return true;
             }
 
-            using var memoryOwner = MemoryPool<byte>.Shared.Rent(payloadLength);
-
-            Span<byte> span = memoryOwner.Memory.Span[..payloadLength];
-            buffer.Slice(5, payloadLength).CopyTo(span);
-
-            var index = BinaryPrimitives.ReadInt32BigEndian(span[..4]);
-            var begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
-            var rlength = BinaryPrimitives.ReadInt32BigEndian(span[8..12]);
-
-            message = new CancelMessage(index, begin, rlength);
-
-            // Consume the full message
-            buffer = buffer.Slice(4 + length);
-            return true;
-        }
-
-        if (messageId == IdPiece)
-        {
-            int payloadLength = length - 1;
-
-            if (payloadLength < 8)
+            case IdPiece:
             {
-                return false;
+                int piecePayloadLength = length - 1;
+
+                if (piecePayloadLength < 8)
+                {
+                    return false;
+                }
+
+                using var pieceMemoryOwner = MemoryPool<byte>.Shared.Rent(8);
+
+                Span<byte> pieceSpan = pieceMemoryOwner.Memory.Span[..8];
+                buffer.Slice(5, 8).CopyTo(pieceSpan);
+
+                int pieceIndex = BinaryPrimitives.ReadInt32BigEndian(pieceSpan[..4]);
+                int pieceBegin = BinaryPrimitives.ReadInt32BigEndian(pieceSpan[4..8]);
+                piecePayloadLength = piecePayloadLength - 8;
+                var rentedArray = new RentedArray<byte>(piecePayloadLength);
+                buffer.Slice(13, piecePayloadLength).CopyTo(rentedArray.Memory.Span);
+
+                message = new BlockMessage(pieceIndex, pieceBegin, rentedArray);
+
+                buffer = buffer.Slice(4 + length);
+                return true;
             }
 
-            using var memoryOwner = MemoryPool<byte>.Shared.Rent(8);
-
-            Span<byte> span = memoryOwner.Memory.Span[..8];
-            buffer.Slice(5, 8).CopyTo(span);
-
-            int index = BinaryPrimitives.ReadInt32BigEndian(span[..4]);
-            int begin = BinaryPrimitives.ReadInt32BigEndian(span[4..8]);
-            payloadLength = payloadLength - 8;
-            var rentedArray = new RentedArray<byte>(payloadLength);
-            buffer.Slice(13, payloadLength).CopyTo(rentedArray.Memory.Span);
-
-            message = new BlockMessage(index, begin, rentedArray);
-
-            // Consume the full message
-            buffer = buffer.Slice(4 + length);
-            return true;
+            default:
+                return false;
         }
-
-        return false;
     }
 
     private async Task WriteLoopAsync(CancellationToken cancellationToken)
