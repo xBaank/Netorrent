@@ -20,7 +20,7 @@ public class UdpTrackerHandlerTests
     [Test]
     [Arguments(AddressFamily.InterNetwork)]
     [Arguments(AddressFamily.InterNetworkV6)]
-    public async Task Should_get_udp_response(
+    public async Task Should_Get_Udp_Response(
         AddressFamily addressFamily,
         CancellationToken cancellationToken
     )
@@ -101,7 +101,7 @@ public class UdpTrackerHandlerTests
     }
 
     [Test]
-    public async Task Should_get_udp_error_response(CancellationToken cancellationToken)
+    public async Task Should_Get_Udp_Error_Response(CancellationToken cancellationToken)
     {
         var fakeUdp = new FakeUdpClient();
         var logger = NullLogger.Instance;
@@ -162,7 +162,7 @@ public class UdpTrackerHandlerTests
     }
 
     [Test]
-    public async Task Should_get_udp_timeout_response(CancellationToken cancellationToken)
+    public async Task Should_Get_Udp_Timeout_Response(CancellationToken cancellationToken)
     {
         var fakeUdp = new FakeUdpClient();
         var logger = NullLogger.Instance;
@@ -219,7 +219,7 @@ public class UdpTrackerHandlerTests
     [Test]
     [Arguments(AddressFamily.InterNetwork)]
     [Arguments(AddressFamily.InterNetworkV6)]
-    public async Task Should_reconnect_and_receive_udp_response(
+    public async Task Should_Reconnect_And_Receive_Udp_Response(
         AddressFamily addressFamily,
         CancellationToken cancellationToken
     )

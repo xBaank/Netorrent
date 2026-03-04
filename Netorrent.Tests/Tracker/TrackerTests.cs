@@ -55,7 +55,7 @@ public class TrackerTests
     }
 
     [Test]
-    public async Task Should_get_peers_from_udp_tracker(CancellationToken cancellationToken)
+    public async Task Should_Get_Peers_From_Udp_Tracker(CancellationToken cancellationToken)
     {
         var ctx = CreateDefaultContext();
 
@@ -92,7 +92,7 @@ public class TrackerTests
     }
 
     [Test]
-    public async Task Should_get_peers_from_http_tracker(CancellationToken cancellationToken)
+    public async Task Should_Get_Peers_From_Http_Tracker(CancellationToken cancellationToken)
     {
         var ctx = CreateDefaultContext();
 
@@ -124,7 +124,7 @@ public class TrackerTests
     }
 
     [Test]
-    public async Task Should_not_get_peers_from_http_tracker(CancellationToken cancellationToken)
+    public async Task Should_Not_Get_Peers_From_Http_Tracker(CancellationToken cancellationToken)
     {
         var ctx = CreateDefaultContext();
 
@@ -146,7 +146,7 @@ public class TrackerTests
     }
 
     [Test]
-    public async Task Should_not_get_peers_from_udp_tracker(CancellationToken cancellationToken)
+    public async Task Should_Not_Get_Peers_From_Udp_Tracker(CancellationToken cancellationToken)
     {
         var ctx = CreateDefaultContext();
 
@@ -174,7 +174,7 @@ public class TrackerTests
     }
 
     [Test]
-    public async Task Should_not_get_peers_from_tracker_client(CancellationToken cancellationToken)
+    public async Task Should_Not_Get_Peers_From_Tracker_Client(CancellationToken cancellationToken)
     {
         var ctx = CreateDefaultContext();
 
@@ -228,7 +228,7 @@ public class TrackerTests
     }
 
     [Test]
-    public async Task Should_get_peers_from_tracker_client(CancellationToken cancellationToken)
+    public async Task Should_Get_Peers_From_Tracker_Client(CancellationToken cancellationToken)
     {
         var ctx = CreateDefaultContext();
 
