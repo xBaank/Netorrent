@@ -1,5 +1,5 @@
-using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
+using Netorrent.ActorSystem;
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.P2P.Messages;
@@ -17,75 +17,58 @@ internal class RequestScheduler(
     TimeSpan timeoutTime,
     IPieceStorage pieceStorage,
     ILogger logger
-) : IRequestScheduler
+) : Actor<DownloadMessage>, IRequestScheduler
 {
     const int MinPeersForRarity = 6;
 
-    private readonly Channel<DownloadMessage> _downloadMessageChannel =
-        Channel.CreateBounded<DownloadMessage>(
-            new BoundedChannelOptions(128) { SingleWriter = false, SingleReader = true }
-        );
-
     private static readonly DownloadMessage.CheckTimeoutMessage _timeoutMessage = new();
     private readonly Dictionary<int, PieceBuffer> _pieceBuffers = [];
-    private CancellationTokenSource? _cts;
-    private Task? _runningTask;
-    private bool _disposed;
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    protected override async Task OnStartedAsync(CancellationToken cancellationToken)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _runningTask = Task.RunUntilFirstCompletesAsync(
-            [ScheduleTimeoutsBlocksAsync, ProcessDownloadMessagesAsync],
-            _cts
-        );
-        return _runningTask;
-    }
-
-    private async Task ScheduleTimeoutsBlocksAsync(CancellationToken cancellationToken)
-    {
-        while (true)
-        {
-            await _downloadMessageChannel
-                .Writer.WriteAsync(_timeoutMessage, cancellationToken)
-                .ConfigureAwait(false);
-            await Task.Delay(1.Seconds, cancellationToken).ConfigureAwait(false);
-        }
-    }
-
-    private async Task ProcessDownloadMessagesAsync(CancellationToken cancellationToken)
-    {
+        ScheduleRepeatedly(TimeSpan.Zero, 1.Seconds, _timeoutMessage);
         await WarmupAsync(cancellationToken).ConfigureAwait(false);
-        await foreach (
-            var downloadMessage in _downloadMessageChannel
-                .Reader.ReadAllAsync(cancellationToken)
-                .ConfigureAwait(false)
-        )
+    }
+
+    protected override async ValueTask OnReceiveAsync(
+        DownloadMessage message,
+        CancellationToken cancellationToken
+    )
+    {
+        switch (message)
         {
-            if (downloadMessage is DownloadMessage.BlockMessage blockMessage)
-            {
+            case DownloadMessage.BlockMessage blockMessage:
                 await ProcessBlockAsync(blockMessage.Block, cancellationToken)
                     .ConfigureAwait(false);
-                continue;
-            }
-
-            if (downloadMessage is DownloadMessage.CheckTimeoutMessage)
-            {
+                break;
+            case DownloadMessage.CheckTimeoutMessage:
                 CheckTimeout();
-                continue;
-            }
-
-            if (downloadMessage is DownloadMessage.ScheduleMessage scheduleMessage)
-            {
+                break;
+            case DownloadMessage.ScheduleMessage scheduleMessage:
                 ScheduleRequests(scheduleMessage.PeerConnection);
                 if (piecePicker.IsEndGame)
                 {
                     ScheduleRequests();
                 }
-                continue;
+                break;
+        }
+    }
+
+    protected override async ValueTask DrainAsync()
+    {
+        await foreach (var item in MailboxReader.ReadAllAsync().ConfigureAwait(false))
+        {
+            if (item is DownloadMessage.BlockMessage blockMessage)
+            {
+                blockMessage.Dispose();
             }
         }
+
+        foreach (var (_, item) in _pieceBuffers)
+        {
+            item.Dispose();
+        }
+        _pieceBuffers.Clear();
     }
 
     private async ValueTask ProcessBlockAsync(Block block, CancellationToken cancellationToken)
@@ -169,9 +152,7 @@ internal class RequestScheduler(
 
             if (freePeer is not null)
             {
-                _downloadMessageChannel.Writer.TryWrite(
-                    new DownloadMessage.ScheduleMessage(freePeer)
-                );
+                Tell(new DownloadMessage.ScheduleMessage(freePeer));
             }
         }
     }
@@ -250,9 +231,7 @@ internal class RequestScheduler(
     {
         if (!peerConnection.PeerChoking.CurrentValue && peerConnection.AmInterested.CurrentValue)
         {
-            _downloadMessageChannel.Writer.TryWrite(
-                new DownloadMessage.ScheduleMessage(peerConnection)
-            );
+            Tell(new DownloadMessage.ScheduleMessage(peerConnection));
         }
     }
 
@@ -269,48 +248,17 @@ internal class RequestScheduler(
         return DateTimeOffset.UtcNow + Math.Min(timeoutSeconds, 60).Seconds;
     }
 
-    public async ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken) =>
-        await _downloadMessageChannel
-            .Writer.WriteOrDisposeAsync(new DownloadMessage.BlockMessage(block), cancellationToken)
-            .ConfigureAwait(false);
-
-    private async ValueTask DrainChannelsAsync()
+    public async ValueTask ReceiveBlockAsync(Block block, CancellationToken cancellationToken)
     {
-        await foreach (
-            var item in _downloadMessageChannel.Reader.ReadAllAsync().ConfigureAwait(false)
-        )
+        var message = new DownloadMessage.BlockMessage(block);
+        try
         {
-            if (item is DownloadMessage.BlockMessage blockMessage)
-            {
-                blockMessage.Dispose();
-            }
+            await SendAsync(message, cancellationToken).ConfigureAwait(false);
         }
-
-        foreach (var (_, item) in _pieceBuffers)
+        catch
         {
-            item.Dispose();
-        }
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (!_disposed)
-        {
-            _disposed = true;
-            _cts?.Cancel();
-            _downloadMessageChannel.Writer.TryComplete();
-
-            try
-            {
-                if (_runningTask is not null)
-                {
-                    await _runningTask.ConfigureAwait(false);
-                }
-            }
-            catch { }
-
-            await DrainChannelsAsync().ConfigureAwait(false);
-            _cts?.Dispose();
+            message.Dispose();
+            throw;
         }
     }
 }
