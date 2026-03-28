@@ -17,10 +17,11 @@ internal class PeersClient(
     IPiecePicker piecePicker,
     Bitfield bitField,
     ILogger logger
-) : Actor<PeerConnection>
+) : IAsyncDisposable
 {
     const int MAX_ACTIVE_PEER_COUNT = 100;
 
+    private readonly Actor<PeerConnection> _actor = new();
     private readonly ConcurrentQueue<PeerEndpoint> _knownPeers = [];
     private readonly Subject<PeerEndpoint> _peerConnected = new();
     private readonly List<Task> _peerTasks = [];
@@ -31,7 +32,28 @@ internal class PeersClient(
 
     public Bitfield BitField { get; } = bitField;
 
-    protected override async ValueTask OnReceiveAsync(
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _actor.StartAsync(OnReceiveAsync, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            try
+            {
+                await Task.WhenAll(_peerTasks).ConfigureAwait(false);
+            }
+            catch { }
+
+            var disposeTasks = activePeers.Values.Select(i => i.DisposeAsync().AsTask());
+            await Task.WhenAll(disposeTasks).ConfigureAwait(false);
+            activePeers.Clear();
+            _peerConnected.OnCompleted();
+        }
+    }
+
+    private async ValueTask OnReceiveAsync(
         PeerConnection peerConnection,
         CancellationToken cancellationToken
     )
@@ -42,28 +64,6 @@ internal class PeersClient(
         {
             _peerConnected.OnNext(peerConnection.PeerEndpoint);
             _peerTasks.Add(HandlePeerAsync(peerConnection, cancellationToken));
-        }
-    }
-
-    protected override async ValueTask OnStoppingAsync()
-    {
-        try
-        {
-            await Task.WhenAll(_peerTasks).ConfigureAwait(false);
-        }
-        catch { }
-
-        var disposeTasks = activePeers.Values.Select(i => i.DisposeAsync().AsTask());
-        await Task.WhenAll(disposeTasks).ConfigureAwait(false);
-        activePeers.Clear();
-        _peerConnected.OnCompleted();
-    }
-
-    protected override async ValueTask DrainAsync()
-    {
-        await foreach (var connection in MailboxReader.ReadAllAsync().ConfigureAwait(false))
-        {
-            await connection.DisposeAsync().ConfigureAwait(false);
         }
     }
 
@@ -81,7 +81,7 @@ internal class PeersClient(
         );
         try
         {
-            await SendAsync(peerConnection, cancellationToken).ConfigureAwait(false);
+            await _actor.SendAsync(peerConnection, cancellationToken).ConfigureAwait(false);
         }
         catch
         {
@@ -166,5 +166,15 @@ internal class PeersClient(
 
         activePeers[peerConnection.PeerEndpoint] = peerConnection;
         return true;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _actor.DisposeAsync().ConfigureAwait(false);
+
+        await foreach (var connection in _actor.MailboxReader.ReadAllAsync().ConfigureAwait(false))
+        {
+            await connection.DisposeAsync().ConfigureAwait(false);
+        }
     }
 }

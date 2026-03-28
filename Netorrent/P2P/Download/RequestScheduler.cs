@@ -17,20 +17,22 @@ internal class RequestScheduler(
     TimeSpan timeoutTime,
     IPieceStorage pieceStorage,
     ILogger logger
-) : Actor<DownloadMessage>, IRequestScheduler
+) : IRequestScheduler
 {
     const int MinPeersForRarity = 6;
 
+    private readonly Actor<DownloadMessage> _actor = new();
     private static readonly DownloadMessage.CheckTimeoutMessage _timeoutMessage = new();
     private readonly Dictionary<int, PieceBuffer> _pieceBuffers = [];
 
-    protected override async Task OnStartedAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
-        ScheduleRepeatedly(TimeSpan.Zero, 1.Seconds, _timeoutMessage);
+        _actor.ScheduleRepeatedly(TimeSpan.Zero, 1.Seconds, _timeoutMessage);
         await WarmupAsync(cancellationToken).ConfigureAwait(false);
+        await _actor.StartAsync(OnReceiveAsync, cancellationToken).ConfigureAwait(false);
     }
 
-    protected override async ValueTask OnReceiveAsync(
+    private async ValueTask OnReceiveAsync(
         DownloadMessage message,
         CancellationToken cancellationToken
     )
@@ -52,23 +54,6 @@ internal class RequestScheduler(
                 }
                 break;
         }
-    }
-
-    protected override async ValueTask DrainAsync()
-    {
-        await foreach (var item in MailboxReader.ReadAllAsync().ConfigureAwait(false))
-        {
-            if (item is DownloadMessage.BlockMessage blockMessage)
-            {
-                blockMessage.Dispose();
-            }
-        }
-
-        foreach (var (_, item) in _pieceBuffers)
-        {
-            item.Dispose();
-        }
-        _pieceBuffers.Clear();
     }
 
     private async ValueTask ProcessBlockAsync(Block block, CancellationToken cancellationToken)
@@ -152,7 +137,7 @@ internal class RequestScheduler(
 
             if (freePeer is not null)
             {
-                Tell(new DownloadMessage.ScheduleMessage(freePeer));
+                _actor.Tell(new DownloadMessage.ScheduleMessage(freePeer));
             }
         }
     }
@@ -231,7 +216,7 @@ internal class RequestScheduler(
     {
         if (!peerConnection.PeerChoking.CurrentValue && peerConnection.AmInterested.CurrentValue)
         {
-            Tell(new DownloadMessage.ScheduleMessage(peerConnection));
+            _actor.Tell(new DownloadMessage.ScheduleMessage(peerConnection));
         }
     }
 
@@ -253,12 +238,31 @@ internal class RequestScheduler(
         var message = new DownloadMessage.BlockMessage(block);
         try
         {
-            await SendAsync(message, cancellationToken).ConfigureAwait(false);
+            await _actor.SendAsync(message, cancellationToken).ConfigureAwait(false);
         }
         catch
         {
             message.Dispose();
             throw;
         }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _actor.DisposeAsync().ConfigureAwait(false);
+
+        await foreach (var item in _actor.MailboxReader.ReadAllAsync().ConfigureAwait(false))
+        {
+            if (item is DownloadMessage.BlockMessage blockMessage)
+            {
+                blockMessage.Dispose();
+            }
+        }
+
+        foreach (var (_, item) in _pieceBuffers)
+        {
+            item.Dispose();
+        }
+        _pieceBuffers.Clear();
     }
 }

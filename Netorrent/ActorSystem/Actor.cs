@@ -2,7 +2,7 @@ using System.Threading.Channels;
 
 namespace Netorrent.ActorSystem;
 
-internal abstract class Actor<TMessage> : IAsyncDisposable
+internal sealed class Actor<TMessage> : IAsyncDisposable
 {
     private readonly Channel<TMessage> _mailbox = Channel.CreateBounded<TMessage>(
         new BoundedChannelOptions(128) { SingleWriter = false, SingleReader = true }
@@ -12,9 +12,12 @@ internal abstract class Actor<TMessage> : IAsyncDisposable
     private Task? _runningTask;
     private bool _disposed;
 
-    protected ChannelReader<TMessage> MailboxReader => _mailbox.Reader;
+    public ChannelReader<TMessage> MailboxReader => _mailbox.Reader;
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public Task StartAsync(
+        Func<TMessage, CancellationToken, ValueTask> onReceive,
+        CancellationToken cancellationToken
+    )
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_runningTask is { IsCompleted: false })
@@ -23,45 +26,36 @@ internal abstract class Actor<TMessage> : IAsyncDisposable
         }
         _cts?.Dispose();
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _runningTask = RunAsync(_cts.Token);
+        _runningTask = RunAsync(onReceive, _cts.Token);
         return _runningTask;
     }
 
-    private async Task RunAsync(CancellationToken cancellationToken)
+    private async Task RunAsync(
+        Func<TMessage, CancellationToken, ValueTask> onReceive,
+        CancellationToken cancellationToken
+    )
     {
         try
         {
-            await OnStartedAsync(cancellationToken).ConfigureAwait(false);
             await foreach (
                 var message in _mailbox.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false)
             )
             {
-                await OnReceiveAsync(message, cancellationToken).ConfigureAwait(false);
+                await onReceive(message, cancellationToken).ConfigureAwait(false);
             }
         }
         finally
         {
             DisposeTimers();
-            await OnStoppingAsync().ConfigureAwait(false);
         }
     }
 
-    protected abstract ValueTask OnReceiveAsync(
-        TMessage message,
-        CancellationToken cancellationToken
-    );
+    public bool Tell(TMessage message) => _mailbox.Writer.TryWrite(message);
 
-    protected virtual Task OnStartedAsync(CancellationToken cancellationToken) =>
-        Task.CompletedTask;
-
-    protected virtual ValueTask OnStoppingAsync() => ValueTask.CompletedTask;
-
-    protected bool Tell(TMessage message) => _mailbox.Writer.TryWrite(message);
-
-    protected ValueTask SendAsync(TMessage message, CancellationToken cancellationToken) =>
+    public ValueTask SendAsync(TMessage message, CancellationToken cancellationToken) =>
         _mailbox.Writer.WriteAsync(message, cancellationToken);
 
-    protected void ScheduleRepeatedly(TimeSpan delay, TimeSpan interval, TMessage message)
+    public void ScheduleRepeatedly(TimeSpan delay, TimeSpan interval, TMessage message)
     {
         if (delay == TimeSpan.Zero)
         {
@@ -71,8 +65,6 @@ internal abstract class Actor<TMessage> : IAsyncDisposable
         var timer = new Timer(_ => _mailbox.Writer.TryWrite(message), null, delay, interval);
         _timers.Add(timer);
     }
-
-    protected virtual ValueTask DrainAsync() => ValueTask.CompletedTask;
 
     private void DisposeTimers()
     {
@@ -101,7 +93,6 @@ internal abstract class Actor<TMessage> : IAsyncDisposable
             catch { }
 
             DisposeTimers();
-            await DrainAsync().ConfigureAwait(false);
             _cts?.Dispose();
         }
     }

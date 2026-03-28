@@ -17,23 +17,24 @@ internal class UploadScheduler(
     Bitfield bitfield,
     DataStatistics data,
     ILogger logger
-) : Actor<UploadMessage>, IUploadScheduler
+) : IUploadScheduler
 {
     const int MaxActivePeers = 4; //TODO Add an option for this to be changed or rate based
 
+    private readonly Actor<UploadMessage> _actor = new();
     private static readonly UploadMessage.CheckRoundMessage _checkRoundMessage = new();
     private readonly Lock _cancelLock = new();
     private readonly HashSet<RequestBlock> _requests = [];
 
     private byte _round = 1;
 
-    protected override Task OnStartedAsync(CancellationToken cancellationToken)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
-        ScheduleRepeatedly(TimeSpan.Zero, 10.Seconds, _checkRoundMessage);
-        return Task.CompletedTask;
+        _actor.ScheduleRepeatedly(TimeSpan.Zero, 10.Seconds, _checkRoundMessage);
+        return _actor.StartAsync(OnReceiveAsync, cancellationToken);
     }
 
-    protected override async ValueTask OnReceiveAsync(
+    private async ValueTask OnReceiveAsync(
         UploadMessage message,
         CancellationToken cancellationToken
     )
@@ -48,12 +49,6 @@ internal class UploadScheduler(
                     .ConfigureAwait(false);
                 break;
         }
-    }
-
-    protected override ValueTask DrainAsync()
-    {
-        _requests.Clear();
-        return ValueTask.CompletedTask;
     }
 
     private void RunRound()
@@ -241,7 +236,7 @@ internal class UploadScheduler(
     {
         if (peerConnection.PeerInterested.CurrentValue && !peerConnection.AmChoking.CurrentValue)
         {
-            Tell(_checkRoundMessage);
+            _actor.Tell(_checkRoundMessage);
         }
     }
 
@@ -290,7 +285,8 @@ internal class UploadScheduler(
         {
             from.IncrementUploadRequested();
 
-            await SendAsync(new UploadMessage.RequestBlockMessage(request), cancellationToken)
+            await _actor
+                .SendAsync(new UploadMessage.RequestBlockMessage(request), cancellationToken)
                 .ConfigureAwait(false);
         }
     }
@@ -304,5 +300,11 @@ internal class UploadScheduler(
                 cancelled.State = RequestBlockState.Cancelled;
             }
         }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _actor.DisposeAsync().ConfigureAwait(false);
+        _requests.Clear();
     }
 }
