@@ -17,10 +17,11 @@ internal abstract class Actor<TMessage> : IAsyncDisposable
     public Task StartAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_runningTask is not null)
+        if (_runningTask is { IsCompleted: false })
         {
             throw new InvalidOperationException("Actor already started.");
         }
+        _cts?.Dispose();
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _runningTask = RunAsync(_cts.Token);
         return _runningTask;
