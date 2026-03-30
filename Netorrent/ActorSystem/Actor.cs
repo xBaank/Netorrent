@@ -46,7 +46,7 @@ internal sealed class Actor<TMessage> : IAsyncDisposable
         }
         finally
         {
-            DisposeTimers();
+            await DisposeTimersAsync().ConfigureAwait(false);
         }
     }
 
@@ -66,11 +66,11 @@ internal sealed class Actor<TMessage> : IAsyncDisposable
         _timers.Add(timer);
     }
 
-    private void DisposeTimers()
+    private async ValueTask DisposeTimersAsync()
     {
         foreach (var timer in _timers)
         {
-            timer.Dispose();
+            await timer.DisposeAsync().ConfigureAwait(false);
         }
         _timers.Clear();
     }
@@ -92,7 +92,7 @@ internal sealed class Actor<TMessage> : IAsyncDisposable
             }
             catch { }
 
-            DisposeTimers();
+            await DisposeTimersAsync().ConfigureAwait(false);
             _cts?.Dispose();
         }
     }
