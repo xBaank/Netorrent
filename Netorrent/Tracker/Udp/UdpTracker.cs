@@ -1,5 +1,6 @@
 using System.Net;
 using System.Threading.Channels;
+using Netorrent.ActorSystem;
 using Netorrent.Exceptions;
 using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
@@ -24,54 +25,62 @@ internal class UdpTracker(
 {
     private UdpTrackerResponse? _lastResponse;
     private readonly Guid _trackerId = Guid.CreateVersion7();
+    private readonly Actor<TrackerMessage> _actor = new();
+    private Timer? _announceTimer;
+    private IDisposable? _completedSubscription;
+    private static readonly TrackerMessage.CompletedMessage _completedMessage = new();
 
     public async ValueTask StartAsync(CancellationToken cancellationToken)
     {
         await ConnectAsync(iPEndPoint, cancellationToken).ConfigureAwait(false);
 
-        _lastResponse = await AnnounceAndReceiveAsync(
-                iPEndPoint,
-                @event: myBitfield.IsComplete ? Events.Completed : Events.Started,
-                cancellationToken: cancellationToken
-            )
+        var initialEvent = myBitfield.IsComplete ? Events.Completed : Events.Started;
+        _actor.Tell(new TrackerMessage.AnnounceMessage(initialEvent));
+
+        _completedSubscription = myBitfield.StateChanged.Subscribe(_ =>
+        {
+            if (myBitfield.IsComplete)
+                _actor.Tell(_completedMessage);
+        });
+
+        await _actor.StartAsync(OnReceiveAsync, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask OnReceiveAsync(
+        TrackerMessage message,
+        CancellationToken cancellationToken
+    )
+    {
+        string? @event = message switch
+        {
+            TrackerMessage.AnnounceMessage m => m.Event,
+            TrackerMessage.CompletedMessage => Events.Completed,
+            _ => null,
+        };
+
+        if (message is TrackerMessage.CompletedMessage)
+            _announceTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+
+        _lastResponse = await AnnounceAndReceiveAsync(iPEndPoint, @event, cancellationToken)
             .ConfigureAwait(false);
 
-        using var completeDisposable = myBitfield.StateChanged.SubscribeAwait(
-            async (value, ct) =>
-            {
-                if (myBitfield.IsComplete)
-                {
-                    _lastResponse = await AnnounceAndReceiveAsync(
-                            iPEndPoint,
-                            @event: Events.Completed,
-                            cancellationToken: cancellationToken
-                        )
-                        .ConfigureAwait(false);
-                }
-            },
-            configureAwait: false
-        );
-
         foreach (var peer in _lastResponse.Peers)
-        {
             await channelWriter.WriteAsync(peer, cancellationToken).ConfigureAwait(false);
-        }
 
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            var interval = _lastResponse.Interval.Seconds;
-            await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
+        ScheduleNextAnnounce(_lastResponse.Interval.Seconds);
+    }
 
-            var newResponse = await AnnounceAndReceiveAsync(iPEndPoint, null, cancellationToken)
-                .ConfigureAwait(false);
-
-            _lastResponse = newResponse;
-
-            foreach (var peer in _lastResponse.Peers)
-            {
-                await channelWriter.WriteAsync(peer, cancellationToken).ConfigureAwait(false);
-            }
-        }
+    private void ScheduleNextAnnounce(TimeSpan delay)
+    {
+        if (_announceTimer is null)
+            _announceTimer = new Timer(
+                _ => _actor.Tell(new TrackerMessage.AnnounceMessage(null)),
+                null,
+                delay,
+                Timeout.InfiniteTimeSpan
+            );
+        else
+            _announceTimer.Change(delay, Timeout.InfiniteTimeSpan);
     }
 
     public async Task<UdpTrackerConnectResponse> ConnectAsync(
@@ -182,5 +191,20 @@ internal class UdpTracker(
             await AnnounceAsync(iPEndPoint, Events.Stopped, cancellationToken)
                 .ConfigureAwait(false);
         }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _completedSubscription?.Dispose();
+
+        if (_announceTimer is not null)
+        {
+            await _announceTimer.DisposeAsync().ConfigureAwait(false);
+            _announceTimer = null;
+        }
+
+        await _actor.DisposeAsync().ConfigureAwait(false);
+
+        await foreach (var _ in _actor.MailboxReader.ReadAllAsync().ConfigureAwait(false)) { }
     }
 }

@@ -56,6 +56,11 @@ internal class TrackerClient(
                     {
                         logger.LogError(ex, "Error Announcing");
                     }
+
+                    if (Ipv4 is not null)
+                        await Ipv4.DisposeAsync().ConfigureAwait(false);
+                    if (Ipv6 is not null)
+                        await Ipv6.DisposeAsync().ConfigureAwait(false);
                 }
                 catch (OperationCanceledException oce)
                     when (oce.CancellationToken == cancellationToken)
@@ -66,10 +71,12 @@ internal class TrackerClient(
                         if (Ipv4 is not null)
                         {
                             await Ipv4.StopAsync(ct.Token).ConfigureAwait(false);
+                            await Ipv4.DisposeAsync().ConfigureAwait(false);
                         }
                         if (Ipv6 is not null)
                         {
                             await Ipv6.StopAsync(ct.Token).ConfigureAwait(false);
+                            await Ipv6.DisposeAsync().ConfigureAwait(false);
                         }
 
                         Promote(urls, url);
