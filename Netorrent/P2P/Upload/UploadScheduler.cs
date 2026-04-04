@@ -1,5 +1,5 @@
-﻿using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
+using Netorrent.ActorSystem;
 using Netorrent.Extensions;
 using Netorrent.IO;
 using Netorrent.P2P.Messages;
@@ -21,61 +21,33 @@ internal class UploadScheduler(
 {
     const int MaxActivePeers = 4; //TODO Add an option for this to be changed or rate based
 
-    private readonly Channel<UploadMessage> _uploadMessagesChannel =
-        Channel.CreateBounded<UploadMessage>(
-            new BoundedChannelOptions(128) { SingleWriter = false, SingleReader = true }
-        );
+    private readonly Actor<UploadMessage> _actor = new();
+    private static readonly UploadMessage.CheckRoundMessage _checkRoundMessage = new();
     private readonly Lock _cancelLock = new();
     private readonly HashSet<RequestBlock> _requests = [];
-    private static readonly UploadMessage.CheckRoundMessage _checkRoundMessage = new();
-    private readonly TimeSpan _interval = 10.Seconds;
 
     private byte _round = 1;
-    private CancellationTokenSource? _cts;
-    private Task? _runningTask;
-    private bool _disposed;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _runningTask = Task.RunUntilFirstCompletesAsync(
-            [ScheduleRoundsAsync, ProcessUploadMessagesAsync],
-            _cts
-        );
-        return _runningTask;
+        _actor.ScheduleRepeatedly(TimeSpan.Zero, 10.Seconds, _checkRoundMessage);
+        return _actor.StartAsync(OnReceiveAsync, cancellationToken);
     }
 
-    public async Task ScheduleRoundsAsync(CancellationToken cancellationToken)
+    private async ValueTask OnReceiveAsync(
+        UploadMessage message,
+        CancellationToken cancellationToken
+    )
     {
-        while (true)
+        switch (message)
         {
-            await _uploadMessagesChannel
-                .Writer.WriteAsync(_checkRoundMessage, cancellationToken)
-                .ConfigureAwait(false);
-            await Task.Delay(_interval, cancellationToken).ConfigureAwait(false);
-        }
-    }
-
-    public async Task ProcessUploadMessagesAsync(CancellationToken cancellationToken)
-    {
-        await foreach (
-            var uploadMessage in _uploadMessagesChannel.Reader.ReadAllAsync(cancellationToken)
-        )
-        {
-            if (uploadMessage is UploadMessage.CheckRoundMessage)
-            {
+            case UploadMessage.CheckRoundMessage:
                 RunRound();
-                continue;
-            }
-
-            if (uploadMessage is UploadMessage.RequestBlockMessage requestBlockMessage)
-            {
+                break;
+            case UploadMessage.RequestBlockMessage requestBlockMessage:
                 await ProcessRequestAsync(requestBlockMessage.RequestBlock, cancellationToken)
                     .ConfigureAwait(false);
-                continue;
-            }
+                break;
         }
     }
 
@@ -264,7 +236,7 @@ internal class UploadScheduler(
     {
         if (peerConnection.PeerInterested.CurrentValue && !peerConnection.AmChoking.CurrentValue)
         {
-            _uploadMessagesChannel.Writer.TryWrite(_checkRoundMessage);
+            _actor.Tell(_checkRoundMessage);
         }
     }
 
@@ -313,11 +285,8 @@ internal class UploadScheduler(
         {
             from.IncrementUploadRequested();
 
-            await _uploadMessagesChannel
-                .Writer.WriteAsync(
-                    new UploadMessage.RequestBlockMessage(request),
-                    cancellationToken
-                )
+            await _actor
+                .SendAsync(new UploadMessage.RequestBlockMessage(request), cancellationToken)
                 .ConfigureAwait(false);
         }
     }
@@ -333,32 +302,9 @@ internal class UploadScheduler(
         }
     }
 
-    private async ValueTask DrainChannelsAsync()
-    {
-        await foreach (var _ in _uploadMessagesChannel.Reader.ReadAllAsync().ConfigureAwait(false))
-        { }
-        _requests.Clear();
-    }
-
     public async ValueTask DisposeAsync()
     {
-        if (!_disposed)
-        {
-            _disposed = true;
-            _cts?.Cancel();
-            _uploadMessagesChannel.Writer.TryComplete();
-
-            try
-            {
-                if (_runningTask is not null)
-                {
-                    await _runningTask.ConfigureAwait(false);
-                }
-            }
-            catch { }
-
-            await DrainChannelsAsync().ConfigureAwait(false);
-            _cts?.Dispose();
-        }
+        await _actor.DisposeAsync().ConfigureAwait(false);
+        _requests.Clear();
     }
 }

@@ -1,7 +1,6 @@
-﻿using System.Collections.Concurrent;
-using System.Threading.Channels;
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
-using Netorrent.Extensions;
+using Netorrent.ActorSystem;
 using Netorrent.P2P.Download;
 using Netorrent.P2P.Messages;
 using Netorrent.P2P.Upload;
@@ -22,12 +21,10 @@ internal class PeersClient(
 {
     const int MAX_ACTIVE_PEER_COUNT = 100;
 
+    private readonly Actor<PeerConnection> _actor = new();
     private readonly ConcurrentQueue<PeerEndpoint> _knownPeers = [];
     private readonly Subject<PeerEndpoint> _peerConnected = new();
-    private readonly Channel<PeerConnection> _peerConnections =
-        Channel.CreateBounded<PeerConnection>(
-            new BoundedChannelOptions(128) { SingleReader = true, SingleWriter = false }
-        );
+    private readonly List<Task> _peerTasks = [];
 
     public PeerId PeerId => peerId;
     public Observable<PeerEndpoint> PeerConnected => _peerConnected;
@@ -39,29 +36,34 @@ internal class PeersClient(
     {
         try
         {
-            await ProcessPeersAsync(cancellationToken).ConfigureAwait(false);
+            await _actor.StartAsync(OnReceiveAsync, cancellationToken).ConfigureAwait(false);
         }
-        catch
+        finally
         {
+            try
+            {
+                await Task.WhenAll(_peerTasks).ConfigureAwait(false);
+            }
+            catch { }
+
             var disposeTasks = activePeers.Values.Select(i => i.DisposeAsync().AsTask());
             await Task.WhenAll(disposeTasks).ConfigureAwait(false);
             activePeers.Clear();
-            throw;
+            _peerConnected.OnCompleted();
         }
     }
 
-    private async Task ProcessPeersAsync(CancellationToken cancellationToken)
+    private async ValueTask OnReceiveAsync(
+        PeerConnection peerConnection,
+        CancellationToken cancellationToken
+    )
     {
-        await foreach (
-            var peerConnection in _peerConnections
-                .Reader.ReadAllAsync(cancellationToken)
-                .ConfigureAwait(false)
-        )
+        _peerTasks.RemoveAll(t => t.IsCompleted);
+
+        if (await CanConnectAsync(peerConnection).ConfigureAwait(false))
         {
-            if (await CanConnectAsync(peerConnection).ConfigureAwait(false))
-            {
-                _ = HandlePeerAsync(peerConnection, cancellationToken);
-            }
+            _peerConnected.OnNext(peerConnection.PeerEndpoint);
+            _peerTasks.Add(HandlePeerAsync(peerConnection, cancellationToken));
         }
     }
 
@@ -79,9 +81,7 @@ internal class PeersClient(
         );
         try
         {
-            await _peerConnections
-                .Writer.WriteAsync(peerConnection, cancellationToken)
-                .ConfigureAwait(false);
+            await _actor.SendAsync(peerConnection, cancellationToken).ConfigureAwait(false);
         }
         catch
         {
@@ -97,16 +97,9 @@ internal class PeersClient(
     {
         try
         {
-            _peerConnected.OnNext(peerConnection.PeerEndpoint);
             await peerConnection.StartAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
-        {
-            activePeers.Remove(peerConnection.PeerEndpoint, out _);
-            await peerConnection.DisposeAsync().ConfigureAwait(false);
-            return;
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             if (logger.IsEnabled(LogLevel.Debug))
             {
@@ -116,7 +109,9 @@ internal class PeersClient(
                     peerConnection.PeerEndpoint.PeerId
                 );
             }
-
+        }
+        finally
+        {
             activePeers.Remove(peerConnection.PeerEndpoint, out _);
             await peerConnection.DisposeAsync().ConfigureAwait(false);
         }
@@ -175,8 +170,11 @@ internal class PeersClient(
 
     public async ValueTask DisposeAsync()
     {
-        var peersDisposeTasks = activePeers.Values.Select(i => i.DisposeAsync().AsTask());
-        await Task.WhenAll(peersDisposeTasks).ConfigureAwait(false);
-        _peerConnected.OnCompleted();
+        await _actor.DisposeAsync().ConfigureAwait(false);
+
+        await foreach (var connection in _actor.MailboxReader.ReadAllAsync().ConfigureAwait(false))
+        {
+            await connection.DisposeAsync().ConfigureAwait(false);
+        }
     }
 }

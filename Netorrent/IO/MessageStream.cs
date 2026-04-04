@@ -222,23 +222,17 @@ internal class MessageStream(
 
             case IdRequest:
             {
-                int requestPayloadLength = length - 1;
-
-                if (requestPayloadLength < 12)
-                {
+                if (length - 1 < 12)
                     return false;
-                }
 
-                using var requestMemoryOwner = MemoryPool<byte>.Shared.Rent(requestPayloadLength);
+                Span<byte> requestSpan = stackalloc byte[12];
+                buffer.Slice(5, 12).CopyTo(requestSpan);
 
-                Span<byte> requestSpan = requestMemoryOwner.Memory.Span[..requestPayloadLength];
-                buffer.Slice(5, requestPayloadLength).CopyTo(requestSpan);
-
-                var reqIndex = BinaryPrimitives.ReadInt32BigEndian(requestSpan[..4]);
-                var reqBegin = BinaryPrimitives.ReadInt32BigEndian(requestSpan[4..8]);
-                var reqLength = BinaryPrimitives.ReadInt32BigEndian(requestSpan[8..12]);
-
-                message = new RequestBlockMessage(reqIndex, reqBegin, reqLength);
+                message = new RequestBlockMessage(
+                    BinaryPrimitives.ReadInt32BigEndian(requestSpan[..4]),
+                    BinaryPrimitives.ReadInt32BigEndian(requestSpan[4..8]),
+                    BinaryPrimitives.ReadInt32BigEndian(requestSpan[8..12])
+                );
 
                 buffer = buffer.Slice(4 + length);
                 return true;
@@ -246,23 +240,17 @@ internal class MessageStream(
 
             case IdCancel:
             {
-                int cancelPayloadLength = length - 1;
-
-                if (cancelPayloadLength < 12)
-                {
+                if (length - 1 < 12)
                     return false;
-                }
 
-                using var cancelMemoryOwner = MemoryPool<byte>.Shared.Rent(cancelPayloadLength);
+                Span<byte> cancelSpan = stackalloc byte[12];
+                buffer.Slice(5, 12).CopyTo(cancelSpan);
 
-                Span<byte> cancelSpan = cancelMemoryOwner.Memory.Span[..cancelPayloadLength];
-                buffer.Slice(5, cancelPayloadLength).CopyTo(cancelSpan);
-
-                var cancelIndex = BinaryPrimitives.ReadInt32BigEndian(cancelSpan[..4]);
-                var cancelBegin = BinaryPrimitives.ReadInt32BigEndian(cancelSpan[4..8]);
-                var cancelLength = BinaryPrimitives.ReadInt32BigEndian(cancelSpan[8..12]);
-
-                message = new CancelMessage(cancelIndex, cancelBegin, cancelLength);
+                message = new CancelMessage(
+                    BinaryPrimitives.ReadInt32BigEndian(cancelSpan[..4]),
+                    BinaryPrimitives.ReadInt32BigEndian(cancelSpan[4..8]),
+                    BinaryPrimitives.ReadInt32BigEndian(cancelSpan[8..12])
+                );
 
                 buffer = buffer.Slice(4 + length);
                 return true;

@@ -1,5 +1,6 @@
-﻿using System.Net;
+using System.Net;
 using System.Threading.Channels;
+using Netorrent.ActorSystem;
 using Netorrent.Exceptions;
 using Netorrent.Extensions;
 using Netorrent.P2P.Messages;
@@ -20,46 +21,49 @@ internal class HttpTracker(
     ChannelWriter<IPEndPoint> channelWriter
 ) : ITracker
 {
+    private readonly Actor<TrackerMessage> _actor = new();
+    private IDisposable? _completedSubscription;
+    private static readonly TrackerMessage.CompletedMessage _completedMessage = new();
+
     public async ValueTask StartAsync(CancellationToken cancellationToken)
     {
-        var response = await AnnounceAsync(
-                myBitfield.IsComplete ? Events.Completed : Events.Started,
-                cancellationToken
-            )
-            .ConfigureAwait(false);
+        var initialEvent = myBitfield.IsComplete ? Events.Completed : Events.Started;
+        _actor.Tell(new TrackerMessage.AnnounceMessage(initialEvent));
 
-        using var completeDisposable = myBitfield.StateChanged.SubscribeAwait(
-            async (value, ct) =>
-            {
-                if (myBitfield.IsComplete)
-                {
-                    response = await AnnounceAsync(Events.Completed, cancellationToken: ct)
-                        .ConfigureAwait(false);
-                }
-            },
-            configureAwait: false
-        );
-
-        foreach (var iPEndPoint in response.Peers)
+        _completedSubscription = myBitfield.StateChanged.Subscribe(_ =>
         {
-            await channelWriter.WriteAsync(iPEndPoint, cancellationToken).ConfigureAwait(false);
-        }
+            if (myBitfield.IsComplete)
+                _actor.Tell(_completedMessage);
+        });
 
-        while (!cancellationToken.IsCancellationRequested)
+        await _actor.StartAsync(OnReceiveAsync, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask OnReceiveAsync(
+        TrackerMessage message,
+        CancellationToken cancellationToken
+    )
+    {
+        string? @event = message switch
         {
-            var interval = response.Interval.Seconds;
+            TrackerMessage.AnnounceMessage m => m.Event,
+            TrackerMessage.CompletedMessage => Events.Completed,
+            _ => null,
+        };
 
-            await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
+        if (message is TrackerMessage.CompletedMessage)
+            _actor.CancelScheduled();
 
-            var newResponse = await AnnounceAsync(cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-            response = newResponse;
+        var response = await AnnounceAsync(@event, cancellationToken).ConfigureAwait(false);
 
-            foreach (var iPEndPoint in response.Peers)
-            {
-                await channelWriter.WriteAsync(iPEndPoint, cancellationToken).ConfigureAwait(false);
-            }
-        }
+        foreach (var endpoint in response.Peers)
+            await channelWriter.WriteAsync(endpoint, cancellationToken).ConfigureAwait(false);
+
+        if (message is not TrackerMessage.CompletedMessage)
+            _actor.ScheduleOnce(
+                response.Interval.Seconds,
+                new TrackerMessage.AnnounceMessage(null)
+            );
     }
 
     private async Task<HttpTrackerResponse> AnnounceAsync(
@@ -99,5 +103,11 @@ internal class HttpTracker(
     public async ValueTask StopAsync(CancellationToken cancellationToken)
     {
         await AnnounceAsync(Events.Stopped, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _completedSubscription?.Dispose();
+        await _actor.DisposeAsync().ConfigureAwait(false);
     }
 }
