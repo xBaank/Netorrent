@@ -8,6 +8,7 @@ internal sealed class Actor<TMessage> : IAsyncDisposable
         new BoundedChannelOptions(128) { SingleWriter = false, SingleReader = true }
     );
     private readonly List<Timer> _timers = [];
+    private Timer? _scheduledTimer;
     private CancellationTokenSource? _cts;
     private Task? _runningTask;
     private bool _disposed;
@@ -66,13 +67,33 @@ internal sealed class Actor<TMessage> : IAsyncDisposable
         _timers.Add(timer);
     }
 
+    public void ScheduleOnce(TimeSpan delay, TMessage message)
+    {
+        if (_scheduledTimer is null)
+            _scheduledTimer = new Timer(
+                _ => _mailbox.Writer.TryWrite(message),
+                null,
+                delay,
+                Timeout.InfiniteTimeSpan
+            );
+        else
+            _scheduledTimer.Change(delay, Timeout.InfiniteTimeSpan);
+    }
+
+    public void CancelScheduled() =>
+        _scheduledTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+
     private async ValueTask DisposeTimersAsync()
     {
         foreach (var timer in _timers)
-        {
             await timer.DisposeAsync().ConfigureAwait(false);
-        }
         _timers.Clear();
+
+        if (_scheduledTimer is not null)
+        {
+            await _scheduledTimer.DisposeAsync().ConfigureAwait(false);
+            _scheduledTimer = null;
+        }
     }
 
     public async ValueTask DisposeAsync()

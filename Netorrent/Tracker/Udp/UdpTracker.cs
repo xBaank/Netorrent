@@ -26,7 +26,6 @@ internal class UdpTracker(
     private UdpTrackerResponse? _lastResponse;
     private readonly Guid _trackerId = Guid.CreateVersion7();
     private readonly Actor<TrackerMessage> _actor = new();
-    private Timer? _announceTimer;
     private IDisposable? _completedSubscription;
     private static readonly TrackerMessage.CompletedMessage _completedMessage = new();
 
@@ -59,7 +58,7 @@ internal class UdpTracker(
         };
 
         if (message is TrackerMessage.CompletedMessage)
-            _announceTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            _actor.CancelScheduled();
 
         _lastResponse = await AnnounceAndReceiveAsync(iPEndPoint, @event, cancellationToken)
             .ConfigureAwait(false);
@@ -67,20 +66,10 @@ internal class UdpTracker(
         foreach (var peer in _lastResponse.Peers)
             await channelWriter.WriteAsync(peer, cancellationToken).ConfigureAwait(false);
 
-        ScheduleNextAnnounce(_lastResponse.Interval.Seconds);
-    }
-
-    private void ScheduleNextAnnounce(TimeSpan delay)
-    {
-        if (_announceTimer is null)
-            _announceTimer = new Timer(
-                _ => _actor.Tell(new TrackerMessage.AnnounceMessage(null)),
-                null,
-                delay,
-                Timeout.InfiniteTimeSpan
-            );
-        else
-            _announceTimer.Change(delay, Timeout.InfiniteTimeSpan);
+        _actor.ScheduleOnce(
+            _lastResponse.Interval.Seconds,
+            new TrackerMessage.AnnounceMessage(null)
+        );
     }
 
     public async Task<UdpTrackerConnectResponse> ConnectAsync(
@@ -106,7 +95,7 @@ internal class UdpTracker(
         CancellationToken cancellationToken
     )
     {
-        var (_, request) = await BuildRequestAsync(iPEndPoint, @event, cancellationToken)
+        var request = await BuildRequestAsync(iPEndPoint, @event, cancellationToken)
             .ConfigureAwait(false);
 
         try
@@ -131,7 +120,7 @@ internal class UdpTracker(
         CancellationToken cancellationToken
     )
     {
-        var (_, request) = await BuildRequestAsync(iPEndPoint, @event, cancellationToken)
+        var request = await BuildRequestAsync(iPEndPoint, @event, cancellationToken)
             .ConfigureAwait(false);
 
         try
@@ -150,7 +139,7 @@ internal class UdpTracker(
         }
     }
 
-    private async Task<(long ConnectionId, UdpTrackerRequest Request)> BuildRequestAsync(
+    private async Task<UdpTrackerRequest> BuildRequestAsync(
         IPEndPoint iPEndPoint,
         string? @event,
         CancellationToken cancellationToken
@@ -167,7 +156,7 @@ internal class UdpTracker(
             connectionId = response.ConnectionId;
         }
 
-        var updRequest = new UdpTrackerRequest(
+        return new UdpTrackerRequest(
             iPEndPoint,
             infoHash,
             peerId,
@@ -180,8 +169,6 @@ internal class UdpTracker(
             TransactionId: udpTrackerHandler.MakeTransactionId(),
             NumWant: 200
         );
-
-        return (connectionId.Value, updRequest);
     }
 
     public async ValueTask StopAsync(CancellationToken cancellationToken)
@@ -196,15 +183,6 @@ internal class UdpTracker(
     public async ValueTask DisposeAsync()
     {
         _completedSubscription?.Dispose();
-
-        if (_announceTimer is not null)
-        {
-            await _announceTimer.DisposeAsync().ConfigureAwait(false);
-            _announceTimer = null;
-        }
-
         await _actor.DisposeAsync().ConfigureAwait(false);
-
-        await foreach (var _ in _actor.MailboxReader.ReadAllAsync().ConfigureAwait(false)) { }
     }
 }

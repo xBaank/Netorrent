@@ -16,25 +16,17 @@ internal record UdpTrackerConnectRequest(
     public RentedArray<byte> ToMemoryRented()
     {
         var rentedArray = new RentedArray<byte>(SIZE);
-        try
-        {
-            var memory = rentedArray.Memory;
-            int offset = 0;
+        var span = rentedArray.Memory.Span;
+        int offset = 0;
 
-            BinaryPrimitives.WriteInt64BigEndian(memory.Span[offset..], ProtocolId);
-            offset += 8;
+        BinaryPrimitives.WriteInt64BigEndian(span[offset..], ProtocolId);
+        offset += 8;
 
-            BinaryPrimitives.WriteInt32BigEndian(memory.Span[offset..], Action);
-            offset += 4;
+        BinaryPrimitives.WriteInt32BigEndian(span[offset..], Action);
+        offset += 4;
 
-            BinaryPrimitives.WriteInt32BigEndian(memory.Span[offset..], TransactionId);
+        BinaryPrimitives.WriteInt32BigEndian(span[offset..], TransactionId);
 
-            return rentedArray;
-        }
-        catch
-        {
-            rentedArray.Dispose();
-            throw;
-        }
+        return rentedArray;
     }
 }

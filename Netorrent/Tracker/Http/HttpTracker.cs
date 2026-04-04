@@ -22,7 +22,6 @@ internal class HttpTracker(
 ) : ITracker
 {
     private readonly Actor<TrackerMessage> _actor = new();
-    private Timer? _announceTimer;
     private IDisposable? _completedSubscription;
     private static readonly TrackerMessage.CompletedMessage _completedMessage = new();
 
@@ -53,27 +52,14 @@ internal class HttpTracker(
         };
 
         if (message is TrackerMessage.CompletedMessage)
-            _announceTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            _actor.CancelScheduled();
 
         var response = await AnnounceAsync(@event, cancellationToken).ConfigureAwait(false);
 
         foreach (var endpoint in response.Peers)
             await channelWriter.WriteAsync(endpoint, cancellationToken).ConfigureAwait(false);
 
-        ScheduleNextAnnounce(response.Interval.Seconds);
-    }
-
-    private void ScheduleNextAnnounce(TimeSpan delay)
-    {
-        if (_announceTimer is null)
-            _announceTimer = new Timer(
-                _ => _actor.Tell(new TrackerMessage.AnnounceMessage(null)),
-                null,
-                delay,
-                Timeout.InfiniteTimeSpan
-            );
-        else
-            _announceTimer.Change(delay, Timeout.InfiniteTimeSpan);
+        _actor.ScheduleOnce(response.Interval.Seconds, new TrackerMessage.AnnounceMessage(null));
     }
 
     private async Task<HttpTrackerResponse> AnnounceAsync(
@@ -118,15 +104,6 @@ internal class HttpTracker(
     public async ValueTask DisposeAsync()
     {
         _completedSubscription?.Dispose();
-
-        if (_announceTimer is not null)
-        {
-            await _announceTimer.DisposeAsync().ConfigureAwait(false);
-            _announceTimer = null;
-        }
-
         await _actor.DisposeAsync().ConfigureAwait(false);
-
-        await foreach (var _ in _actor.MailboxReader.ReadAllAsync().ConfigureAwait(false)) { }
     }
 }
