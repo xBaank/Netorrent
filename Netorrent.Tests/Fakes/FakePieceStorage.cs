@@ -30,4 +30,12 @@ internal class FakePieceStorage() : IPieceStorage
 
     public bool VerifyPieceHash(int pieceIndex, ref readonly ReadOnlySpan<byte> computedHash) =>
         true;
+
+    public async IAsyncEnumerable<(int PieceIndex, bool IsValid)> CheckPiecesAsync(
+        CancellationToken cancellationToken
+    )
+    {
+        await Task.CompletedTask;
+        yield break;
+    }
 }

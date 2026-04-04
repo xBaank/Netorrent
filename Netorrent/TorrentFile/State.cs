@@ -4,6 +4,6 @@ public enum State
 {
     Started,
     Stopped,
-    Verifying,
+    Checking,
     Disposed,
 }

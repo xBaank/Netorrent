@@ -1,4 +1,6 @@
-﻿using System.Security.Cryptography;
+﻿using System.Buffers;
+using System.Security.Cryptography;
+using System.Threading.Channels;
 using Netorrent.Other;
 using Netorrent.TorrentFile.FileStructure;
 using ZLinq;
@@ -182,6 +184,156 @@ internal class DiskStorage : IPieceStorage
             rentedArray.Dispose();
             throw;
         }
+    }
+
+    public IAsyncEnumerable<(int PieceIndex, bool IsValid)> CheckPiecesAsync(
+        CancellationToken cancellationToken
+    )
+    {
+        var resultsChannel = Channel.CreateBounded<(int PieceIndex, bool IsValid)>(
+            new BoundedChannelOptions(64) { SingleReader = true, SingleWriter = false }
+        );
+        _ = RunPipelineAsync(resultsChannel.Writer, cancellationToken);
+        return resultsChannel.Reader.ReadAllAsync(cancellationToken);
+    }
+
+    private async Task RunPipelineAsync(
+        ChannelWriter<(int PieceIndex, bool IsValid)> resultsWriter,
+        CancellationToken cancellationToken
+    )
+    {
+        var piecesChannel = Channel.CreateBounded<(int PieceIndex, RentedArray<byte> Piece)>(
+            new BoundedChannelOptions(64) { SingleReader = true, SingleWriter = true }
+        );
+        var readTask = ReadPiecesAsync(piecesChannel.Writer, cancellationToken);
+        var verifyTask = VerifyPiecesAsync(piecesChannel.Reader, resultsWriter, cancellationToken);
+        try
+        {
+            await Task.WhenAll(readTask, verifyTask).ConfigureAwait(false);
+            resultsWriter.TryComplete();
+        }
+        catch (Exception ex)
+        {
+            resultsWriter.TryComplete(ex);
+        }
+    }
+
+    private async Task ReadPiecesAsync(
+        ChannelWriter<(int PieceIndex, RentedArray<byte> Piece)> writer,
+        CancellationToken cancellationToken
+    )
+    {
+        try
+        {
+            var pieceIndex = 0;
+            var bufferPos = 0;
+            using var pool = MemoryPool<byte>.Shared.Rent(_pieceLength);
+            var pieceBuffer = pool.Memory[.._pieceLength];
+
+            foreach (var file in _files)
+            {
+                var fileRemaining = file.Length;
+                cancellationToken.ThrowIfCancellationRequested();
+
+                await using var fs = new FileStream(
+                    file.FullPath,
+                    FileMode.OpenOrCreate,
+                    FileAccess.Read,
+                    FileShare.ReadWrite,
+                    4096,
+                    FileOptions.SequentialScan | FileOptions.Asynchronous
+                );
+                while (true)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var toRead = (int)Math.Min(_pieceLength - bufferPos, fileRemaining);
+                    if (toRead == 0)
+                        break;
+                    int bytesRead = await fs.ReadAsync(
+                            pieceBuffer.Slice(bufferPos, toRead),
+                            cancellationToken
+                        )
+                        .ConfigureAwait(false);
+                    bufferPos += bytesRead;
+                    fileRemaining -= bytesRead;
+                    if (bytesRead == 0 || fileRemaining == 0)
+                        break;
+
+                    if (bufferPos == _pieceLength)
+                    {
+                        var rentedArray = new RentedArray<byte>(_pieceLength);
+                        try
+                        {
+                            pieceBuffer.CopyTo(rentedArray.Memory);
+                            await writer
+                                .WriteAsync((pieceIndex, rentedArray), cancellationToken)
+                                .ConfigureAwait(false);
+                            pieceBuffer.Span.Clear();
+                            pieceIndex++;
+                            bufferPos = 0;
+                        }
+                        catch
+                        {
+                            rentedArray.Dispose();
+                            throw;
+                        }
+                    }
+                }
+            }
+
+            if (bufferPos > 0)
+            {
+                var rentedArray = new RentedArray<byte>(bufferPos);
+                try
+                {
+                    pieceBuffer[..bufferPos].CopyTo(rentedArray.Memory);
+                    await writer
+                        .WriteAsync((pieceIndex, rentedArray), cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch
+                {
+                    rentedArray.Dispose();
+                    throw;
+                }
+            }
+
+            writer.TryComplete();
+        }
+        catch (Exception ex)
+        {
+            writer.TryComplete(ex);
+            throw;
+        }
+    }
+
+    private async Task VerifyPiecesAsync(
+        ChannelReader<(int PieceIndex, RentedArray<byte> Piece)> reader,
+        ChannelWriter<(int PieceIndex, bool IsValid)> writer,
+        CancellationToken cancellationToken
+    )
+    {
+        await Parallel
+            .ForEachAsync(
+                reader.ReadAllAsync(cancellationToken),
+                new ParallelOptions
+                {
+                    CancellationToken = cancellationToken,
+                    MaxDegreeOfParallelism = Environment.ProcessorCount,
+                },
+                async (item, ct) =>
+                {
+                    using (item.Piece)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        var isValid = VerifyPiece(item.PieceIndex, item.Piece.Memory);
+                        await writer
+                            .WriteAsync((item.PieceIndex, isValid), ct)
+                            .ConfigureAwait(false);
+                    }
+                }
+            )
+            .ConfigureAwait(false);
     }
 
     public void Dispose()

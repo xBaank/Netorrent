@@ -33,6 +33,7 @@ public class TorrentFileTests
             .ParseMetaInfoAsync(expected, cancellationToken)
             .ConfigureAwait(false);
 
+        torrent.State.ShouldBe(State.Stopped);
         torrent.Statistics.Data.Downloaded.ShouldBe(0);
         torrent.Statistics.Data.Verified.ShouldBe(0);
 
@@ -71,6 +72,7 @@ public class TorrentFileTests
             cancellationToken: cancellationToken
         );
 
+        torrent.State.ShouldBe(State.Stopped);
         torrent.Statistics.Data.Downloaded.ShouldBe(torrent.Statistics.Data.Total);
         torrent.Statistics.Data.Verified.ShouldBe(torrent.Statistics.Data.Total);
         torrent.MetaInfo.Info.Type.ShouldBe(TorrentFile.FileStructure.InfoType.Multiple);
@@ -99,6 +101,7 @@ public class TorrentFileTests
             cancellationToken: cancellationToken
         );
 
+        torrent.State.ShouldBe(State.Stopped);
         torrent.Statistics.Data.Downloaded.ShouldBe(torrent.Statistics.Data.Total);
         torrent.Statistics.Data.Verified.ShouldBe(torrent.Statistics.Data.Total);
         torrent.MetaInfo.Info.Type.ShouldBe(TorrentFile.FileStructure.InfoType.Single);
@@ -163,8 +166,10 @@ public class TorrentFileTests
         );
         var expectedSize = torrent.MetaInfo.Info.NormalizedFiles.Sum(i => i.Length);
 
+        torrent.State.ShouldBe(State.Stopped);
         await torrent.CheckAsync(cancellationToken);
 
+        torrent.State.ShouldBe(State.Stopped);
         torrent.Statistics.Data.Downloaded.ShouldBe(expectedSize);
         torrent.Statistics.Data.Verified.ShouldBe(expectedSize);
     }
@@ -208,8 +213,10 @@ public class TorrentFileTests
         await fileStream.WriteAsync(emptyData, cancellationToken);
         await fileStream.FlushAsync(cancellationToken);
 
+        torrent.State.ShouldBe(State.Stopped);
         await torrent.CheckAsync(cancellationToken);
 
+        torrent.State.ShouldBe(State.Stopped);
         torrent.Statistics.Data.Downloaded.ShouldBe(expectedSize);
         torrent.Statistics.Data.Verified.ShouldBe(expectedSize);
     }

@@ -127,11 +127,13 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
             foreach (var seederTorrent in seedersTorrents)
             {
+                seederTorrent.State.ShouldBe(State.Stopped);
                 await seederTorrent.Completion.AsTask().ShouldNotThrowAsync();
             }
 
             foreach (var leecherTorrent in leechersTorrents)
             {
+                leecherTorrent.State.ShouldBe(State.Stopped);
                 await leecherTorrent.Completion.AsTask().ShouldThrowAsync<TaskCanceledException>();
             }
         }
@@ -197,6 +199,11 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
             await Task.WhenAll([.. seederStopAsyncTasks, .. leechersStopAsyncTasks]);
 
+            foreach (var seederTorrent in seedersTorrents)
+                seederTorrent.State.ShouldBe(State.Stopped);
+            foreach (var leecherTorrent in leechersTorrents)
+                leecherTorrent.State.ShouldBe(State.Stopped);
+
             var seederRestartTasks = seedersTorrents.Select(seederTorrent =>
                 seederTorrent.StartAsync().AsTask()
             );
@@ -211,6 +218,7 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
             foreach (var leecherTorrent in leechersTorrents)
             {
+                leecherTorrent.State.ShouldBe(State.Started);
                 await leecherTorrent.Completion.AsTask().ShouldNotThrowAsync();
             }
         }
@@ -285,11 +293,13 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
             foreach (var seederTorrent in seedersTorrents)
             {
+                seederTorrent.State.ShouldBe(State.Stopped);
                 await seederTorrent.Completion.AsTask().ShouldNotThrowAsync();
             }
 
             foreach (var leecherTorrent in leechersTorrents)
             {
+                leecherTorrent.State.ShouldBe(State.Stopped);
                 await leecherTorrent
                     .Completion.AsTask()
                     .ShouldThrowAsync<InvalidOperationException>();
@@ -425,8 +435,12 @@ public class TorrentTests(OpenTrackerFixture fixture)
 
             await Task.WhenAll([.. seederStopTasks, .. leecherStopTasks]);
 
+            foreach (var seederTorrent in seedersTorrents)
+                seederTorrent.State.ShouldBe(State.Stopped);
+
             foreach (var leecherTorrent in leechersTorrents)
             {
+                leecherTorrent.State.ShouldBe(State.Stopped);
                 var originalFile = await ReadAllBytesAsync(path, cancellationToken);
                 var downloadedFile = await ReadAllBytesAsync(
                     $"{leecherTorrent.OutputDirectory}/{leecherTorrent.MetaInfo.Info.Name}",

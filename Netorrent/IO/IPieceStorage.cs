@@ -19,4 +19,8 @@ internal interface IPieceStorage : IDisposable
         ReadOnlyMemory<byte> pieceData,
         CancellationToken ct
     );
+
+    IAsyncEnumerable<(int PieceIndex, bool IsValid)> CheckPiecesAsync(
+        CancellationToken cancellationToken
+    );
 }
