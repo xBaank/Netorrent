@@ -3,6 +3,8 @@ using System.Collections.Concurrent;
 using System.Net;
 using Microsoft.Extensions.Logging;
 using Netorrent.Extensions;
+using Netorrent.TorrentFile;
+using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker.Udp.Client;
 using Netorrent.Tracker.Udp.Exceptions;
 using Netorrent.Tracker.Udp.Request;
@@ -88,6 +90,7 @@ internal class UdpTrackerHandler : IUdpTrackerHandler
                         result.Buffer,
                         result.RemoteEndPoint.AddressFamily
                     ),
+                    UdpTrackerScrapeResponse.Action => UdpTrackerScrapeResponse.From(result.Buffer),
                     UdpTrackerErrorResponse.Action => UdpTrackerErrorResponse.From(result.Buffer),
                     _ => null,
                 };
@@ -330,6 +333,37 @@ internal class UdpTrackerHandler : IUdpTrackerHandler
             .ConfigureAwait(false);
         _connectionIdByTracker[trackerId] = connectResponse.ConnectionId;
         return connectResponse;
+    }
+
+    public async Task<ScrapeInfo?> ScrapeAsync(
+        IPEndPoint endPoint,
+        InfoHash infoHash,
+        CancellationToken cancellationToken
+    )
+    {
+        var trackerId = Guid.NewGuid();
+        var connectionId = GetConnectionIdOrNull(trackerId);
+        if (connectionId is null || IsOutdated(connectionId.Value))
+        {
+            var connectResponse = await ConnectAsync(endPoint, trackerId, cancellationToken)
+                .ConfigureAwait(false);
+            connectionId = connectResponse.ConnectionId;
+        }
+
+        var request = new UdpTrackerScrapeRequest(
+            endPoint,
+            connectionId.Value,
+            MakeTransactionId(),
+            infoHash
+        );
+        var response = await SendAndReceiveAsync<UdpTrackerScrapeResponse>(
+                request,
+                trackerId,
+                cancellationToken
+            )
+            .ConfigureAwait(false);
+
+        return new ScrapeInfo(response.Seeders, response.Leechers, response.Downloaded);
     }
 
     public async ValueTask DisposeAsync()

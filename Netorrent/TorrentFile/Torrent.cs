@@ -283,6 +283,15 @@ public sealed class Torrent : IAsyncDisposable
         State = State.Stopped;
     }
 
+    /// <summary>
+    /// Returns swarm statistics from the first responsive tracker, or null if no tracker supports scrape.
+    /// </summary>
+    public ValueTask<ScrapeInfo?> ScrapeAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _trackerClient.ScrapeAsync(cancellationToken);
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (!_disposed)

@@ -123,7 +123,7 @@ public sealed class TorrentClient : IAsyncDisposable
         CancellationToken cancellationToken = default
     )
     {
-        var stream = File.Open(path, FileMode.Open, FileAccess.Read);
+        var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read);
 
         await using var decoder = new BDecoder(stream);
         var decoded = await decoder.DecodeAsync(cancellationToken).ConfigureAwait(false);
