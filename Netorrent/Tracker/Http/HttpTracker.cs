@@ -60,7 +60,10 @@ internal class HttpTracker(
             await channelWriter.WriteAsync(endpoint, cancellationToken).ConfigureAwait(false);
 
         if (message is not TrackerMessage.CompletedMessage)
-            _actor.ScheduleOnce(response.Interval.Seconds, new TrackerMessage.AnnounceMessage(null));
+            _actor.ScheduleOnce(
+                response.Interval.Seconds,
+                new TrackerMessage.AnnounceMessage(null)
+            );
     }
 
     private async Task<HttpTrackerResponse> AnnounceAsync(
