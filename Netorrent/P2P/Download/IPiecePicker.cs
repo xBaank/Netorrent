@@ -11,6 +11,7 @@ internal interface IPiecePicker
     void IncreaseRarity(int index);
     void DecreaseRarity(int index);
     void CompletePiece(int index);
+    void ConfirmPiece(int index);
     bool TryGetRequestBlock(
         IPeerConnection peerConnection,
         [NotNullWhen(true)] out RequestBlock? requestBlock
@@ -21,6 +22,7 @@ internal interface IPiecePicker
     long GetBitfieldSize();
     RequestBlock GetRequestBlockByBlockIndex(int pieceIndex, int blockIndex);
     IEnumerable<RequestBlock> GetTimeoutRequestBlocks();
+    void ResetBlocksToPending(IPeerConnection peer);
     bool TryGetRequestedBlock(
         Block receiveBlock,
         [NotNullWhen(true)] out RequestBlock? requestBlock
