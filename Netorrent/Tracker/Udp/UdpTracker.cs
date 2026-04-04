@@ -66,10 +66,11 @@ internal class UdpTracker(
         foreach (var peer in _lastResponse.Peers)
             await channelWriter.WriteAsync(peer, cancellationToken).ConfigureAwait(false);
 
-        _actor.ScheduleOnce(
-            _lastResponse.Interval.Seconds,
-            new TrackerMessage.AnnounceMessage(null)
-        );
+        if (message is not TrackerMessage.CompletedMessage)
+            _actor.ScheduleOnce(
+                _lastResponse.Interval.Seconds,
+                new TrackerMessage.AnnounceMessage(null)
+            );
     }
 
     public async Task<UdpTrackerConnectResponse> ConnectAsync(
