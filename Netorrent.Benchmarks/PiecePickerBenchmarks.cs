@@ -17,7 +17,7 @@ using Netorrent.P2P.Messages;
 ///   dotnet run --project Netorrent.Benchmarks -c Release -- --filter '*EndGame*'
 /// </summary>
 [MemoryDiagnoser]
-[SimpleJob(RuntimeMoniker.Net80)]
+[SimpleJob(RuntimeMoniker.Net10_0)]
 public class PiecePickerBenchmarks
 {
     private const int BlockSize = 16 * 1024; // 16 KB standard block
@@ -153,7 +153,12 @@ public class PiecePickerBenchmarks
 
     private static PiecePicker MakePicker(int pieceCount, int pieceSize, long totalSize, int seed)
     {
-        var picker = new PiecePicker(new Bitfield(pieceCount, false), BlockSize, pieceSize, totalSize);
+        var picker = new PiecePicker(
+            new Bitfield(pieceCount, false),
+            BlockSize,
+            pieceSize,
+            totalSize
+        );
         var rng = new Random(seed);
         for (int i = 0; i < pieceCount; i++)
         {
