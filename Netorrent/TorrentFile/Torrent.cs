@@ -1,7 +1,10 @@
 ﻿using System.Collections.Concurrent;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading.Channels;
 using Netorrent.Bencoding;
+using Netorrent.Dht;
+using Netorrent.Dht.Routing;
 using Netorrent.Extensions;
 using Netorrent.IO.Disk;
 using Netorrent.Other;
@@ -14,6 +17,7 @@ using Netorrent.Statistics;
 using Netorrent.TorrentFile.FileStructure;
 using Netorrent.TorrentFile.Options;
 using Netorrent.Tracker;
+using Netorrent.Tracker.Udp.Client;
 using ZLinq;
 
 namespace Netorrent.TorrentFile;
@@ -31,6 +35,7 @@ public sealed class Torrent : IAsyncDisposable
     private readonly TcpPeersListeners _peersListener;
     private readonly PeersClient _peersClient;
     private readonly TrackerClient _trackerClient;
+    private readonly DhtClient? _dhtClient;
     private readonly DiskStorage _pieceStorage;
     private readonly Bitfield _myBitfield;
     private readonly PiecePicker _piecePicker;
@@ -133,6 +138,33 @@ public sealed class Torrent : IAsyncDisposable
             torrentClientOptions.Logger
         );
 
+        if (torrentClientOptions.DhtOptions.Enabled)
+        {
+            var selfNodeId = NodeId.FromPeerId(peerId);
+            var udpClient = new UdpClientWrapper(
+                UdpClient.GetFreeUdpClient(
+                    torrentClientOptions.ListenIpv4Address ?? IPAddress.Any,
+                    torrentClientOptions.DhtOptions.Port
+                )
+            );
+            var dhtHandler = new DhtHandler(
+                udpClient,
+                torrentClientOptions.Logger,
+                retryDelay: 5.Seconds,
+                retryLoopDelay: 1.Seconds,
+                maxRetries: 3
+            );
+            _dhtClient = new DhtClient(
+                selfNodeId,
+                metaInfo.Info.InfoHash,
+                dhtHandler,
+                trackersChannel.Writer,
+                torrentClientOptions.DhtOptions,
+                peersListener.Port,
+                torrentClientOptions.Logger
+            );
+        }
+
         Completion = new CompletionTracker(_myBitfield);
         Statistics = new TorrentStatisticsClient(
             dataStatistics,
@@ -191,16 +223,20 @@ public sealed class Torrent : IAsyncDisposable
     {
         try
         {
-            await Task.RunUntilFirstCompletesAsync(
-                    [
-                        _peersClient.StartAsync,
-                        _trackerClient.StartAsync,
-                        _peerConnector.StartAsync,
-                        _requestScheduler.StartAsync,
-                        _uploadScheduler.StartAsync,
-                    ],
-                    cancellationTokenSource
-                )
+            Func<CancellationToken, Task>[] tasks =
+            [
+                _peersClient.StartAsync,
+                _trackerClient.StartAsync,
+                _peerConnector.StartAsync,
+                _requestScheduler.StartAsync,
+                _uploadScheduler.StartAsync,
+                .. (
+                    _dhtClient is not null
+                        ? (Func<CancellationToken, Task>[])[_dhtClient.StartAsync]
+                        : []
+                ),
+            ];
+            await Task.RunUntilFirstCompletesAsync(tasks, cancellationTokenSource)
                 .ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -299,6 +335,8 @@ public sealed class Torrent : IAsyncDisposable
             _disposed = true;
             await StopAndWaitToFinishAsync().ConfigureAwait(false);
             await _peersClient.DisposeAsync().ConfigureAwait(false);
+            if (_dhtClient is not null)
+                await _dhtClient.DisposeAsync().ConfigureAwait(false);
             await _trackerClient.DisposeAsync().ConfigureAwait(false);
             await _uploadScheduler.DisposeAsync().ConfigureAwait(false);
             await _requestScheduler.DisposeAsync().ConfigureAwait(false);

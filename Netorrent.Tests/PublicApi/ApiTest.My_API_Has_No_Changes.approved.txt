@@ -53,6 +53,24 @@ namespace Netorrent.Bencoding.Structs
     }
     public interface IBencodingNode { }
 }
+namespace Netorrent.Dht
+{
+    public class DhtBootstrapNode : System.IEquatable<Netorrent.Dht.DhtBootstrapNode>
+    {
+        public DhtBootstrapNode(string Host, int Port) { }
+        public string Host { get; init; }
+        public int Port { get; init; }
+    }
+    public class DhtClientOptions : System.IEquatable<Netorrent.Dht.DhtClientOptions>
+    {
+        public DhtClientOptions(bool Enabled, int Port, System.Collections.Generic.IReadOnlyList<Netorrent.Dht.DhtBootstrapNode> BootstrapNodes) { }
+        public System.Collections.Generic.IReadOnlyList<Netorrent.Dht.DhtBootstrapNode> BootstrapNodes { get; init; }
+        public bool Enabled { get; init; }
+        public int Port { get; init; }
+        public System.Collections.Generic.IReadOnlyList<Netorrent.Dht.DhtBootstrapNode> StunServers { get; init; }
+        public static Netorrent.Dht.DhtClientOptions Default { get; }
+    }
+}
 namespace Netorrent.Exceptions
 {
     public class BencodingException : System.Exception
@@ -233,6 +251,7 @@ namespace Netorrent.TorrentFile.Options
     public class TorrentClientOptions : System.IEquatable<Netorrent.TorrentFile.Options.TorrentClientOptions>
     {
         public TorrentClientOptions(Microsoft.Extensions.Logging.ILogger Logger, int ListenPort, System.Net.IPAddress? ListenIpv4Address, System.Net.IPAddress? ListenIpv6Address, Netorrent.TorrentFile.Options.UsedTrackers UsedTrackers) { }
+        public Netorrent.Dht.DhtClientOptions DhtOptions { get; init; }
         public System.Net.IPAddress? ListenIpv4Address { get; init; }
         public System.Net.IPAddress? ListenIpv6Address { get; init; }
         public int ListenPort { get; init; }
