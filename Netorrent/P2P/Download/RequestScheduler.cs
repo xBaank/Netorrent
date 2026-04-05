@@ -112,6 +112,7 @@ internal class RequestScheduler(
             {
                 data.AddVerifiedBytes(pieceBuffer.Size);
                 myBitfield.SetPiece(block.Index);
+                piecePicker.ConfirmPiece(block.Index);
             }
         }
         else
@@ -125,20 +126,29 @@ internal class RequestScheduler(
     private void CheckTimeout()
     {
         var currentPeers = peers.AsValueEnumerable().Select(i => i.Value);
+
+        // Collect the unique slow peers from all timed-out blocks
+        var slowPeers = new HashSet<IPeerConnection>();
         foreach (var requestBlock in piecePicker.GetTimeoutRequestBlocks())
         {
-            requestBlock.State = RequestBlockState.Pending;
-            requestBlock.TimeoutAt = null; //TODO set ALL request blocks by lastRequestedFrom requester to pending as they are all more likely to be timed out
+            var slowPeer = requestBlock.RequestedFrom.LastOrDefault();
+            if (slowPeer is not null)
+                slowPeers.Add(slowPeer);
+        }
+
+        // Reset ALL blocks from each slow peer at once and reschedule with a free peer
+        foreach (var slowPeer in slowPeers)
+        {
+            piecePicker.ResetBlocksToPending(slowPeer);
+
             var freePeer = currentPeers
                 .Where(i => !i.PeerChoking.CurrentValue)
                 .Where(i => i.AmInterested.CurrentValue)
-                .Where(i => !requestBlock.RequestedFrom.Contains(i))
+                .Where(i => i != slowPeer)
                 .FirstOrDefault();
 
             if (freePeer is not null)
-            {
                 _actor.Tell(new DownloadMessage.ScheduleMessage(freePeer));
-            }
         }
     }
 
