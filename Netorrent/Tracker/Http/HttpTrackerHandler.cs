@@ -1,6 +1,7 @@
 using System.Text;
 using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
+using Netorrent.Extensions;
 using Netorrent.TorrentFile;
 using Netorrent.TorrentFile.FileStructure;
 
@@ -52,41 +53,34 @@ internal class HttpTrackerHandler(HttpClient httpClient) : IHttpTrackerHandler
         await using var decoder = new BDecoder(stream);
         var root = await decoder.DecodeAsync(cancellationToken).ConfigureAwait(false);
 
-        if (root is not BDictionary dict)
+        if (root.As<BDictionary>() is not { } dict)
             return null;
 
-        if (
-            !dict.Elements.TryGetValue("files", out var filesNode)
-            || filesNode is not BDictionary filesDict
-        )
+        if (dict.Elements.GetValueOrDefault("files").As<BDictionary>() is not { } filesDict)
             return null;
 
         var hashKey = new BString(infoHash.Data.ToArray());
-        if (
-            !filesDict.Elements.TryGetValue(hashKey, out var torrentNode)
-            || torrentNode is not BDictionary torrentDict
-        )
+        if (filesDict.Elements.GetValueOrDefault(hashKey).As<BDictionary>() is not { } torrentDict)
             return null;
 
-        var seeders = torrentDict.Elements.TryGetValue("complete", out var comp)
-            ? (int)((BInt)comp).Data
-            : 0;
-        var leechers = torrentDict.Elements.TryGetValue("incomplete", out var incomp)
-            ? (int)((BInt)incomp).Data
-            : 0;
-        var downloaded = torrentDict.Elements.TryGetValue("downloaded", out var dl)
-            ? (int)((BInt)dl).Data
-            : 0;
+        var seeders = (int)(
+            torrentDict.Elements.GetValueOrDefault("complete").As<BInt>()?.Data ?? 0
+        );
+        var leechers = (int)(
+            torrentDict.Elements.GetValueOrDefault("incomplete").As<BInt>()?.Data ?? 0
+        );
+        var downloaded = (int)(
+            torrentDict.Elements.GetValueOrDefault("downloaded").As<BInt>()?.Data ?? 0
+        );
 
         return new ScrapeInfo(seeders, leechers, downloaded);
     }
 
     private static string? GetScrapeUrl(string announceUrl)
     {
-        var idx = announceUrl.LastIndexOf("/announce", StringComparison.OrdinalIgnoreCase);
-        if (idx < 0)
+        if (!announceUrl.Contains("/announce", StringComparison.OrdinalIgnoreCase))
             return null;
-        return announceUrl[..idx] + "/scrape" + announceUrl[(idx + "/announce".Length)..];
+        return announceUrl.Replace("/announce", "/scrape", StringComparison.OrdinalIgnoreCase);
     }
 
     public void Dispose()

@@ -232,56 +232,53 @@ internal class TrackerClient(
 
     public async ValueTask<ScrapeInfo?> ScrapeAsync(CancellationToken cancellationToken)
     {
-        foreach (var urls in announceList)
+        foreach (var url in announceList.SelectMany(urls => urls))
         {
-            foreach (var url in urls)
+            var uri = Uri.CreateOrNull(url);
+            if (uri is null)
+                continue;
+
+            try
             {
-                var uri = Uri.CreateOrNull(url);
-                if (uri is null)
-                    continue;
-
-                try
-                {
-                    ScrapeInfo? result = uri.Scheme switch
-                    {
-                        "http"
-                        or "https"
-                            when usedTrackers.HasFlag(UsedTrackers.Http)
-                                && trackerHandlers.HttpTrackerHandlerIpv4 is not null =>
-                            await trackerHandlers
-                                .HttpTrackerHandlerIpv4.ScrapeAsync(
-                                    url,
-                                    infoHash,
-                                    cancellationToken
-                                )
-                                .ConfigureAwait(false),
-                        "udp"
-                            when usedTrackers.HasFlag(UsedTrackers.Udp)
-                                && trackerHandlers.UdpTrackerHandlerIpv4 is not null
-                                && uri.Port > 0 => await ScrapeUdpAsync(
-                                uri,
-                                trackerHandlers.UdpTrackerHandlerIpv4,
-                                cancellationToken
-                            )
-                            .ConfigureAwait(false),
-                        _ => null,
-                    };
-
-                    if (result is not null)
-                        return result;
-                }
-                catch (Exception ex)
-                {
-                    if (logger.IsEnabled(LogLevel.Debug))
-                    {
-                        logger.LogDebug(ex, "Scrape failed for {url}", url);
-                    }
-                }
+                var result = await ScrapeSingleAsync(uri, url, cancellationToken)
+                    .ConfigureAwait(false);
+                if (result is not null)
+                    return result;
+            }
+            catch (Exception ex)
+            {
+                if (logger.IsEnabled(LogLevel.Debug))
+                    logger.LogDebug(ex, "Scrape failed for {url}", url);
             }
         }
 
         return null;
     }
+
+    private async ValueTask<ScrapeInfo?> ScrapeSingleAsync(
+        Uri uri,
+        string url,
+        CancellationToken cancellationToken
+    ) =>
+        uri.Scheme switch
+        {
+            "http"
+            or "https"
+                when usedTrackers.HasFlag(UsedTrackers.Http)
+                    && trackerHandlers.HttpTrackerHandlerIpv4 is not null => await trackerHandlers
+                .HttpTrackerHandlerIpv4.ScrapeAsync(url, infoHash, cancellationToken)
+                .ConfigureAwait(false),
+            "udp"
+                when usedTrackers.HasFlag(UsedTrackers.Udp)
+                    && trackerHandlers.UdpTrackerHandlerIpv4 is not null
+                    && uri.Port > 0 => await ScrapeUdpAsync(
+                    uri,
+                    trackerHandlers.UdpTrackerHandlerIpv4,
+                    cancellationToken
+                )
+                .ConfigureAwait(false),
+            _ => null,
+        };
 
     private async ValueTask<ScrapeInfo?> ScrapeUdpAsync(
         Uri uri,
