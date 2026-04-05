@@ -1,5 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Net;
+using Netorrent.TorrentFile;
+using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker.Udp;
 using Netorrent.Tracker.Udp.Response;
 
@@ -68,6 +70,15 @@ internal sealed class FakeUdpTrackerTransactionManager(
         );
         return Task.FromResult((T)receivePacket);
     }
+
+    public Task<ScrapeInfo?> ScrapeAsync(
+        IPEndPoint endPoint,
+        InfoHash infoHash,
+        CancellationToken cancellationToken
+    ) =>
+        error is not null
+            ? Task.FromException<ScrapeInfo?>(error)
+            : Task.FromResult<ScrapeInfo?>(new ScrapeInfo(peers.Length, 0, 0));
 
     public ValueTask DisposeAsync()
     {

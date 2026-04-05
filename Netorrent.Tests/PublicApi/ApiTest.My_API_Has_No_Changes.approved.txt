@@ -1,4 +1,4 @@
-﻿[assembly: System.Reflection.AssemblyMetadata("IsAotCompatible", "True")]
+[assembly: System.Reflection.AssemblyMetadata("IsAotCompatible", "True")]
 [assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
 [assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/xBaank/Netorrent")]
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("DynamicProxyGenAssembly2")]
@@ -247,6 +247,13 @@ namespace Netorrent.TorrentFile.Options
 }
 namespace Netorrent.TorrentFile
 {
+    public class ScrapeInfo : System.IEquatable<Netorrent.TorrentFile.ScrapeInfo>
+    {
+        public ScrapeInfo(int Seeders, int Leechers, int Downloaded) { }
+        public int Downloaded { get; init; }
+        public int Leechers { get; init; }
+        public int Seeders { get; init; }
+    }
     public enum State
     {
         Started = 0,
@@ -265,6 +272,7 @@ namespace Netorrent.TorrentFile
         public System.Threading.Tasks.ValueTask CheckAsync(System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask DisposeAsync() { }
         public System.Threading.Tasks.Task ExportAsync(string outputPath, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<Netorrent.TorrentFile.ScrapeInfo?> ScrapeAsync(System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask StartAsync() { }
         public void Stop() { }
         public System.Threading.Tasks.ValueTask StopAsync() { }

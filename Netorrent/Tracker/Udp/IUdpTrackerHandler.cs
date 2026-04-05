@@ -1,4 +1,6 @@
-﻿using System.Net;
+using System.Net;
+using Netorrent.TorrentFile;
+using Netorrent.TorrentFile.FileStructure;
 using Netorrent.Tracker.Udp.Response;
 
 namespace Netorrent.Tracker.Udp
@@ -24,5 +26,11 @@ namespace Netorrent.Tracker.Udp
             CancellationToken cancellationToken
         )
             where T : IUdpTrackerReceivePacket;
+
+        Task<ScrapeInfo?> ScrapeAsync(
+            IPEndPoint endPoint,
+            InfoHash infoHash,
+            CancellationToken cancellationToken
+        );
     }
 }
