@@ -3,6 +3,8 @@ using BenchmarkDotNet.Jobs;
 using Netorrent.P2P.Download;
 using Netorrent.P2P.Messages;
 
+namespace Netorrent.Benchmarks;
+
 /// <summary>
 /// Benchmarks for <see cref="PiecePicker"/> covering the key hot paths:
 ///
@@ -28,10 +30,19 @@ public class PiecePickerBenchmarks
 
     private FakePeerConnection _peer = null!;
 
+    // Peer with only the first half of pieces — used for the NoPending scenario
+    // so _steadyPicker has _isEndGame == false after setup.
+    private FakePeerConnection _halfPeer = null!;
+
     // Pickers for each scenario — rebuilt in GlobalSetup per PieceCount value
     private PiecePicker _freshPicker = null!; // nothing requested yet
-    private PiecePicker _steadyPicker = null!; // all blocks Requested, no pending
-    private PiecePicker _endGamePicker = null!; // IsEndGame == true
+    private PiecePicker _steadyPicker = null!; // first half of pieces requested via _halfPeer, no pending, not end-game
+    private PiecePicker _endGamePicker = null!; // IsEndGame == true (all pieces requested)
+
+    // Pickers rebuilt per-iteration via IterationSetup (construction cost excluded from timing)
+    private PiecePicker _newPiecePicker = null!;
+    private PiecePicker _completePiecePicker = null!;
+    private PiecePicker _resetPicker = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -44,110 +55,119 @@ public class PiecePickerBenchmarks
         _peer.PeerChoking.Value = false;
         _peer.AmInterested.Value = true;
 
+        // Half-peer has only pieces [0 .. PieceCount/2). Used to build a
+        // steady-state picker that is NOT in end-game (_unrequestedPieceCount > 0).
+        var halfBitfield = new Bitfield(PieceCount, isInitialized: false);
+        for (int i = 0; i < PieceCount / 2; i++)
+            halfBitfield.SetPiece(i);
+        _halfPeer = new FakePeerConnection(myBitfield, halfBitfield, BlockSize);
+        _halfPeer.PeerChoking.Value = false;
+        _halfPeer.AmInterested.Value = true;
+
         _freshPicker = MakePicker(PieceCount, PieceSize, totalSize, seed: 42);
-        _steadyPicker = BuildSteadyPicker(PieceCount, PieceSize, totalSize);
-        _endGamePicker = BuildEndGamePicker(PieceCount, PieceSize, totalSize);
+        _steadyPicker = BuildSteadyPicker(PieceCount, PieceSize, totalSize, _halfPeer);
+        _endGamePicker = BuildSteadyPicker(PieceCount, PieceSize, totalSize, _peer);
     }
 
     // ── 1. New-piece path: exercises GetPiece + block initialisation ──────────
 
+    [IterationSetup(Target = nameof(TryGetRequestBlock_NewPiece))]
+    public void SetupNewPiece()
+    {
+        _newPiecePicker = MakePicker(PieceCount, PieceSize, (long)PieceCount * PieceSize, seed: 1);
+    }
+
     /// <summary>
     /// Calls TryGetRequestBlock on a freshly constructed picker — all pieces
-    /// unrequested. Each iteration creates a new picker so GetPiece is always
-    /// called fresh; shows allocation cost and selection time per piece.
+    /// unrequested. Picker construction is excluded via IterationSetup; only
+    /// GetPiece + block initialisation is timed (O(n) in PieceCount).
     /// </summary>
     [Benchmark]
-    public bool TryGetRequestBlock_NewPiece()
-    {
-        long totalSize = (long)PieceCount * PieceSize;
-        var picker = MakePicker(PieceCount, PieceSize, totalSize, seed: 1);
-        return picker.TryGetRequestBlock(_peer, out _);
-    }
+    public bool TryGetRequestBlock_NewPiece() => _newPiecePicker.TryGetRequestBlock(_peer, out _);
 
     // ── 2. Pending-block guard: returning next pending block ──────────────────
 
     /// <summary>
-    /// Handing out a pending block from an already-started piece.  The
-    /// _pendingBlockCount guard keeps this O(1) independent of PieceCount.
-    ///
-    /// Uses the fresh picker that still has pending blocks after the first
-    /// TryGetRequestBlock in GlobalSetup (called zero times on _freshPicker).
+    /// Handing out a pending block from an already-started piece.
+    /// _pendingBlockCount > 0 short-circuits to Phase 1 immediately, making
+    /// this O(1) independent of PieceCount.
     /// </summary>
     [Benchmark]
     [BenchmarkCategory("Steady")]
-    public bool TryGetRequestBlock_PendingBlock()
-    {
-        // _freshPicker has PieceCount pieces all pending; we only measure the
-        // time to hand out one block (Phase 1 short-circuits immediately).
-        return _freshPicker.TryGetRequestBlock(_peer, out _);
-    }
+    public bool TryGetRequestBlock_PendingBlock() => _freshPicker.TryGetRequestBlock(_peer, out _);
 
-    // ── 3. No-pending guard: all blocks in-flight, not end-game ──────────────
+    // ── 3. No-pending, not end-game: GetPiece scan returns null ──────────────
 
     /// <summary>
-    /// All blocks are in Requested state and no new pieces are available to the
-    /// peer.  _pendingBlockCount == 0 and IsEndGame == false so Phase 1 is
-    /// skipped entirely and GetPiece returns null — O(1) regardless of PieceCount.
+    /// All blocks for the first half of pieces are Requested; the peer only has
+    /// those pieces. _pendingBlockCount == 0 and IsEndGame == false, so Phase 1
+    /// is skipped. GetPiece is called but finds no eligible piece for this peer
+    /// (all available pieces are already in _requestedIndexes) and returns null.
+    /// Cost is O(n) — GetPiece always scans all pieces in the peer bitfield.
     /// </summary>
     [Benchmark]
     [BenchmarkCategory("Steady")]
-    public bool TryGetRequestBlock_NoPending()
-    {
-        return _steadyPicker.TryGetRequestBlock(_peer, out _);
-    }
+    public bool TryGetRequestBlock_NoPending() =>
+        _steadyPicker.TryGetRequestBlock(_halfPeer, out _);
 
     // ── 4. End-game: O(1) detection + Phase 1 scan ───────────────────────────
 
     /// <summary>
-    /// All pieces requested, IsEndGame == true.  End-game detection is now a
-    /// single integer comparison (_unrequestedPieceCount == 0); the remaining
-    /// cost is the Phase 1 SelectMany scan to find a re-requestable block.
-    /// This benchmark intentionally shows how Phase 1 scales with PieceCount
-    /// when end-game is active.
+    /// All pieces requested, IsEndGame == true.  End-game detection is a single
+    /// integer comparison (_unrequestedPieceCount == 0); the remaining cost is
+    /// the Phase 1 scan to find a re-requestable block (O(n) in block count).
     /// </summary>
     [Benchmark]
     [BenchmarkCategory("EndGame")]
-    public bool TryGetRequestBlock_EndGame()
-    {
-        return _endGamePicker.TryGetRequestBlock(_peer, out _);
-    }
+    public bool TryGetRequestBlock_EndGame() => _endGamePicker.TryGetRequestBlock(_peer, out _);
 
     // ── 5. CompletePiece + ConfirmPiece cycle ─────────────────────────────────
 
+    [IterationSetup(Target = nameof(CompletePiece_ConfirmPiece))]
+    public void SetupCompletePiece()
+    {
+        _completePiecePicker = MakePicker(
+            PieceCount,
+            PieceSize,
+            (long)PieceCount * PieceSize,
+            seed: 3
+        );
+        _completePiecePicker.TryGetRequestBlock(_peer, out _);
+    }
+
     /// <summary>
-    /// Counter updates that replaced the O(n) finally-block scan.  Called once
-    /// per downloaded piece so very infrequent — but this confirms constant-time
-    /// cost regardless of PieceCount.
+    /// Counter updates called once per downloaded piece. Picker construction and
+    /// initial block selection are excluded via IterationSetup; only CompletePiece
+    /// + ConfirmPiece are timed.
     /// </summary>
     [Benchmark]
     public void CompletePiece_ConfirmPiece()
     {
-        long totalSize = (long)PieceCount * PieceSize;
-        var myBitfield = new Bitfield(PieceCount, false);
-        var picker = MakePicker(PieceCount, PieceSize, totalSize, seed: 3);
-
-        // Simulate selecting, completing, and confirming piece 0
-        picker.TryGetRequestBlock(_peer, out _);
-        picker.CompletePiece(0);
-        myBitfield.SetPiece(0);
-        picker.ConfirmPiece(0);
+        _completePiecePicker.CompletePiece(0);
+        _completePiecePicker.ConfirmPiece(0);
     }
 
     // ── 6. Batch timeout reset ────────────────────────────────────────────────
 
+    [IterationSetup(Target = nameof(ResetBlocksToPending))]
+    public void SetupResetBlocksToPending()
+    {
+        _resetPicker = BuildSteadyPicker(
+            PieceCount,
+            PieceSize,
+            (long)PieceCount * PieceSize,
+            _peer
+        );
+    }
+
     /// <summary>
     /// Resetting all blocks belonging to one slow peer back to Pending.  Used
-    /// by the new CheckTimeout path in RequestScheduler — once per timed-out peer
-    /// rather than once per timed-out block.
+    /// by the CheckTimeout path in RequestScheduler — once per timed-out peer
+    /// rather than once per timed-out block. O(n) in block count, zero alloc.
     /// </summary>
     [Benchmark]
     [BenchmarkCategory("Timeout")]
-    public void ResetBlocksToPending()
-    {
-        // Rebuild each iteration so there are always blocks to reset
-        var picker = BuildEndGamePicker(PieceCount, PieceSize, (long)PieceCount * PieceSize);
-        picker.ResetBlocksToPending(_peer);
-    }
+    public void ResetBlocksToPending() => _resetPicker.ResetBlocksToPending(_peer);
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
@@ -170,25 +190,23 @@ public class PiecePickerBenchmarks
     }
 
     /// <summary>
-    /// Builds a picker where every piece is in-progress with all blocks in
-    /// <c>Requested</c> state (no pending blocks, not end-game from the picker's
-    /// view, though the peer still has pieces available).
+    /// Builds a picker where every piece available to <paramref name="peer"/> is
+    /// in-progress with all blocks in <c>Requested</c> state and no pending blocks.
+    /// IsEndGame is true iff <paramref name="peer"/> has all pieces.
     /// </summary>
-    private PiecePicker BuildSteadyPicker(int pieceCount, int pieceSize, long totalSize)
+    private static PiecePicker BuildSteadyPicker(
+        int pieceCount,
+        int pieceSize,
+        long totalSize,
+        FakePeerConnection peer
+    )
     {
         var picker = MakePicker(pieceCount, pieceSize, totalSize, seed: 11);
-        while (picker.TryGetRequestBlock(_peer, out var block))
+        while (picker.TryGetRequestBlock(peer, out var block))
         {
             block.State = RequestBlockState.Requested;
-            block.RequestedFrom.Add(_peer);
+            block.RequestedFrom.Add(peer);
         }
         return picker;
     }
-
-    /// <summary>
-    /// Builds a picker with <c>IsEndGame == true</c>: all pieces in-progress,
-    /// all blocks in <c>Requested</c> state.
-    /// </summary>
-    private PiecePicker BuildEndGamePicker(int pieceCount, int pieceSize, long totalSize) =>
-        BuildSteadyPicker(pieceCount, pieceSize, totalSize);
 }

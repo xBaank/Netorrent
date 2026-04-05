@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using Netorrent.IO;
 using Netorrent.Other;
 
@@ -32,7 +33,7 @@ internal class FakePieceStorage() : IPieceStorage
         true;
 
     public async IAsyncEnumerable<(int PieceIndex, bool IsValid)> CheckPiecesAsync(
-        CancellationToken cancellationToken
+        [EnumeratorCancellation] CancellationToken cancellationToken
     )
     {
         await Task.CompletedTask;
