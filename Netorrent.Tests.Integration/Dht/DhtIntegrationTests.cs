@@ -43,7 +43,7 @@ public class DhtIntegrationTests
             new Netorrent.TorrentFile.FileStructure.InfoHash(new byte[20]),
             receiverHandler,
             channel.Writer,
-            new DhtClientOptions(Enabled: true, Port: 0, BootstrapNodes: []) { StunServers = [] },
+            new DhtClientOptions(Enabled: true, Port: 0, BootstrapNodes: []),
             6881,
             NullLogger.Instance
         );
@@ -86,7 +86,7 @@ public class DhtIntegrationTests
             new Netorrent.TorrentFile.FileStructure.InfoHash(new byte[20]),
             receiverHandler,
             channel.Writer,
-            new DhtClientOptions(Enabled: true, Port: 0, BootstrapNodes: []) { StunServers = [] },
+            new DhtClientOptions(Enabled: true, Port: 0, BootstrapNodes: []),
             6881,
             NullLogger.Instance
         );

@@ -150,9 +150,9 @@ public sealed class Torrent : IAsyncDisposable
             var dhtHandler = new DhtHandler(
                 udpClient,
                 torrentClientOptions.Logger,
-                retryDelay: 5.Seconds,
-                retryLoopDelay: 1.Seconds,
-                maxRetries: 3
+                retryDelay: 2.Seconds,
+                retryLoopDelay: 250.Milliseconds,
+                maxRetries: 2
             );
             _dhtClient = new DhtClient(
                 selfNodeId,

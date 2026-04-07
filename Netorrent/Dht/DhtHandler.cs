@@ -17,7 +17,6 @@ internal sealed class DhtHandler : IDhtHandler
     private CancellationTokenSource? _cancellationTokenSource;
     private readonly Task _runTask;
     private bool _disposed;
-    private volatile TaskCompletionSource<IPEndPoint?>? _stunPendingTcs;
 
     public event Action<KrpcMessage, IPEndPoint>? MessageReceived;
 
@@ -62,13 +61,6 @@ internal sealed class DhtHandler : IDhtHandler
             try
             {
                 var result = await _udpClient.ReceiveAsync(ct).ConfigureAwait(false);
-
-                // Route STUN responses to any pending discovery request before KRPC parsing
-                if (StunClient.IsStunMessage(result.Buffer))
-                {
-                    _stunPendingTcs?.TrySetResult(StunClient.ParseResponse(result.Buffer));
-                    continue;
-                }
 
                 var msg = await KrpcSerializer
                     .TryDeserializeAsync(result.Buffer, ct)
@@ -191,41 +183,6 @@ internal sealed class DhtHandler : IDhtHandler
             id = (ushort)Random.Shared.Next(0, 65536);
         } while (_pending.ContainsKey(id));
         return new TransactionId(id);
-    }
-
-    public async ValueTask<IPEndPoint?> DiscoverExternalEndPointAsync(
-        IPEndPoint stunServer,
-        CancellationToken cancellationToken
-    )
-    {
-        var tcs = new TaskCompletionSource<IPEndPoint?>(
-            TaskCreationOptions.RunContinuationsAsynchronously
-        );
-        _stunPendingTcs = tcs;
-        try
-        {
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken
-            );
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(3));
-            timeoutCts.Token.Register(() => tcs.TrySetResult(null));
-
-            var request = StunClient.BuildRequest();
-            await _udpClient
-                .SendAsync(request, stunServer, cancellationToken)
-                .ConfigureAwait(false);
-            return await tcs.Task.ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            if (_logger.IsEnabled(LogLevel.Debug))
-                _logger.LogDebug(ex, "STUN request to {ep} failed", stunServer);
-            return null;
-        }
-        finally
-        {
-            _stunPendingTcs = null;
-        }
     }
 
     public async ValueTask DisposeAsync()

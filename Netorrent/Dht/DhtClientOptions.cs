@@ -24,13 +24,6 @@ public record DhtClientOptions(
             ]
         );
 
-    /// <summary>
-    /// STUN servers used to discover the external UDP endpoint when behind NAT.
-    /// Set to an empty list to disable STUN.
-    /// </summary>
-    public IReadOnlyList<DhtBootstrapNode> StunServers { get; init; } =
-    [new("stun.l.google.com", 19302), new("stun1.l.google.com", 19302)];
-
     /// <summary>Initial delay before the first get_peers query (configurable for testing).</summary>
     internal TimeSpan GetPeersDelay { get; init; } = TimeSpan.FromSeconds(5);
 

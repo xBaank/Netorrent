@@ -28,14 +28,4 @@ internal interface IDhtHandler : IAsyncDisposable
         IPEndPoint remote,
         CancellationToken cancellationToken
     );
-
-    /// <summary>
-    /// Sends a STUN Binding Request to <paramref name="stunServer"/> using the DHT socket
-    /// and returns the external <see cref="IPEndPoint"/> as seen by the STUN server.
-    /// Returns <c>null</c> if STUN fails or times out.
-    /// </summary>
-    ValueTask<IPEndPoint?> DiscoverExternalEndPointAsync(
-        IPEndPoint stunServer,
-        CancellationToken cancellationToken
-    );
 }

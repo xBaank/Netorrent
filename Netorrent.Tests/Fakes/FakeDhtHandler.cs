@@ -50,12 +50,5 @@ internal sealed class FakeDhtHandler : IDhtHandler
         );
     }
 
-    public IPEndPoint? StunResult { get; set; }
-
-    public ValueTask<IPEndPoint?> DiscoverExternalEndPointAsync(
-        IPEndPoint stunServer,
-        CancellationToken cancellationToken
-    ) => ValueTask.FromResult(StunResult);
-
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

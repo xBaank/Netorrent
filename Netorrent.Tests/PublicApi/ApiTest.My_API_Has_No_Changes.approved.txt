@@ -67,7 +67,6 @@ namespace Netorrent.Dht
         public System.Collections.Generic.IReadOnlyList<Netorrent.Dht.DhtBootstrapNode> BootstrapNodes { get; init; }
         public bool Enabled { get; init; }
         public int Port { get; init; }
-        public System.Collections.Generic.IReadOnlyList<Netorrent.Dht.DhtBootstrapNode> StunServers { get; init; }
         public static Netorrent.Dht.DhtClientOptions Default { get; }
     }
 }

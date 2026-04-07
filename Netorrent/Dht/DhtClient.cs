@@ -22,7 +22,6 @@ internal sealed class DhtClient : IAsyncDisposable
     private readonly Actor<DhtMessage> _actor = new();
     private readonly RoutingTable _routingTable;
     private readonly KrpcTokenStore _tokenStore = new();
-    private IPEndPoint? _externalEndPoint;
 
     public DhtClient(
         NodeId selfId,
@@ -103,21 +102,14 @@ internal sealed class DhtClient : IAsyncDisposable
 
     private async ValueTask BootstrapAsync(CancellationToken ct)
     {
-        // Discover external endpoint via STUN before contacting bootstrap nodes
-        _externalEndPoint = await DiscoverExternalEndPointViaNatAsync(ct).ConfigureAwait(false);
-        if (_externalEndPoint is not null && _logger.IsEnabled(LogLevel.Information))
-            _logger.LogInformation("DHT STUN: external endpoint is {ep}", _externalEndPoint);
-
         foreach (var bootstrapNode in _options.BootstrapNodes)
         {
             try
             {
-                var addresses = await Dns.GetHostAddressesAsync(bootstrapNode.Host, ct)
+                var addresses = await ResolveIpv4Async(bootstrapNode.Host, ct)
                     .ConfigureAwait(false);
                 foreach (var address in addresses)
                 {
-                    if (address.AddressFamily != AddressFamily.InterNetwork)
-                        continue;
                     var ep = new IPEndPoint(address, bootstrapNode.Port);
                     var query = new KrpcMessage.FindNodeQuery(
                         TransactionId.Generate(),
@@ -151,158 +143,265 @@ internal sealed class DhtClient : IAsyncDisposable
             {
                 return;
             }
-            catch (Exception ex)
-            {
-                if (_logger.IsEnabled(LogLevel.Debug))
-                    _logger.LogDebug(
-                        ex,
-                        "DNS resolution failed for bootstrap node {host}",
-                        bootstrapNode.Host
-                    );
-            }
         }
 
+        _logger.LogInformation(
+            "DHT bootstrap: seeded routing table to {n} nodes, starting iterative find_node",
+            _routingTable.Count
+        );
         await IterativeFindNodeAsync(_selfId, ct).ConfigureAwait(false);
+        _logger.LogInformation(
+            "DHT bootstrap: complete, routing table now has {n} nodes",
+            _routingTable.Count
+        );
     }
 
-    private async ValueTask<IPEndPoint?> DiscoverExternalEndPointViaNatAsync(CancellationToken ct)
-    {
-        foreach (var stunNode in _options.StunServers)
-        {
-            try
-            {
-                var addresses = await Dns.GetHostAddressesAsync(stunNode.Host, ct)
-                    .ConfigureAwait(false);
-                foreach (var address in addresses)
-                {
-                    if (address.AddressFamily != AddressFamily.InterNetwork)
-                        continue;
-                    var ep = new IPEndPoint(address, stunNode.Port);
-                    var result = await _handler
-                        .DiscoverExternalEndPointAsync(ep, ct)
-                        .ConfigureAwait(false);
-                    if (result is not null)
-                        return result;
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                return null;
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsEnabled(LogLevel.Debug))
-                    _logger.LogDebug(ex, "STUN DNS resolution failed for {host}", stunNode.Host);
-            }
-        }
-        return null;
-    }
+    // ── Iterative Kademlia lookups ────────────────────────────────────────────
 
-    // ── Iterative find_node (Kademlia lookup) ─────────────────────────────────
+    private const int Alpha = 3;
+    private const int K = 8;
+
+    // Hard cap on lookup rounds. Each round queries Alpha nodes in parallel; with the handler
+    // configured for ~6s worst-case-per-query timeouts, this caps a single iterative lookup at
+    // ~MaxRounds * 6s ≈ 1 minute, after which we yield the actor back to its mailbox.
+    private const int MaxRounds = 10;
+
+    private static readonly IComparer<NodeId> _nodeIdByteComparer = Comparer<NodeId>.Create(
+        static (a, b) => a.CompareTo(b)
+    );
 
     private async ValueTask IterativeFindNodeAsync(NodeId target, CancellationToken ct)
     {
-        const int Alpha = 3;
         var queried = new HashSet<NodeId>();
-        var candidates = new List<DhtNode>(_routingTable.GetClosest(target));
+        var shortlist = new Dictionary<NodeId, DhtNode>();
+        foreach (var n in _routingTable.GetClosest(target, K))
+            shortlist[n.Id] = n;
 
-        bool progress = true;
-        while (progress && !ct.IsCancellationRequested)
+        for (int round = 0; round < MaxRounds && !ct.IsCancellationRequested; round++)
         {
-            progress = false;
-            var toQuery = candidates.Where(n => !queried.Contains(n.Id)).Take(Alpha).ToList();
+            var toQuery = shortlist
+                .Values.Where(n => !queried.Contains(n.Id))
+                .OrderBy(n => n.Id.Xor(target), _nodeIdByteComparer)
+                .Take(Alpha)
+                .ToList();
             if (toQuery.Count == 0)
                 break;
 
-            foreach (var node in toQuery)
-            {
-                queried.Add(node.Id);
-                try
-                {
-                    var query = new KrpcMessage.FindNodeQuery(
-                        TransactionId.Generate(),
-                        _selfId,
-                        target
-                    );
-                    var response = await _handler
-                        .SendAndReceiveAsync(query, node.EndPoint, ct)
-                        .ConfigureAwait(false);
-                    if (response is KrpcMessage.FindNodeResponse findResp)
+            foreach (var n in toQuery)
+                queried.Add(n.Id);
+
+            var responses = await Task.WhenAll(
+                    toQuery.Select(async n =>
                     {
-                        foreach (var newNode in findResp.Nodes)
+                        try
                         {
-                            if (
-                                !queried.Contains(newNode.Id)
-                                && !candidates.Any(c => c.Id == newNode.Id)
-                            )
-                            {
-                                candidates.Add(newNode);
-                                InsertNode(newNode);
-                                progress = true;
-                            }
+                            var query = new KrpcMessage.FindNodeQuery(
+                                TransactionId.Generate(),
+                                _selfId,
+                                target
+                            );
+                            return await _handler
+                                    .SendAndReceiveAsync(query, n.EndPoint, ct)
+                                    .ConfigureAwait(false) as KrpcMessage.FindNodeResponse;
                         }
-                    }
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+                        catch (Exception ex) when (ex is not OperationCanceledException)
+                        {
+                            if (_logger.IsEnabled(LogLevel.Debug))
+                                _logger.LogDebug(ex, "find_node failed for {ep}", n.EndPoint);
+                            return null;
+                        }
+                    })
+                )
+                .ConfigureAwait(false);
+
+            foreach (var resp in responses)
+            {
+                if (resp is null)
+                    continue;
+                foreach (var newNode in resp.Nodes)
                 {
-                    if (_logger.IsEnabled(LogLevel.Debug))
-                        _logger.LogDebug(ex, "find_node failed for {ep}", node.EndPoint);
+                    if (newNode.Id == _selfId)
+                        continue;
+                    InsertNode(newNode);
+                    shortlist.TryAdd(newNode.Id, newNode);
                 }
+            }
+
+            // Trim shortlist to the 2K closest known nodes so it doesn't grow unbounded
+            if (shortlist.Count > K * 2)
+            {
+                shortlist = shortlist
+                    .Values.OrderBy(n => n.Id.Xor(target), _nodeIdByteComparer)
+                    .Take(K * 2)
+                    .ToDictionary(n => n.Id);
             }
         }
     }
 
-    // ── Periodic get_peers ────────────────────────────────────────────────────
+    // ── Periodic get_peers (iterative Kademlia lookup for the info hash) ─────
 
     private async ValueTask GetPeersAsync(CancellationToken ct)
     {
         var target = NodeId.FromInfoHash(_infoHash);
-        var closest = _routingTable.GetClosest(target);
+        var seeds = _routingTable.GetClosest(target, K);
+        _logger.LogInformation(
+            "DHT get_peers: starting iterative lookup ({seeds} seeds, routing table {rt})",
+            seeds.Count,
+            _routingTable.Count
+        );
 
-        if (closest.Count == 0)
+        if (seeds.Count == 0)
         {
-            // Routing table empty: re-bootstrap
+            // Routing table empty: re-bootstrap and retry
             await BootstrapAsync(ct).ConfigureAwait(false);
-            return;
+            seeds = _routingTable.GetClosest(target, K);
+            if (seeds.Count == 0)
+                return;
         }
 
-        foreach (var node in closest)
+        var queried = new HashSet<NodeId>();
+        var shortlist = new Dictionary<NodeId, DhtNode>();
+        foreach (var n in seeds)
+            shortlist[n.Id] = n;
+
+        var seenPeers = new HashSet<long>();
+        // Nodes that returned a valid token, ordered by proximity — announce to the K closest after convergence
+        var announceTargets = new List<(DhtNode Node, byte[] Token)>();
+
+        for (int round = 0; round < MaxRounds && !ct.IsCancellationRequested; round++)
         {
-            if (ct.IsCancellationRequested)
-                return;
-            try
+            var toQuery = shortlist
+                .Values.Where(n => !queried.Contains(n.Id))
+                .OrderBy(n => n.Id.Xor(target), _nodeIdByteComparer)
+                .Take(Alpha)
+                .ToList();
+            if (toQuery.Count == 0)
+                break;
+
+            foreach (var n in toQuery)
+                queried.Add(n.Id);
+
+            var responses = await Task.WhenAll(
+                    toQuery.Select(async n =>
+                    {
+                        try
+                        {
+                            var query = new KrpcMessage.GetPeersQuery(
+                                TransactionId.Generate(),
+                                _selfId,
+                                _infoHash
+                            );
+                            var resp = await _handler
+                                .SendAndReceiveAsync(query, n.EndPoint, ct)
+                                .ConfigureAwait(false);
+                            return (Node: n, Response: (KrpcMessage?)resp);
+                        }
+                        catch (Exception ex) when (ex is not OperationCanceledException)
+                        {
+                            if (_logger.IsEnabled(LogLevel.Debug))
+                                _logger.LogDebug(ex, "get_peers failed for {ep}", n.EndPoint);
+                            return (Node: n, Response: (KrpcMessage?)null);
+                        }
+                    })
+                )
+                .ConfigureAwait(false);
+
+            foreach (var (node, resp) in responses)
             {
-                var query = new KrpcMessage.GetPeersQuery(
-                    TransactionId.Generate(),
-                    _selfId,
-                    _infoHash
-                );
-                var response = await _handler
-                    .SendAndReceiveAsync(query, node.EndPoint, ct)
-                    .ConfigureAwait(false);
-                switch (response)
+                switch (resp)
                 {
                     case KrpcMessage.GetPeersWithPeersResponse peersResp:
+                        _routingTable.RefreshNode(peersResp.ResponderId);
                         foreach (var ep in peersResp.Peers)
-                            _peersChannel.TryWrite(ep);
-                        await AnnounceAsync(node.EndPoint, peersResp.Token, ct)
-                            .ConfigureAwait(false);
+                        {
+                            if (ep.Port == 0)
+                                continue;
+                            var key = PeerKey(ep);
+                            if (seenPeers.Add(key))
+                                _peersChannel.TryWrite(ep);
+                        }
+                        if (peersResp.Token.Length > 0)
+                            announceTargets.Add((node, peersResp.Token));
                         break;
+
                     case KrpcMessage.GetPeersWithNodesResponse nodesResp:
-                        foreach (var n in nodesResp.Nodes)
-                            InsertNode(n);
-                        await AnnounceAsync(node.EndPoint, nodesResp.Token, ct)
-                            .ConfigureAwait(false);
+                        _routingTable.RefreshNode(nodesResp.ResponderId);
+                        if (nodesResp.Token.Length > 0)
+                            announceTargets.Add((node, nodesResp.Token));
+                        foreach (var newNode in nodesResp.Nodes)
+                        {
+                            if (newNode.Id == _selfId)
+                                continue;
+                            InsertNode(newNode);
+                            shortlist.TryAdd(newNode.Id, newNode);
+                        }
                         break;
                 }
-                _routingTable.RefreshNode(node.Id);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+
+            if (shortlist.Count > K * 2)
             {
-                if (_logger.IsEnabled(LogLevel.Debug))
-                    _logger.LogDebug(ex, "get_peers failed for {ep}", node.EndPoint);
+                shortlist = shortlist
+                    .Values.OrderBy(n => n.Id.Xor(target), _nodeIdByteComparer)
+                    .Take(K * 2)
+                    .ToDictionary(n => n.Id);
             }
         }
+
+        _logger.LogInformation(
+            "DHT get_peers: complete, found {peers} unique peers, queried {q} nodes",
+            seenPeers.Count,
+            queried.Count
+        );
+
+        // Announce to the K closest responsive nodes that handed us a token
+        var closestAnnounce = announceTargets
+            .OrderBy(t => t.Node.Id.Xor(target), _nodeIdByteComparer)
+            .Take(K)
+            .ToList();
+        foreach (var (node, token) in closestAnnounce)
+        {
+            if (ct.IsCancellationRequested)
+                break;
+            await AnnounceAsync(node.EndPoint, token, ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Resolves a host to its IPv4 addresses with a hard 5-second timeout. We restrict to IPv4
+    /// because <see cref="Dns.GetHostAddressesAsync(string, CancellationToken)"/> requests both
+    /// A and AAAA records, and the AAAA query can hang indefinitely on networks without
+    /// functional IPv6 DNS, ignoring the cancellation token (a known .NET / OS-level limitation).
+    /// </summary>
+    private async ValueTask<IPAddress[]> ResolveIpv4Async(string host, CancellationToken ct)
+    {
+        try
+        {
+            return await Dns.GetHostAddressesAsync(host, AddressFamily.InterNetwork, ct)
+                .WaitAsync(TimeSpan.FromSeconds(5), ct)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsEnabled(LogLevel.Debug))
+                _logger.LogDebug(ex, "DNS resolution failed for {host}", host);
+            return [];
+        }
+    }
+
+    private static long PeerKey(IPEndPoint ep)
+    {
+        // Pack IPv4 + port into a single long for O(1) dedup
+        Span<byte> buf = stackalloc byte[4];
+        var addr = ep.Address.GetAddressBytes();
+        if (addr.Length == 4)
+            addr.CopyTo(buf);
+        return ((long)System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(buf) << 16)
+            | (uint)ep.Port;
     }
 
     // ── Announce ──────────────────────────────────────────────────────────────
@@ -313,16 +412,13 @@ internal sealed class DhtClient : IAsyncDisposable
             return;
         try
         {
-            // When STUN succeeded we know our external IP, so peers can reach us at our
-            // TCP listen port.  When STUN failed we set implied_port=true and let the
-            // remote node use the source address/port of this UDP packet instead.
             var query = new KrpcMessage.AnnouncePeerQuery(
                 TransactionId.Generate(),
                 _selfId,
                 _infoHash,
                 _tcpListenPort,
                 token,
-                ImpliedPort: _externalEndPoint is null
+                ImpliedPort: false
             );
             await _handler.SendAsync(query, remote, ct).ConfigureAwait(false);
         }
