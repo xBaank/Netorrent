@@ -125,7 +125,7 @@ public sealed class TorrentClient : IAsyncDisposable
     {
         var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read);
 
-        await using var decoder = new BDecoder(stream);
+        await using var decoder = new BDecoder(stream, _options.BencodingMaxDepth);
         var decoded = await decoder.DecodeAsync(cancellationToken).ConfigureAwait(false);
         if (decoded is not BDictionary bDictionary)
         {

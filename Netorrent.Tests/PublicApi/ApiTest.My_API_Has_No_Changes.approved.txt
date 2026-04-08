@@ -232,7 +232,8 @@ namespace Netorrent.TorrentFile.Options
 {
     public class TorrentClientOptions : System.IEquatable<Netorrent.TorrentFile.Options.TorrentClientOptions>
     {
-        public TorrentClientOptions(Microsoft.Extensions.Logging.ILogger Logger, int ListenPort, System.Net.IPAddress? ListenIpv4Address, System.Net.IPAddress? ListenIpv6Address, Netorrent.TorrentFile.Options.UsedTrackers UsedTrackers) { }
+        public TorrentClientOptions(Microsoft.Extensions.Logging.ILogger Logger, int ListenPort, System.Net.IPAddress? ListenIpv4Address, System.Net.IPAddress? ListenIpv6Address, Netorrent.TorrentFile.Options.UsedTrackers UsedTrackers, int BencodingMaxDepth = 64) { }
+        public int BencodingMaxDepth { get; init; }
         public System.Net.IPAddress? ListenIpv4Address { get; init; }
         public System.Net.IPAddress? ListenIpv6Address { get; init; }
         public int ListenPort { get; init; }
