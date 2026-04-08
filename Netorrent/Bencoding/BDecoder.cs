@@ -6,7 +6,7 @@ using Netorrent.Exceptions;
 
 namespace Netorrent.Bencoding;
 
-internal sealed class BDecoder(Stream stream)
+internal sealed class BDecoder(Stream stream, int maxDepth = 64)
 {
     private readonly PipeReader reader = PipeReader.Create(stream);
 
@@ -24,7 +24,7 @@ internal sealed class BDecoder(Stream stream)
 
             var seqReader = new SequenceReader<byte>(buffer);
 
-            if (TryDecode(ref seqReader, out var node))
+            if (TryDecode(ref seqReader, out var node, depth: 0))
             {
                 reader.AdvanceTo(seqReader.Position);
                 if (seqReader.Remaining > 0)
@@ -45,10 +45,16 @@ internal sealed class BDecoder(Stream stream)
 
     private bool TryDecode(
         ref SequenceReader<byte> reader,
-        [NotNullWhen(true)] out IBencodingNode? node
+        [NotNullWhen(true)] out IBencodingNode? node,
+        int depth
     )
     {
         node = null;
+
+        if (depth > maxDepth)
+        {
+            throw new BencodingException($"Maximum nesting depth of {maxDepth} exceeded");
+        }
 
         if (!reader.TryPeek(out var b))
         {
@@ -59,8 +65,8 @@ internal sealed class BDecoder(Stream stream)
         {
             >= (byte)'0' and <= (byte)'9' => TryDecodeString(ref reader, out node),
             (byte)'i' => TryDecodeInt(ref reader, out node),
-            (byte)'l' => TryDecodeList(ref reader, out node),
-            (byte)'d' => TryDecodeDictionary(ref reader, out node),
+            (byte)'l' => TryDecodeList(ref reader, out node, depth),
+            (byte)'d' => TryDecodeDictionary(ref reader, out node, depth),
             _ => throw new BencodingException($"Invalid Token: {b}"),
         };
     }
@@ -159,7 +165,8 @@ internal sealed class BDecoder(Stream stream)
 
     private bool TryDecodeList(
         ref SequenceReader<byte> reader,
-        [NotNullWhen(true)] out IBencodingNode? node
+        [NotNullWhen(true)] out IBencodingNode? node,
+        int depth
     )
     {
         node = null;
@@ -181,7 +188,7 @@ internal sealed class BDecoder(Stream stream)
                 return true;
             }
 
-            if (!TryDecode(ref reader, out var item))
+            if (!TryDecode(ref reader, out var item, depth + 1))
             {
                 return false;
             }
@@ -192,7 +199,8 @@ internal sealed class BDecoder(Stream stream)
 
     private bool TryDecodeDictionary(
         ref SequenceReader<byte> reader,
-        [NotNullWhen(true)] out IBencodingNode? node
+        [NotNullWhen(true)] out IBencodingNode? node,
+        int depth
     )
     {
         node = null;
@@ -219,7 +227,7 @@ internal sealed class BDecoder(Stream stream)
                 return false;
             }
 
-            if (!TryDecode(ref reader, out var value))
+            if (!TryDecode(ref reader, out var value, depth + 1))
             {
                 return false;
             }
