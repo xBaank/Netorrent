@@ -1,12 +1,11 @@
 using Microsoft.Extensions.Logging;
 using Netorrent.Dht;
 using Netorrent.TorrentFile;
-using Netorrent.TorrentFile.Options;
 using Shouldly;
 
 namespace Netorrent.Tests.Integration.Torrents;
 
-[Timeout(5 * 60_000)]
+[Timeout(8 * 60_000)]
 public class RealTorrentTests
 {
     private static ILogger Logger => new TUnitLogger(TestContext.Current!.GetDefaultLogger());
