@@ -1,3 +1,5 @@
+using Netorrent.Extensions;
+
 namespace Netorrent.Dht;
 
 /// <summary>
@@ -25,16 +27,11 @@ public record DhtClientOptions(
         );
 
     /// <summary>Initial delay before the first get_peers query (configurable for testing).</summary>
-    internal TimeSpan GetPeersDelay { get; init; } = TimeSpan.FromSeconds(5);
+    internal TimeSpan GetPeersDelay { get; init; } = 5.Seconds;
 
     /// <summary>Interval between get_peers queries (configurable for testing).</summary>
-    internal TimeSpan GetPeersInterval { get; init; } = TimeSpan.FromSeconds(30);
+    internal TimeSpan GetPeersInterval { get; init; } = 30.Seconds;
 
     /// <summary>Interval between bucket refresh passes (configurable for testing).</summary>
-    internal TimeSpan RefreshInterval { get; init; } = TimeSpan.FromMinutes(15);
+    internal TimeSpan RefreshInterval { get; init; } = 15.Minutes;
 }
-
-/// <summary>
-/// A DHT bootstrap node (host + port).
-/// </summary>
-public record DhtBootstrapNode(string Host, int Port);

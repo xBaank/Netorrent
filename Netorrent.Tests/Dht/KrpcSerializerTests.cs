@@ -11,7 +11,7 @@ public class KrpcSerializerTests
     private static NodeId MakeNodeId(byte fill = 0xAA)
     {
         var bytes = Enumerable.Repeat(fill, 20).Select(b => (byte)b).ToArray();
-        return NodeId.FromBytes(bytes);
+        return new(bytes);
     }
 
     private static InfoHash MakeInfoHash(byte fill = 0xBB) =>

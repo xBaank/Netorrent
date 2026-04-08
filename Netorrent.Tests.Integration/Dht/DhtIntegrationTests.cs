@@ -33,14 +33,14 @@ public class DhtIntegrationTests
         var (senderHandler, _) = CreateHandler();
         var (receiverHandler, receiverEp) = CreateHandler();
 
-        var receiverNodeId = NodeId.Generate();
-        var senderNodeId = NodeId.Generate();
+        var receiverNodeId = new NodeId();
+        var senderNodeId = new NodeId();
 
         // The receiver auto-responds to ping via a DhtClient
         var channel = Channel.CreateUnbounded<IPEndPoint>();
         var receiverClient = new DhtClient(
             receiverNodeId,
-            new Netorrent.TorrentFile.FileStructure.InfoHash(new byte[20]),
+            new TorrentFile.FileStructure.InfoHash(new byte[20]),
             receiverHandler,
             channel.Writer,
             new DhtClientOptions(Enabled: true, Port: 0, BootstrapNodes: []),
@@ -60,7 +60,11 @@ public class DhtIntegrationTests
         var response = await senderHandler.SendAndReceiveAsync(ping, receiverEp, ct);
 
         cts.Cancel();
-        try { await receiverTask.ConfigureAwait(false); } catch { }
+        try
+        {
+            await receiverTask.ConfigureAwait(false);
+        }
+        catch { }
         await receiverClient.DisposeAsync();
         await senderHandler.DisposeAsync();
 
@@ -76,14 +80,14 @@ public class DhtIntegrationTests
         var (senderHandler, _) = CreateHandler();
         var (receiverHandler, receiverEp) = CreateHandler();
 
-        var receiverNodeId = NodeId.Generate();
-        var senderNodeId = NodeId.Generate();
-        var targetId = NodeId.Generate();
+        var receiverNodeId = new NodeId();
+        var senderNodeId = new NodeId();
+        var targetId = new NodeId();
 
         var channel = Channel.CreateUnbounded<IPEndPoint>();
         var receiverClient = new DhtClient(
             receiverNodeId,
-            new Netorrent.TorrentFile.FileStructure.InfoHash(new byte[20]),
+            new TorrentFile.FileStructure.InfoHash(new byte[20]),
             receiverHandler,
             channel.Writer,
             new DhtClientOptions(Enabled: true, Port: 0, BootstrapNodes: []),
@@ -95,11 +99,19 @@ public class DhtIntegrationTests
         var receiverTask = receiverClient.StartAsync(cts.Token);
         await Task.Delay(100, ct);
 
-        var query = new KrpcMessage.FindNodeQuery(new TransactionId(0x0099), senderNodeId, targetId);
+        var query = new KrpcMessage.FindNodeQuery(
+            new TransactionId(0x0099),
+            senderNodeId,
+            targetId
+        );
         var response = await senderHandler.SendAndReceiveAsync(query, receiverEp, ct);
 
         cts.Cancel();
-        try { await receiverTask.ConfigureAwait(false); } catch { }
+        try
+        {
+            await receiverTask.ConfigureAwait(false);
+        }
+        catch { }
         await receiverClient.DisposeAsync();
         await senderHandler.DisposeAsync();
 

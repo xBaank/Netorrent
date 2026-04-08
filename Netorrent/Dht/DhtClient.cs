@@ -7,6 +7,7 @@ using Netorrent.Dht.Krpc;
 using Netorrent.Dht.Routing;
 using Netorrent.Extensions;
 using Netorrent.TorrentFile.FileStructure;
+using ZLinq;
 
 namespace Netorrent.Dht;
 
@@ -180,7 +181,8 @@ internal sealed class DhtClient : IAsyncDisposable
         for (int round = 0; round < MaxRounds && !ct.IsCancellationRequested; round++)
         {
             var toQuery = shortlist
-                .Values.Where(n => !queried.Contains(n.Id))
+                .Values.AsValueEnumerable()
+                .Where(n => !queried.Contains(n.Id))
                 .OrderBy(n => n.Id.Xor(target), _nodeIdByteComparer)
                 .Take(Alpha)
                 .ToList();
@@ -242,7 +244,7 @@ internal sealed class DhtClient : IAsyncDisposable
 
     private async ValueTask GetPeersAsync(CancellationToken ct)
     {
-        var target = NodeId.FromInfoHash(_infoHash);
+        var target = new NodeId(_infoHash.Data);
         var seeds = _routingTable.GetClosest(target, K);
         _logger.LogInformation(
             "DHT get_peers: starting iterative lookup ({seeds} seeds, routing table {rt})",
@@ -458,7 +460,7 @@ internal sealed class DhtClient : IAsyncDisposable
 
             case KrpcMessage.GetPeersQuery getPeers:
                 var token = _tokenStore.GenerateToken(remote.Address);
-                var nearNodes = _routingTable.GetClosest(NodeId.FromInfoHash(getPeers.InfoHash));
+                var nearNodes = _routingTable.GetClosest(new NodeId(getPeers.InfoHash.Data));
                 var getPeersResp = new KrpcMessage.GetPeersWithNodesResponse(
                     getPeers.TransactionId,
                     _selfId,

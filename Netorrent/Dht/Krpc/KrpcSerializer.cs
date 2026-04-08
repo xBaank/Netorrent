@@ -43,9 +43,7 @@ internal static class KrpcSerializer
     {
         try
         {
-            // Reuse BDecoder by wrapping the buffer in a MemoryStream
-            var stream = new MemoryStream(data.ToArray(), writable: false);
-            var decoder = new BDecoder(stream);
+            var decoder = new BDecoder(data);
             var node = await decoder.DecodeAsync(ct).ConfigureAwait(false);
 
             if (node is not BDictionary dict)
@@ -89,7 +87,7 @@ internal static class KrpcSerializer
             return null;
         if (idStr.RawData.Length != 20)
             return null;
-        var senderId = NodeId.FromBytes(idStr.RawData);
+        var senderId = new NodeId(idStr.RawData);
 
         if (queryName == (string)_qPing)
             return new KrpcMessage.PingQuery(txId, senderId);
@@ -103,7 +101,7 @@ internal static class KrpcSerializer
                 return null;
             if (targetStr.RawData.Length != 20)
                 return null;
-            var target = NodeId.FromBytes(targetStr.RawData);
+            var target = new NodeId(targetStr.RawData);
             return new KrpcMessage.FindNodeQuery(txId, senderId, target);
         }
 
@@ -166,7 +164,7 @@ internal static class KrpcSerializer
             return null;
         if (idStr.RawData.Length != 20)
             return null;
-        var responderId = NodeId.FromBytes(idStr.RawData);
+        var responderId = new NodeId(idStr.RawData);
 
         // get_peers with peers ("values")
         if (
@@ -210,7 +208,7 @@ internal static class KrpcSerializer
         return new KrpcMessage.PingResponse(txId, responderId);
     }
 
-    private static KrpcMessage? ParseError(BDictionary dict, TransactionId txId)
+    private static KrpcMessage.ErrorResponse? ParseError(BDictionary dict, TransactionId txId)
     {
         if (!dict.Elements.TryGetValue(_keyE, out var eNode) || eNode is not BList eList)
             return null;
@@ -406,17 +404,17 @@ internal static class KrpcSerializer
 
     // ── Compact node info: 26 bytes (20 id + 4 IPv4 + 2 port) ────────────────
 
-    private static IReadOnlyList<DhtNode> ParseCompactNodes(byte[] data)
+    private static List<DhtNode> ParseCompactNodes(byte[] data)
     {
         var nodes = new List<DhtNode>(data.Length / 26);
         for (int offset = 0; offset + 26 <= data.Length; offset += 26)
         {
             var idBytes = data[offset..(offset + 20)];
-            var nodeId = NodeId.FromBytes(idBytes);
+            var nodeId = new NodeId(idBytes);
             var ipBytes = data[(offset + 20)..(offset + 24)];
-            var ip = new System.Net.IPAddress(ipBytes);
+            var ip = new IPAddress(ipBytes);
             var port = BinaryPrimitives.ReadUInt16BigEndian(data.AsSpan(offset + 24, 2));
-            nodes.Add(new DhtNode(nodeId, new System.Net.IPEndPoint(ip, port)));
+            nodes.Add(new DhtNode(nodeId, new IPEndPoint(ip, port)));
         }
         return nodes;
     }
@@ -442,14 +440,14 @@ internal static class KrpcSerializer
 
     // ── Compact peer info: 6 bytes (4 IPv4 + 2 port) ─────────────────────────
 
-    private static System.Net.IPEndPoint ParseCompactPeer(byte[] data)
+    private static IPEndPoint ParseCompactPeer(byte[] data)
     {
-        var ip = new System.Net.IPAddress(data[..4]);
+        var ip = new IPAddress(data[..4]);
         var port = BinaryPrimitives.ReadUInt16BigEndian(data.AsSpan(4, 2));
-        return new System.Net.IPEndPoint(ip, port);
+        return new IPEndPoint(ip, port);
     }
 
-    private static byte[] SerializeCompactPeer(System.Net.IPEndPoint endPoint)
+    private static byte[] SerializeCompactPeer(IPEndPoint endPoint)
     {
         var result = new byte[6];
         var ipBytes = endPoint.Address.GetAddressBytes();

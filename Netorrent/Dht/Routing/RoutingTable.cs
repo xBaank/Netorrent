@@ -85,7 +85,7 @@ internal sealed class RoutingTable(NodeId selfId, int k = 8)
             if (bucket.Nodes.All(n => DateTime.UtcNow - n.LastSeen > TimeSpan.FromMinutes(15)))
             {
                 // Generate a random ID that falls into this bucket's range
-                var randomTarget = NodeId.Generate();
+                var randomTarget = new NodeId();
                 yield return (i, randomTarget);
             }
         }

@@ -17,6 +17,5 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Netorrent\Netorrent.csproj" />
-    <ProjectReference Include="..\Netorrent.Tests\Netorrent.Tests.csproj" />
   </ItemGroup>
 </Project>

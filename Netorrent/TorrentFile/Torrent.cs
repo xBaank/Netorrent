@@ -140,7 +140,7 @@ public sealed class Torrent : IAsyncDisposable
 
         if (torrentClientOptions.DhtOptions.Enabled)
         {
-            var selfNodeId = NodeId.FromPeerId(peerId);
+            var selfNodeId = new NodeId(peerId.Bytes);
             var udpClient = new UdpClientWrapper(
                 UdpClient.GetFreeUdpClient(
                     torrentClientOptions.ListenIpv4Address ?? IPAddress.Any,

@@ -13,13 +13,13 @@ namespace Netorrent.Tests.Dht;
 [Timeout(10_000)]
 public class DhtClientTests
 {
-    private static NodeId MakeSelfId() => NodeId.FromBytes(new byte[20]);
+    private static NodeId MakeSelfId() => new(new byte[20]);
 
     private static NodeId MakeNodeId(byte b)
     {
         var bytes = new byte[20];
         bytes[0] = b;
-        return NodeId.FromBytes(bytes);
+        return new(bytes);
     }
 
     private static InfoHash MakeInfoHash() => new(Enumerable.Repeat((byte)0xBB, 20).ToArray());
