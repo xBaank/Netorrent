@@ -19,7 +19,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Shouldly" Version="4.3.0" />
-    <PackageReference Include="TUnit" Version="1.19.57" />
+    <PackageReference Include="TUnit" Version="1.33.0" />
     <PackageReference Include="PublicApiGenerator" Version="11.5.4" />
   </ItemGroup>
   <ItemGroup>
