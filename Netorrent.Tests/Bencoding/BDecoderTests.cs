@@ -1,6 +1,7 @@
 using System.Text;
 using Netorrent.Bencoding;
 using Netorrent.Bencoding.Structs;
+using Netorrent.Exceptions;
 using Netorrent.Tests.Bencoding.Data;
 using Shouldly;
 
@@ -80,6 +81,84 @@ public class BDecoderTests
         var decoded = await decoder.DecodeAsync(cancellationToken);
 
         decoded.ShouldBeEquivalentTo(actual);
+    }
+
+    [Test]
+    [Arguments(1)]
+    [Arguments(5)]
+    [Arguments(64)]
+    public async Task Should_Decode_Structure_At_Exact_Depth_Limit(
+        int maxDepth,
+        CancellationToken cancellationToken
+    )
+    {
+        // N nested lists → innermost decoded at depth N-1.
+        // To hit exactly maxDepth, use maxDepth+1 lists.
+        var n = maxDepth + 1;
+        var input = new string('l', n) + new string('e', n);
+        var bytes = Encoding.UTF8.GetBytes(input);
+        var stream = new MemoryStream(bytes);
+        await using var decoder = new BDecoder(stream, maxDepth);
+
+        var decoded = await decoder.DecodeAsync(cancellationToken);
+
+        decoded.ShouldBeOfType<BList>();
+    }
+
+    [Test]
+    [Arguments(0)]
+    [Arguments(1)]
+    [Arguments(5)]
+    [Arguments(64)]
+    public async Task Should_Throw_When_Depth_Exceeds_Limit(
+        int maxDepth,
+        CancellationToken cancellationToken
+    )
+    {
+        // maxDepth+2 lists → innermost decoded at depth maxDepth+1 > maxDepth → throws.
+        var n = maxDepth + 2;
+        var input = new string('l', n) + new string('e', n);
+        var bytes = Encoding.UTF8.GetBytes(input);
+        var stream = new MemoryStream(bytes);
+        await using var decoder = new BDecoder(stream, maxDepth);
+
+        await Should.ThrowAsync<BencodingException>(async () =>
+            await decoder.DecodeAsync(cancellationToken)
+        );
+    }
+
+    [Test]
+    public async Task Should_Throw_When_Default_Depth_Limit_Exceeded(
+        CancellationToken cancellationToken
+    )
+    {
+        // 66 lists → innermost at depth 65 > default limit of 64.
+        const int n = 66;
+        var input = new string('l', n) + new string('e', n);
+        var bytes = Encoding.UTF8.GetBytes(input);
+        var stream = new MemoryStream(bytes);
+        await using var decoder = new BDecoder(stream);
+
+        await Should.ThrowAsync<BencodingException>(async () =>
+            await decoder.DecodeAsync(cancellationToken)
+        );
+    }
+
+    [Test]
+    public async Task Should_Throw_On_Deeply_Nested_Dictionary(CancellationToken cancellationToken)
+    {
+        // d1:x d1:x ... i0e e e e
+        const int maxDepth = 4;
+        const int depth = maxDepth + 1;
+        var input =
+            string.Concat(Enumerable.Repeat("d1:x", depth)) + "i0e" + new string('e', depth);
+        var bytes = Encoding.UTF8.GetBytes(input);
+        var stream = new MemoryStream(bytes);
+        await using var decoder = new BDecoder(stream, maxDepth);
+
+        await Should.ThrowAsync<BencodingException>(async () =>
+            await decoder.DecodeAsync(cancellationToken)
+        );
     }
 
     [Test]

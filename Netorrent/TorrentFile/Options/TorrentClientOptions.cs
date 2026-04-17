@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using Microsoft.Extensions.Logging;
 using Netorrent.Dht;
 using Netorrent.Extensions;
@@ -15,7 +15,8 @@ public record TorrentClientOptions(
     int ListenPort,
     IPAddress? ListenIpv4Address,
     IPAddress? ListenIpv6Address,
-    UsedTrackers UsedTrackers
+    UsedTrackers UsedTrackers,
+    int BencodingMaxDepth = 64
 )
 {
     /// <summary>
