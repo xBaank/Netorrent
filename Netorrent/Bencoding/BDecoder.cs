@@ -6,20 +6,23 @@ using Netorrent.Exceptions;
 
 namespace Netorrent.Bencoding;
 
-internal sealed class BDecoder(Stream stream, int maxDepth = 64)
+internal sealed class BDecoder
 {
     private readonly PipeReader _reader;
     private readonly Stream? _stream;
+    private readonly int _maxDepth;
 
-    public BDecoder(ReadOnlyMemory<byte> data)
+    public BDecoder(ReadOnlyMemory<byte> data, int maxDepth = 64)
     {
         _reader = PipeReader.Create(new(data));
+        _maxDepth = maxDepth;
     }
 
-    public BDecoder(Stream stream)
+    public BDecoder(Stream stream, int maxDepth = 64)
     {
         _reader = PipeReader.Create(stream);
         _stream = stream;
+        _maxDepth = maxDepth;
     }
 
     public async ValueTask<IBencodingNode> DecodeAsync(CancellationToken cancellationToken)
@@ -63,9 +66,9 @@ internal sealed class BDecoder(Stream stream, int maxDepth = 64)
     {
         node = null;
 
-        if (depth > maxDepth)
+        if (depth > _maxDepth)
         {
-            throw new BencodingException($"Maximum nesting depth of {maxDepth} exceeded");
+            throw new BencodingException($"Maximum nesting depth of {_maxDepth} exceeded");
         }
 
         if (!reader.TryPeek(out var b))
