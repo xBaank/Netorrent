@@ -1,1 +1,1 @@
-D:/repos/Netorrent/CLAUDE.md
+./CLAUDE.md
