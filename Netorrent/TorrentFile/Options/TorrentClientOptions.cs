@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.Extensions.Logging;
+using Netorrent.Dht;
 using Netorrent.Extensions;
 
 namespace Netorrent.TorrentFile.Options;
@@ -18,6 +19,11 @@ public record TorrentClientOptions(
     int BencodingMaxDepth = 64
 )
 {
+    /// <summary>
+    /// Options for the DHT (BEP 5) distributed peer discovery.
+    /// </summary>
+    public DhtClientOptions DhtOptions { get; init; } = DhtClientOptions.Default;
+
     /// <summary>
     /// Only used for testing
     /// </summary>

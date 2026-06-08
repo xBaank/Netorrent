@@ -6,15 +6,30 @@ using Netorrent.Exceptions;
 
 namespace Netorrent.Bencoding;
 
-internal sealed class BDecoder(Stream stream, int maxDepth = 64)
+internal sealed class BDecoder
 {
-    private readonly PipeReader reader = PipeReader.Create(stream);
+    private readonly PipeReader _reader;
+    private readonly Stream? _stream;
+    private readonly int _maxDepth;
+
+    public BDecoder(ReadOnlyMemory<byte> data, int maxDepth = 64)
+    {
+        _reader = PipeReader.Create(new(data));
+        _maxDepth = maxDepth;
+    }
+
+    public BDecoder(Stream stream, int maxDepth = 64)
+    {
+        _reader = PipeReader.Create(stream);
+        _stream = stream;
+        _maxDepth = maxDepth;
+    }
 
     public async ValueTask<IBencodingNode> DecodeAsync(CancellationToken cancellationToken)
     {
         while (true)
         {
-            var result = await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+            var result = await _reader.ReadAsync(cancellationToken).ConfigureAwait(false);
             var buffer = result.Buffer;
 
             if (buffer.Length == 0 && result.IsCompleted)
@@ -26,7 +41,7 @@ internal sealed class BDecoder(Stream stream, int maxDepth = 64)
 
             if (TryDecode(ref seqReader, out var node, depth: 0))
             {
-                reader.AdvanceTo(seqReader.Position);
+                _reader.AdvanceTo(seqReader.Position);
                 if (seqReader.Remaining > 0)
                 {
                     throw new BencodingException("Extra data after root element");
@@ -39,7 +54,7 @@ internal sealed class BDecoder(Stream stream, int maxDepth = 64)
                 throw new EndOfStreamException();
             }
 
-            reader.AdvanceTo(buffer.Start, buffer.End);
+            _reader.AdvanceTo(buffer.Start, buffer.End);
         }
     }
 
@@ -51,9 +66,9 @@ internal sealed class BDecoder(Stream stream, int maxDepth = 64)
     {
         node = null;
 
-        if (depth > maxDepth)
+        if (depth > _maxDepth)
         {
-            throw new BencodingException($"Maximum nesting depth of {maxDepth} exceeded");
+            throw new BencodingException($"Maximum nesting depth of {_maxDepth} exceeded");
         }
 
         if (!reader.TryPeek(out var b))
@@ -238,6 +253,7 @@ internal sealed class BDecoder(Stream stream, int maxDepth = 64)
 
     public async ValueTask DisposeAsync()
     {
-        await stream.DisposeAsync().ConfigureAwait(false);
+        if (_stream is not null)
+            await _stream.DisposeAsync().ConfigureAwait(false);
     }
 }

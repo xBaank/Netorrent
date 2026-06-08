@@ -30,6 +30,20 @@ internal class TrackerClient(
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        // If no tracker types are enabled, no tracker tasks will ever be started; if we just
+        // returned now the parent's RunUntilFirstCompletesAsync would treat this as the first
+        // completed task and cancel every other component (including DHT). Hold open until
+        // the cancellation token fires so other peer-discovery sources keep running.
+        if (usedTrackers == 0)
+        {
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) { }
+            return;
+        }
+
         foreach (var urls in announceList)
         {
             var snapshot = urls.AsValueEnumerable().Shuffle().ToArray();
