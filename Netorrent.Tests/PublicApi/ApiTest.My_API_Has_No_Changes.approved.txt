@@ -251,6 +251,7 @@ namespace Netorrent.TorrentFile.Options
     {
         public TorrentClientOptions(Microsoft.Extensions.Logging.ILogger Logger, int ListenPort, System.Net.IPAddress? ListenIpv4Address, System.Net.IPAddress? ListenIpv6Address, Netorrent.TorrentFile.Options.UsedTrackers UsedTrackers, int BencodingMaxDepth = 64) { }
         public int BencodingMaxDepth { get; init; }
+        public Netorrent.Dht.DhtClientOptions DhtOptions { get; init; }
         public System.Net.IPAddress? ListenIpv4Address { get; init; }
         public System.Net.IPAddress? ListenIpv6Address { get; init; }
         public int ListenPort { get; init; }
