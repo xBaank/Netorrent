@@ -1,4 +1,5 @@
 using System.Net;
+using System.Threading.Channels;
 using Netorrent.Dht;
 using Netorrent.Dht.Krpc;
 
@@ -7,10 +8,13 @@ namespace Netorrent.Tests.Fakes;
 internal sealed class FakeDhtHandler : IDhtHandler
 {
     private readonly Dictionary<Type, Func<KrpcMessage, KrpcMessage>> _responseFactories = new();
-    private readonly Queue<(KrpcMessage Message, IPEndPoint Remote)> _incomingQueue = new();
+    private readonly Channel<(KrpcMessage Message, IPEndPoint Remote)> _incoming =
+        Channel.CreateUnbounded<(KrpcMessage, IPEndPoint)>();
 
     public List<(KrpcMessage Message, IPEndPoint Remote)> SentMessages { get; } = [];
-    public event Action<KrpcMessage, IPEndPoint>? MessageReceived;
+
+    public ChannelReader<(KrpcMessage Message, IPEndPoint Remote)> IncomingMessages =>
+        _incoming.Reader;
 
     public void SetupResponse<TQuery>(Func<TQuery, KrpcMessage> factory)
         where TQuery : KrpcMessage
@@ -19,10 +23,10 @@ internal sealed class FakeDhtHandler : IDhtHandler
     }
 
     /// <summary>
-    /// Simulates an incoming message from a remote peer (fires the MessageReceived event).
+    /// Simulates an incoming message from a remote peer (publishes to the inbound channel).
     /// </summary>
     public void SimulateIncoming(KrpcMessage message, IPEndPoint from) =>
-        MessageReceived?.Invoke(message, from);
+        _incoming.Writer.TryWrite((message, from));
 
     public ValueTask SendAsync(
         KrpcMessage message,
@@ -50,5 +54,9 @@ internal sealed class FakeDhtHandler : IDhtHandler
         );
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync()
+    {
+        _incoming.Writer.TryComplete();
+        return ValueTask.CompletedTask;
+    }
 }

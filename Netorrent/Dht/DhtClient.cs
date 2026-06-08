@@ -23,6 +23,7 @@ internal sealed class DhtClient : IAsyncDisposable
     private readonly Actor<DhtMessage> _actor = new();
     private readonly RoutingTable _routingTable;
     private readonly KrpcTokenStore _tokenStore = new();
+    private Task? _incomingConsumerTask;
 
     public DhtClient(
         NodeId selfId,
@@ -46,7 +47,7 @@ internal sealed class DhtClient : IAsyncDisposable
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _handler.MessageReceived += OnMessageReceived;
+        _incomingConsumerTask = ConsumeIncomingAsync(cancellationToken);
 
         _actor.Tell(new DhtMessage.BootstrapMessage());
 
@@ -70,8 +71,19 @@ internal sealed class DhtClient : IAsyncDisposable
         await _actor.StartAsync(OnReceiveAsync, cancellationToken).ConfigureAwait(false);
     }
 
-    private void OnMessageReceived(KrpcMessage message, IPEndPoint remote) =>
-        _actor.Tell(new DhtMessage.IncomingMessage(message, remote));
+    private async Task ConsumeIncomingAsync(CancellationToken ct)
+    {
+        await foreach (
+            var (message, remote) in _handler
+                .IncomingMessages.ReadAllAsync(ct)
+                .ConfigureAwait(false)
+        )
+        {
+            await _actor
+                .SendAsync(new DhtMessage.IncomingMessage(message, remote), ct)
+                .ConfigureAwait(false);
+        }
+    }
 
     private async ValueTask OnReceiveAsync(DhtMessage message, CancellationToken ct)
     {
@@ -220,6 +232,7 @@ internal sealed class DhtClient : IAsyncDisposable
             {
                 if (resp is null)
                     continue;
+                _routingTable.RefreshNode(resp.ResponderId);
                 foreach (var newNode in resp.Nodes)
                 {
                     if (newNode.Id == _selfId)
@@ -485,19 +498,8 @@ internal sealed class DhtClient : IAsyncDisposable
                 }
                 break;
 
-            // Responses — routing table refresh only (TCS already resolved in DhtHandler)
-            case KrpcMessage.PingResponse pingResp:
-                _routingTable.RefreshNode(pingResp.ResponderId);
-                break;
-            case KrpcMessage.FindNodeResponse fnResp:
-                _routingTable.RefreshNode(fnResp.ResponderId);
-                break;
-            case KrpcMessage.GetPeersWithPeersResponse gpPeers:
-                _routingTable.RefreshNode(gpPeers.ResponderId);
-                break;
-            case KrpcMessage.GetPeersWithNodesResponse gpNodes:
-                _routingTable.RefreshNode(gpNodes.ResponderId);
-                break;
+            // Responses to our own queries are returned by SendAndReceiveAsync and refresh the
+            // routing table at the call site; any that reach here are stray/late and ignored.
         }
     }
 
@@ -554,8 +556,16 @@ internal sealed class DhtClient : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        _handler.MessageReceived -= OnMessageReceived;
         await _actor.DisposeAsync().ConfigureAwait(false);
+        // Disposing the handler completes the inbound channel, which ends the consumer loop.
         await _handler.DisposeAsync().ConfigureAwait(false);
+        if (_incomingConsumerTask is not null)
+        {
+            try
+            {
+                await _incomingConsumerTask.ConfigureAwait(false);
+            }
+            catch { }
+        }
     }
 }

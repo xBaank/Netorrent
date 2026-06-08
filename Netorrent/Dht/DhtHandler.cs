@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Netorrent.Dht.Krpc;
+using Netorrent.Extensions;
 using Netorrent.Tracker.Udp.Client;
 
 namespace Netorrent.Dht;
@@ -18,7 +20,21 @@ internal sealed class DhtHandler : IDhtHandler
     private readonly Task _runTask;
     private bool _disposed;
 
-    public event Action<KrpcMessage, IPEndPoint>? MessageReceived;
+    // Unsolicited inbound messages (incoming queries + unmatched responses). Best-effort:
+    // the receive loop must never block, so a full buffer drops the oldest entries rather
+    // than stalling UDP intake.
+    private readonly Channel<(KrpcMessage Message, IPEndPoint Remote)> _incoming =
+        Channel.CreateBounded<(KrpcMessage, IPEndPoint)>(
+            new BoundedChannelOptions(1024)
+            {
+                SingleReader = true,
+                SingleWriter = true,
+                FullMode = BoundedChannelFullMode.DropOldest,
+            }
+        );
+
+    public ChannelReader<(KrpcMessage Message, IPEndPoint Remote)> IncomingMessages =>
+        _incoming.Reader;
 
     public DhtHandler(
         IUdpClient udpClient,
@@ -68,15 +84,13 @@ internal sealed class DhtHandler : IDhtHandler
                 if (msg is null)
                     continue;
 
-                // Complete any pending send-and-receive
-                if (_pending.TryGetValue(msg.TransactionId.Value, out var tx))
-                {
+                // A response to one of our own queries resolves its awaiter and stops here.
+                // Anything else (incoming queries, or stray/late responses) is published as
+                // unsolicited inbound traffic for the DHT client to handle.
+                if (_pending.TryRemove(msg.TransactionId.Value, out var tx))
                     tx.Response.TrySetResult(msg);
-                    _pending.TryRemove(msg.TransactionId.Value, out _);
-                }
-
-                // Always notify subscribers (handles both responses and incoming queries)
-                MessageReceived?.Invoke(msg, result.RemoteEndPoint);
+                else
+                    _incoming.Writer.TryWrite((msg, result.RemoteEndPoint));
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -121,8 +135,8 @@ internal sealed class DhtHandler : IDhtHandler
 
                 tx.RetryCount++;
                 var delay = _retryDelay * (tx.RetryCount + 1);
-                if (delay > TimeSpan.FromSeconds(60))
-                    delay = TimeSpan.FromSeconds(60);
+                if (delay > 60.Seconds)
+                    delay = 60.Seconds;
                 tx.NextRetryTime = DateTime.UtcNow + delay;
             }
 
@@ -151,7 +165,9 @@ internal sealed class DhtHandler : IDhtHandler
         var tcs = new TaskCompletionSource<KrpcMessage>(
             TaskCreationOptions.RunContinuationsAsynchronously
         );
-        cancellationToken.Register(() => tcs.TrySetCanceled());
+        await using var reg = cancellationToken.Register(() =>
+            tcs.TrySetCanceled(cancellationToken)
+        );
 
         var tx = new DhtTransaction(query, remote, tcs);
         tx.NextRetryTime = DateTime.UtcNow + _retryDelay;
@@ -167,12 +183,21 @@ internal sealed class DhtHandler : IDhtHandler
             query = newQuery;
         }
 
-        using var payload = await KrpcSerializer
-            .SerializeAsync(query, cancellationToken)
-            .ConfigureAwait(false);
-        await _udpClient.SendAsync(payload.Memory, remote, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            using var payload = await KrpcSerializer
+                .SerializeAsync(query, cancellationToken)
+                .ConfigureAwait(false);
+            await _udpClient
+                .SendAsync(payload.Memory, remote, cancellationToken)
+                .ConfigureAwait(false);
 
-        return await tcs.Task.ConfigureAwait(false);
+            return await tcs.Task.ConfigureAwait(false);
+        }
+        finally
+        {
+            _pending.TryRemove(query.TransactionId.Value, out _);
+        }
     }
 
     private TransactionId MakeTransactionId()
@@ -191,6 +216,7 @@ internal sealed class DhtHandler : IDhtHandler
         {
             _disposed = true;
             _cancellationTokenSource?.Cancel();
+            _incoming.Writer.TryComplete();
             try
             {
                 await _runTask.ConfigureAwait(false);

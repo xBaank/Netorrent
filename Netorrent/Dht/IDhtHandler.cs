@@ -1,4 +1,5 @@
 using System.Net;
+using System.Threading.Channels;
 using Netorrent.Dht.Krpc;
 
 namespace Netorrent.Dht;
@@ -6,10 +7,12 @@ namespace Netorrent.Dht;
 internal interface IDhtHandler : IAsyncDisposable
 {
     /// <summary>
-    /// Raised for every received KRPC message — both responses (matched via transaction ID)
-    /// and incoming queries from remote nodes.
+    /// Unsolicited inbound traffic — incoming queries from remote nodes, plus any message
+    /// that did not match a pending <see cref="SendAndReceiveAsync"/> call. Responses to our
+    /// own queries are returned directly by <see cref="SendAndReceiveAsync"/> and are NOT
+    /// published here.
     /// </summary>
-    event Action<KrpcMessage, IPEndPoint>? MessageReceived;
+    ChannelReader<(KrpcMessage Message, IPEndPoint Remote)> IncomingMessages { get; }
 
     /// <summary>
     /// Sends a message without waiting for a response.
